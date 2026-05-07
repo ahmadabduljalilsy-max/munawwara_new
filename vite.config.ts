@@ -8,7 +8,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  
   return {
+    // هذا السطر هو المسؤول عن حل مشكلة الصفحة البيضاء في GitHub Pages
+    base: '/munawwara_new/', 
+    
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
@@ -28,6 +32,6 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       emptyOutDir: true,
       sourcemap: false,
-    }
+    },
   };
 });

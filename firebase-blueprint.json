@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "Bus": {
+      "title": "Bus",
+      "description": "A vehicle in the fleet",
+      "type": "object",
+      "properties": {
+        "operationalNumber": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "category": { "type": "string" },
+        "model": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "color": { "type": "string" },
+        "technicalStatus": { "type": "string" },
+        "location": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["operationalNumber", "plateNumber", "category"]
+    },
+    "Worker": {
+      "title": "Worker",
+      "description": "An employee or laborer",
+      "type": "object",
+      "properties": {
+        "workerNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "iqamaNumber": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "recruitmentCompany": { "type": "string" },
+        "workplace": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "clientName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workerNumber", "name", "iqamaNumber"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "A business agreement with a client",
+      "type": "object",
+      "properties": {
+        "contractNumber": { "type": "string" },
+        "clientName": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "expired", "pending"] },
+        "value": { "type": "number" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractNumber", "clientName", "startDate", "endDate", "status", "value"]
+    },
+    "User": {
+      "title": "User",
+      "description": "An application user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "supervisor", "user", "pending"] },
+        "approved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "logoURL": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/buses/{busId}": { "schema": "Bus", "description": "Fleet data" },
+    "/workers/{workerId}": { "schema": "Worker", "description": "Worker records" },
+    "/contracts/{contractId}": { "schema": "Contract", "description": "Business contracts" },
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/settings/app": { "schema": "AppSettings", "description": "Global settings" }
+  }
+}

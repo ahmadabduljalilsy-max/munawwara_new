@@ -1,0 +1,146 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'ahmad.abduljalil.sy@gmail.com' ||
+        request.auth.token.email == 'ahmad.abduljalilmunawwara@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isApproved() {
+      return isSignedIn() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('approved', false) == true)
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Bus Validation ---
+    function isValidBus(data) {
+      return data.operationalNumber is string && data.operationalNumber.size() <= 100 &&
+             data.plateNumber is string && data.plateNumber.size() <= 100 &&
+             data.category is string && data.category.size() <= 100 &&
+             (data.get('model', '') is string) && (data.get('manufacturer', '') is string) &&
+             (data.get('color', '') is string) && (data.get('technicalStatus', '') is string) &&
+             (data.get('location', '') is string) && (data.get('notes', '') is string);
+    }
+
+    // --- Contract Validation ---
+    function isValidContract(data) {
+      return data.contractNumber is string && data.contractNumber.size() <= 100 &&
+             data.clientName is string && data.clientName.size() <= 200 &&
+             data.startDate is string && data.endDate is string &&
+             data.status in ['active', 'expired', 'pending'] &&
+             data.value is number &&
+             (data.get('description', '') is string);
+    }
+
+    // --- Worker Validation ---
+    function isValidWorker(data) {
+      return data.workerNumber is string && data.workerNumber.size() <= 100 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.iqamaNumber is string && data.iqamaNumber.size() <= 100 &&
+             (data.get('mobileNumber', '') is string) &&
+             (data.get('recruitmentCompany', '') is string) &&
+             (data.get('workplace', '') is string) &&
+             (data.get('startDate', '') is string) &&
+             (data.get('endDate', '') is string) &&
+             (data.get('clientName', '') is string);
+    }
+
+    // --- User Validation ---
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['admin', 'supervisor', 'user', 'pending'];
+    }
+
+    function isEditor() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor')
+      );
+    }
+
+    // --- Collections ---
+
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
+
+    match /buses/{busId} {
+      allow read: if isApproved();
+      allow create: if isEditor() && isValidId(busId) && isValidBus(request.resource.data);
+      allow update: if isEditor() && isValidBus(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /workers/{workerId} {
+      allow read: if isApproved();
+      allow create: if isEditor() && isValidId(workerId) && isValidWorker(request.resource.data);
+      allow update: if isEditor() && isValidWorker(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isApproved();
+      allow create: if isAdmin() && isValidId(contractId) && isValidContract(request.resource.data);
+      allow update: if isAdmin() && isValidContract(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && 
+                    request.auth.uid == userId && 
+                    isValidUser(request.resource.data) &&
+                    (
+                      // Normal user must be pending
+                      (request.resource.data.role == 'pending' && request.resource.data.get('approved', false) == false) ||
+                      // Designated admin can create their profile as approved admin
+                      ((request.auth.token.email == 'ahmad.abduljalil.sy@gmail.com' || request.auth.token.email == 'ahmad.abduljalilmunawwara@gmail.com') && request.resource.data.role == 'admin' && request.resource.data.get('approved', false) == true)
+                    );
+      allow update: if isSignedIn() && (
+        // Allow the super admins to update their own profile (for initial setup or self-recovery)
+        ((request.auth.token.email == 'ahmad.abduljalil.sy@gmail.com' || request.auth.token.email == 'ahmad.abduljalilmunawwara@gmail.com') && request.auth.uid == userId) ||
+        // Other admins can update anything EXCEPT the super admins
+        (isAdmin() && resource.data.email != 'ahmad.abduljalil.sy@gmail.com' && resource.data.email != 'ahmad.abduljalilmunawwara@gmail.com') ||
+        // User can update their own non-sensitive fields
+        (request.auth.uid == userId && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL']))
+      );
+      allow delete: if isAdmin() && resource.data.email != 'ahmad.abduljalil.sy@gmail.com' && resource.data.email != 'ahmad.abduljalilmunawwara@gmail.com';
+    }
+
+    match /settings/app {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

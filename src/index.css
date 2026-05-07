@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1e4d2b; /* أخضر مدور */
+  --color-secondary: #4b2c82; /* بنفسجي من الشعار */
+  --color-accent: #f48e21; /* ذهبي/برتقالي من الشعار */
+  --color-background: #fdfaf5; /* بيج ناعم */
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text-main: #1a2a1f;
+  --color-text-muted: #64748b;
+
+  --font-sans: "Cairo", "Tajawal", "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+@variant dark (&:where(.dark, .dark *));
+
+.dark {
+  --color-primary: #fdfaf5; 
+  --color-background: #1a2a1f; /* Softer dark green almost black */
+  --color-surface: #1e4d2b; /* The primary green becomes the surface */
+  --color-border: #2a5a3a;
+  --color-text-main: #fdfaf5;
+  --color-text-muted: #cbd5e1;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text-main font-sans antialiased;
+  }
+}

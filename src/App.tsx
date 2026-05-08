@@ -73,6 +73,11 @@ function AppContent() {
     }
   }, [user, profile]);
 
+  const activeWorkersCount = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return workers.filter(w => !w.endDate || w.endDate >= today).length;
+  }, [workers]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-background" dir="rtl">
       <div className="flex flex-col items-center gap-6">
@@ -402,19 +407,22 @@ function AppContent() {
   };
 
   const handleGenerateWorkerPdf = async (title: string, data: Worker[]) => {
-    const clientCounts = data.reduce((acc: any, w) => {
+    const today = new Date().toISOString().split('T')[0];
+    const activeData = data.filter(w => !w.endDate || w.endDate >= today);
+    
+    const clientCounts = activeData.reduce((acc: any, w) => {
       acc[w.clientName] = (acc[w.clientName] || 0) + 1;
       return acc;
     }, {});
 
     setReportConfig({
       title,
-      workers: data,
+      workers: data, // Keep all data for the list
       stats: {
-        'إجمالي العمال': data.length,
-        'عدد العملاء': Object.keys(clientCounts).length,
-        'مواقع العمل': Array.from(new Set(data.map(w => w.workplace))).length,
-        'شركات الاستقدام': Array.from(new Set(data.map(w => w.recruitmentCompany))).length
+        'إجمالي العمال (النشطين)': activeData.length,
+        'عدد العملاء النشطين': Object.keys(clientCounts).length,
+        'مواقع العمل النشطة': Array.from(new Set(activeData.map(w => w.workplace))).length,
+        'شركات الاستقدام النشطة': Array.from(new Set(activeData.map(w => w.recruitmentCompany))).length
       }
     });
 
@@ -434,7 +442,7 @@ function AppContent() {
            transition={{ duration: 0.2, ease: "easeInOut" }}
            className="w-full h-full"
         >
-          {activeTab === 'dashboard' && <Dashboard buses={buses} profile={profile} workersCount={workers.length} />}
+          {activeTab === 'dashboard' && <Dashboard buses={buses} profile={profile} workersCount={activeWorkersCount} />}
           {activeTab === 'fleet' && (
             <FleetList 
               buses={buses} 

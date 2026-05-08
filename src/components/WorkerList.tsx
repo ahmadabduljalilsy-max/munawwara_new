@@ -75,8 +75,16 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const clients = useMemo(() => Array.from(new Set(workers.map(w => w.clientName))).filter(Boolean).sort(), [workers]);
   const companies = useMemo(() => Array.from(new Set(workers.map(w => w.recruitmentCompany))).filter(Boolean).sort(), [workers]);
 
+  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const activeWorkers = useMemo(() => {
+    return workers.filter(w => !w.endDate || w.endDate >= today);
+  }, [workers, today]);
+
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
+      const isTerminated = w.endDate && w.endDate < today;
+      
       const matchesSearch = 
         w.name.toLowerCase().includes(search.toLowerCase()) ||
         w.iqamaNumber.includes(search) ||
@@ -208,8 +216,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             <ClipboardList className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-text-muted uppercase">إجمالي العمال</p>
-            <p className="text-xl font-black text-text-main">{workers.length}</p>
+            <p className="text-[10px] font-bold text-text-muted uppercase">إجمالي العمال (النشطين)</p>
+            <p className="text-xl font-black text-text-main">{activeWorkers.length}</p>
           </div>
         </div>
         <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
@@ -218,7 +226,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           </div>
           <div>
             <p className="text-[10px] font-bold text-text-muted uppercase">سائقين مرتبطين</p>
-            <p className="text-xl font-black text-text-main">{workers.filter(w => w.assignedBusId).length}</p>
+            <p className="text-xl font-black text-text-main">{activeWorkers.filter(w => w.assignedBusId).length}</p>
           </div>
         </div>
         <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
@@ -227,7 +235,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           </div>
           <div>
             <p className="text-[10px] font-bold text-text-muted uppercase">عمال بدون حافلة</p>
-            <p className="text-xl font-black text-text-main">{workers.filter(w => !w.assignedBusId).length}</p>
+            <p className="text-xl font-black text-text-main">{activeWorkers.filter(w => !w.assignedBusId).length}</p>
           </div>
         </div>
         <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
@@ -236,7 +244,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           </div>
           <div>
             <p className="text-[10px] font-bold text-text-muted uppercase">عدد الشركات</p>
-            <p className="text-xl font-black text-text-main">{companies.length}</p>
+            <p className="text-xl font-black text-text-main">{Array.from(new Set(activeWorkers.map(w => w.recruitmentCompany))).length}</p>
           </div>
         </div>
       </div>
@@ -419,9 +427,15 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${isExpiringSoon ? 'bg-amber-50/30' : ''}`}
                       onClick={() => setSelectedWorkerForDetails(worker)}
                     >
-                      <td className="px-4 py-3 whitespace-nowrap text-xs font-black text-text-main">
+                  <td className="px-4 py-3 whitespace-nowrap text-xs font-black text-text-main">
                         <div className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${isExpiringSoon ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                             new Date(worker.endDate) < new Date(today) 
+                              ? 'bg-red-500' 
+                              : isExpiringSoon 
+                                ? 'bg-amber-500 animate-pulse' 
+                                : 'bg-emerald-500'
+                          }`} />
                           {worker.workerNumber}
                         </div>
                       </td>
@@ -470,10 +484,19 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           <span className={isExpiringSoon ? 'font-black text-amber-600' : ''}>{worker.endDate}</span>
                         </div>
                       </td>
-                      <td className={`px-4 py-3 whitespace-nowrap text-xs text-center font-black transition-colors ${isExpiringSoon ? 'bg-amber-100/30 text-amber-600' : 'bg-primary/[0.02] text-primary'}`}>
+                      <td className={`px-4 py-3 whitespace-nowrap text-xs text-center font-black transition-colors ${
+                        new Date(worker.endDate) < new Date(today)
+                          ? 'bg-red-50 text-red-600'
+                          : isExpiringSoon 
+                            ? 'bg-amber-100/30 text-amber-600' 
+                            : 'bg-primary/[0.02] text-primary'
+                      }`}>
                         <div className="flex flex-col items-center">
                           {calculateDays(worker.startDate, worker.endDate)}
-                          {isExpiringSoon && <span className="text-[8px] uppercase tracking-tighter opacity-70">تنتهي قريباً</span>}
+                          {new Date(worker.endDate) < new Date(today) 
+                            ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي</span>
+                            : isExpiringSoon && <span className="text-[8px] uppercase tracking-tighter opacity-70">تنتهي قريباً</span>
+                          }
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-center">
@@ -555,7 +578,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       </div>
                       <div>
                         <h3 className="text-lg font-black text-text-main leading-tight">{groupName}</h3>
-                        <p className="text-xs text-text-muted font-bold">عدد العمال: {groupWorkers.length} عامل</p>
+                        <p className="text-xs text-text-muted font-bold">عدد العمال النشطين: {groupWorkers.filter(w => !w.endDate || w.endDate >= today).length} / {groupWorkers.length}</p>
                       </div>
                     </div>
                     
@@ -565,7 +588,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           حافلات: {groupWorkers.filter(w => w.assignedBusId).length}
                         </span>
                         <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-full border border-blue-100">
-                          متوسط الدوام: {Math.round(groupWorkers.reduce((acc, curr) => acc + calculateDays(curr.startDate, curr.endDate), 0) / groupWorkers.length)} يوم
+                          متوسط الدوام: {Math.round(groupWorkers.filter(w => !w.endDate || w.endDate >= today).reduce((acc, curr) => acc + calculateDays(curr.startDate, curr.endDate), 0) / (groupWorkers.filter(w => !w.endDate || w.endDate >= today).length || 1))} يوم
                         </span>
                       </div>
                       <div className={`p-2 rounded-lg bg-background border border-border transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>

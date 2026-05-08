@@ -25,17 +25,22 @@ interface WorkerDetailsModalProps {
 export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, isOpen, onClose }) => {
   if (!worker) return null;
 
+  const today = new Date().toISOString().split('T')[0];
   const calculateDays = (start: string, end: string) => {
     try {
-      const days = differenceInDays(parseISO(end), parseISO(start));
+      if (!start) return 0;
+      const startDate = parseISO(start);
+      const endDate = end ? parseISO(end) : parseISO(today);
+      const days = differenceInDays(endDate, startDate);
       return days >= 0 ? days : 0;
     } catch (e) {
       return 0;
     }
   };
 
-  const daysRemaining = calculateDays(new Date().toISOString().split('T')[0], worker.endDate);
+  const daysRemaining = worker.endDate ? calculateDays(today, worker.endDate) : -1;
   const isExpiringSoon = daysRemaining <= 7 && daysRemaining >= 0;
+  const isTerminated = worker.endDate && new Date(worker.endDate) < new Date(today);
 
   return (
     <AnimatePresence>
@@ -57,9 +62,9 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
             dir="rtl"
           >
             {/* Header */}
-            <div className={`p-6 border-b border-border flex items-center justify-between ${isExpiringSoon ? 'bg-amber-50/50' : 'bg-primary/5'}`}>
+            <div className={`p-6 border-b border-border flex items-center justify-between ${isTerminated ? 'bg-red-50/50' : isExpiringSoon ? 'bg-amber-50/50' : 'bg-primary/5'}`}>
               <div className="flex items-center gap-4">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm border ${isExpiringSoon ? 'bg-white text-amber-600 border-amber-200' : 'bg-white text-primary border-primary/20'}`}>
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm border ${isTerminated ? 'bg-white text-red-600 border-red-200' : isExpiringSoon ? 'bg-white text-amber-600 border-amber-200' : 'bg-white text-primary border-primary/20'}`}>
                   <User className="w-8 h-8" />
                 </div>
                 <div>
@@ -135,19 +140,19 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
 
               {/* Status Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm transition-all ${isExpiringSoon ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm transition-all ${isTerminated ? 'bg-red-50 border-red-200' : isExpiringSoon ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-xl border ${isExpiringSoon ? 'bg-white text-amber-600 border-amber-200' : 'bg-white text-emerald-600 border-emerald-200'}`}>
+                      <div className={`p-2 rounded-xl border ${isTerminated ? 'bg-white text-red-600 border-red-200' : isExpiringSoon ? 'bg-white text-amber-600 border-amber-200' : 'bg-white text-emerald-600 border-emerald-200'}`}>
                         <Clock className="w-5 h-5" />
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-text-muted uppercase">حالة الدوام</p>
-                        <p className={`text-sm font-black ${isExpiringSoon ? 'text-amber-700' : 'text-emerald-700'}`}>
-                          {isExpiringSoon ? 'تنتهي قريباً' : 'نشط'}
+                        <p className={`text-sm font-black ${isTerminated ? 'text-red-700' : isExpiringSoon ? 'text-amber-700' : 'text-emerald-700'}`}>
+                          {isTerminated ? 'منتهي' : !worker.endDate ? 'يعمل (نشط)' : isExpiringSoon ? 'تنتهي قريباً' : 'نشط'}
                         </p>
                       </div>
                    </div>
-                   <div className={`text-xl font-black ${isExpiringSoon ? 'text-amber-600' : 'text-emerald-600'}`}>
+                   <div className={`text-xl font-black ${isTerminated ? 'text-red-600' : isExpiringSoon ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {calculateDays(worker.startDate, worker.endDate)} يوم
                    </div>
                 </div>
@@ -191,7 +196,9 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                   </div>
                   <div className="flex-1 space-y-1 text-left" dir="ltr">
                     <p className="text-[10px] font-bold text-text-muted uppercase text-right">تاريخ الانتهاء</p>
-                    <p className="text-sm font-black text-text-main font-mono text-right">{worker.endDate}</p>
+                    <p className={`text-sm font-black font-mono text-right ${!worker.endDate ? 'text-emerald-600' : 'text-text-main'}`}>
+                      {worker.endDate || 'يعمل'}
+                    </p>
                   </div>
                 </div>
               </div>

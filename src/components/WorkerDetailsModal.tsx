@@ -38,9 +38,20 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
     }
   };
 
-  const daysRemaining = worker.endDate ? calculateDays(today, worker.endDate) : -1;
-  const isExpiringSoon = daysRemaining <= 7 && daysRemaining >= 0;
-  const isTerminated = worker.endDate && new Date(worker.endDate) < new Date(today);
+  const getRemainingDays = (endDate: string) => {
+    if (!endDate) return null;
+    try {
+      const targetDate = parseISO(endDate);
+      const todayDate = parseISO(today);
+      return differenceInDays(targetDate, todayDate);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const daysRemaining = getRemainingDays(worker.endDate || '');
+  const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+  const isTerminated = daysRemaining !== null && daysRemaining < 0;
 
   return (
     <AnimatePresence>
@@ -148,14 +159,32 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                       <div>
                         <p className="text-[10px] font-bold text-text-muted uppercase">حالة الدوام</p>
                         <p className={`text-sm font-black ${isTerminated ? 'text-red-700' : isExpiringSoon ? 'text-amber-700' : 'text-emerald-700'}`}>
-                          {isTerminated ? 'منتهي' : !worker.endDate ? 'يعمل (نشط)' : isExpiringSoon ? 'تنتهي قريباً' : 'نشط'}
+                          {isTerminated ? 'منتهي' : !worker.endDate ? 'نشط (يعمل حالياً)' : isExpiringSoon ? 'ينتهي قريباً' : 'نشط'}
                         </p>
                       </div>
                    </div>
-                   <div className={`text-xl font-black ${isTerminated ? 'text-red-600' : isExpiringSoon ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {calculateDays(worker.startDate, worker.endDate)} يوم
+                   <div className="flex flex-col items-end">
+                      <div className={`text-xl font-black ${isTerminated ? 'text-red-600' : isExpiringSoon ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {calculateDays(worker.startDate, worker.endDate)} يوم
+                      </div>
+                      <p className="text-[9px] font-bold text-text-muted opacity-60">مدة الدوام الإجمالية</p>
                    </div>
                 </div>
+
+                {daysRemaining !== null && (
+                  <div className={`p-4 rounded-xl border flex items-center gap-3 col-span-1 md:col-span-2 ${isTerminated ? 'bg-red-50 border-red-100 text-red-700' : isExpiringSoon ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-emerald-50/50 border-emerald-100 text-emerald-700'}`}>
+                    <Clock className="w-4 h-4" />
+                    <span className="text-xs font-black">
+                      {isTerminated ? (
+                        `انتهى العقد منذ ${Math.abs(daysRemaining)} يوم (تاريخ الانتهاء: ${worker.endDate})`
+                      ) : isExpiringSoon ? (
+                        `ينتهي العقد خلال ${daysRemaining} أيام متبقية`
+                      ) : (
+                        `متبقي ${daysRemaining} يوم على نهاية العقد`
+                      )}
+                    </span>
+                  </div>
+                )}
 
                 <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm transition-all ${worker.assignedBusId ? 'bg-primary/5 border-primary/20' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
                    <div className="flex items-center gap-3">

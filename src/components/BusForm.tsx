@@ -147,6 +147,16 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
               />
             </div>
             <div className="space-y-1">
+              <label className="text-[11px] font-bold text-text-muted mr-1 uppercase">اللون</label>
+              <input 
+                name="color"
+                value={formData.color}
+                onChange={handleChange}
+                placeholder="مثال: أبيض / أزرق"
+                className="w-full p-2.5 bg-background border border-border rounded-xl outline-none focus:border-primary transition-all text-sm font-semibold"
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-[11px] font-bold text-text-muted mr-1 uppercase">موقع عمل الباص</label>
               <input 
                 name="location"

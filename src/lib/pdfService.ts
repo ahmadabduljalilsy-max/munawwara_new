@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
 export const generatePdf = async (elementId: string, filename: string) => {
@@ -13,7 +13,7 @@ export const generatePdf = async (elementId: string, filename: string) => {
   element.style.top = '0';
 
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 1.5, // Reduced from 2 to avoid memory issues with large reports
     useCORS: true,
     logging: false,
     windowWidth: element.scrollWidth,
@@ -25,10 +25,12 @@ export const generatePdf = async (elementId: string, filename: string) => {
 
   const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF('p', 'mm', 'a4');
-  const imgProps = pdf.getImageProperties(imgData);
+  
+  // Directly add image and let jsPDF estimate dimensions if needed, 
+  // but we calculates them for a4 fit
   const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
   pdf.save(filename);
 };

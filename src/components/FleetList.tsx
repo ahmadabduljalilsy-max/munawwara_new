@@ -56,7 +56,8 @@ export const FleetList: React.FC<FleetListProps> = ({
     location: '',
     model: '',
     category: '',
-    technicalStatus: ''
+    technicalStatus: '',
+    color: ''
   });
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -67,6 +68,7 @@ export const FleetList: React.FC<FleetListProps> = ({
   const categories = useMemo(() => Array.from(new Set(buses.map(b => b.category))).filter(Boolean), [buses]);
   const models = useMemo(() => Array.from(new Set(buses.map(b => b.model))).filter(Boolean).sort(), [buses]);
   const technicalStatuses = useMemo(() => Array.from(new Set(buses.map(b => b.technicalStatus))).filter(Boolean).sort(), [buses]);
+  const busColors = useMemo(() => Array.from(new Set(buses.map(b => b.color))).filter(Boolean).sort(), [buses]);
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -81,16 +83,20 @@ export const FleetList: React.FC<FleetListProps> = ({
 
   const filteredBuses = useMemo(() => {
     return buses.filter(bus => {
+      const searchLower = searchTerm.toLowerCase();
       const matchesSearch = 
-        bus.operationalNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        bus.plateNumber.toLowerCase().includes(searchTerm.toLowerCase());
+        bus.operationalNumber.toLowerCase().includes(searchLower) ||
+        bus.plateNumber.toLowerCase().includes(searchLower) ||
+        bus.location.toLowerCase().includes(searchLower) ||
+        (bus.category || '').toLowerCase().includes(searchLower);
       
       const matchesLocation = !filters.location || bus.location === filters.location;
       const matchesModel = !filters.model || bus.model === filters.model;
       const matchesCategory = !filters.category || bus.category === filters.category;
       const matchesStatus = !filters.technicalStatus || bus.technicalStatus === filters.technicalStatus;
+      const matchesColor = !filters.color || bus.color === filters.color;
 
-      return matchesSearch && matchesLocation && matchesModel && matchesCategory && matchesStatus;
+      return matchesSearch && matchesLocation && matchesModel && matchesCategory && matchesStatus && matchesColor;
     });
   }, [buses, searchTerm, filters]);
 
@@ -208,23 +214,50 @@ export const FleetList: React.FC<FleetListProps> = ({
 
       {/* Search & Filter Bar */}
       <div className="bg-surface p-4 rounded-xl border border-border shadow-sm flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
-            <input 
-              type="text" 
-              placeholder="البحث برقم التشغيل أو رقم اللوحة..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-2.5 bg-background border border-border focus:border-primary rounded-lg outline-none transition-all text-sm font-medium"
-            />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 group">
+              <Search className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors w-4 h-4 ${searchTerm ? 'text-primary' : 'text-text-muted'}`} />
+              <input 
+                type="text" 
+                placeholder="ابحث عن حافلة..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pr-10 pl-4 py-2.5 bg-background border border-border focus:border-primary rounded-lg outline-none transition-all text-sm font-medium shadow-sm"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-red-500 transition-colors p-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`p-2.5 rounded-lg transition-all border flex items-center gap-2 ${showFilters ? 'bg-primary text-white border-primary shadow-sm' : 'bg-surface text-text-muted border-border hover:bg-background'}`}
+            >
+              <Filter className="w-5 h-5" />
+              <span className="text-xs font-bold hidden md:block">الفلاتر المتقدمة</span>
+            </button>
           </div>
-          <button 
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-2.5 rounded-lg transition-all border ${showFilters ? 'bg-primary text-white border-primary shadow-sm' : 'bg-surface text-text-muted border-border hover:bg-background'}`}
-          >
-            <Filter className="w-5 h-5" />
-          </button>
+          
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-tighter">مجال البحث:</span>
+            <div className="flex flex-wrap gap-1.5">
+              {['رقم التشغيل', 'رقم اللوحة', 'الموقع', 'الفئة'].map((field) => (
+                <span 
+                  key={field}
+                  className={`text-[9px] px-2 py-0.5 rounded-full border transition-all ${
+                    searchTerm ? 'bg-primary/5 text-primary border-primary/20 font-black' : 'bg-slate-100 text-slate-500 border-slate-200 font-bold'
+                  }`}
+                >
+                  {field}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
 
         <AnimatePresence>
@@ -280,10 +313,21 @@ export const FleetList: React.FC<FleetListProps> = ({
                     {technicalStatuses.map(status => <option key={status} value={status}>{status}</option>)}
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-text-muted mr-1">اللون</label>
+                  <select 
+                    value={filters.color}
+                    onChange={(e) => setFilters(f => ({ ...f, color: e.target.value }))}
+                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
+                  >
+                    <option value="">الكل</option>
+                    {busColors.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="flex justify-end mt-4">
                 <button 
-                  onClick={() => setFilters({ location: '', model: '', category: '', technicalStatus: '' })}
+                  onClick={() => setFilters({ location: '', model: '', category: '', technicalStatus: '', color: '' })}
                   className="text-[11px] font-bold text-primary hover:underline"
                 >
                   إعادة ضبط الفلاتر
@@ -302,6 +346,7 @@ export const FleetList: React.FC<FleetListProps> = ({
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">رقم التشغيل</th>
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">رقم اللوحة</th>
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">فئة الحافلة</th>
+              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">اللون</th>
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الموديل</th>
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الموقع</th>
               <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الحالة الفنية</th>
@@ -314,6 +359,7 @@ export const FleetList: React.FC<FleetListProps> = ({
                 <td className="px-6 py-2.5 whitespace-nowrap text-sm font-black text-text-main group-hover:text-primary transition-colors">{bus.operationalNumber}</td>
                 <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.plateNumber}</td>
                 <td className="px-6 py-2.5 whitespace-nowrap text-xs font-medium text-text-muted">{bus.category}</td>
+                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.color || '-'}</td>
                 <td className="px-6 py-2.5 whitespace-nowrap text-xs font-black text-text-main">{bus.model}</td>
                 <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.location}</td>
                 <td className="px-6 py-2.5 whitespace-nowrap">

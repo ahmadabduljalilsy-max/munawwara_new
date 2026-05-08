@@ -61,6 +61,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
               <th className="border border-[#E5E7EB] p-3 text-right">رقم التشغيل</th>
               <th className="border border-[#E5E7EB] p-3 text-right">رقم اللوحة</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الفئة</th>
+              <th className="border border-[#E5E7EB] p-3 text-right">اللون</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الموديل</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الموقع</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الحالة</th>
@@ -72,6 +73,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
                 <td className="border border-[#E5E7EB] p-3 font-bold">{bus.operationalNumber}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.plateNumber}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.category}</td>
+                <td className="border border-[#E5E7EB] p-3">{bus.color || '-'}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.model}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.location}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.technicalStatus}</td>
@@ -97,6 +99,10 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
               <div className="p-4 border border-[#E5E7EB] rounded-2xl">
                 <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الموديل</p>
                 <p className="text-base font-bold text-[#111827]">{buses[0].model}</p>
+              </div>
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">اللون</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].color || '-'}</p>
               </div>
             </div>
             <div className="space-y-4">

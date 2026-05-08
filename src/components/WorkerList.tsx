@@ -18,7 +18,9 @@ import {
   ChevronUp,
   X,
   Bus as BusIcon,
-  Eye
+  Eye,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Worker } from '../types';
@@ -161,11 +163,24 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     try {
       if (!start) return 0;
       const startDate = parseISO(start);
+      // If no end date, calculate duration from start until today
       const endDate = end ? parseISO(end) : parseISO(today);
       const days = differenceInDays(endDate, startDate);
       return days >= 0 ? days : 0;
     } catch (e) {
       return 0;
+    }
+  };
+
+  const getRemainingDays = (endDate: string) => {
+    if (!endDate) return null;
+    try {
+      const targetDate = parseISO(endDate);
+      const todayDate = parseISO(today);
+      const days = differenceInDays(targetDate, todayDate);
+      return days;
+    } catch (e) {
+      return null;
     }
   };
 
@@ -446,8 +461,9 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               <tbody className="divide-y divide-border/30">
                 <AnimatePresence mode="wait">
                 {paginatedWorkers.length > 0 ? paginatedWorkers.map((worker) => {
-                  const daysRemaining = calculateDays(today, worker.endDate || '');
-                  const isExpiringSoon = daysRemaining <= 7 && daysRemaining >= 0;
+                  const daysRemaining = getRemainingDays(worker.endDate);
+                  const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+                  const isExpired = daysRemaining !== null && daysRemaining < 0;
 
                   return (
                     <motion.tr 
@@ -455,15 +471,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${worker.endDate ? (differenceInDays(parseISO(worker.endDate), parseISO(today)) <= 7 && differenceInDays(parseISO(worker.endDate), parseISO(today)) >= 0 ? 'bg-amber-50/30' : '') : ''}`}
+                      className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${
+                        isExpired ? 'bg-red-50/20' : isExpiringSoon ? 'bg-amber-50/40' : ''
+                      }`}
                       onClick={() => setSelectedWorkerForDetails(worker)}
                     >
                   <td className="px-4 py-3 whitespace-nowrap text-xs font-black text-text-main">
                         <div className="flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${
-                             worker.endDate && new Date(worker.endDate) < new Date(today) 
+                             isExpired
                               ? 'bg-red-500' 
-                              : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) 
+                              : isExpiringSoon
                                 ? 'bg-amber-500 animate-pulse' 
                                 : 'bg-emerald-500'
                           }`} />
@@ -472,11 +490,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-text-main">
                         <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 border transition-colors ${isExpiringSoon ? 'bg-amber-100/50 text-amber-600 border-amber-200' : 'bg-primary/5 text-primary border-primary/10'}`}>
-                            <User className="w-3.5 h-3.5" />
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 border transition-colors ${
+                            isExpired 
+                              ? 'bg-red-100/50 text-red-600 border-red-200' 
+                              : isExpiringSoon 
+                                ? 'bg-amber-100/50 text-amber-600 border-amber-200' 
+                                : 'bg-primary/5 text-primary border-primary/10'
+                          }`}>
+                            {isExpiringSoon || isExpired ? <AlertTriangle className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                           </div>
                           <div className="flex flex-col">
-                            <span className={`${isExpiringSoon ? 'text-amber-900' : 'text-text-main'}`}>{worker.name}</span>
+                            <span className={`${isExpired ? 'text-red-900' : isExpiringSoon ? 'text-amber-900' : 'text-text-main'}`}>{worker.name}</span>
                             <span className="text-[9px] text-text-muted font-normal">{worker.recruitmentCompany}</span>
                           </div>
                         </div>
@@ -511,8 +535,12 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-[11px] text-text-main">
                         <div className="flex items-center gap-1">
-                          <Calendar className={`w-3 h-3 ${!worker.endDate ? 'text-emerald-500' : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) ? 'text-amber-500' : 'text-red-500/50'}`} />
-                          <span className={!worker.endDate ? 'text-emerald-600 font-black' : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) ? 'font-black text-amber-600' : ''}>
+                          <Calendar className={`w-3 h-3 ${!worker.endDate ? 'text-emerald-500' : isExpired ? 'text-red-500' : isExpiringSoon ? 'text-amber-500' : 'text-text-muted/50'}`} />
+                          <span className={`
+                            ${!worker.endDate ? 'text-emerald-600 font-black' : ''}
+                            ${isExpired ? 'text-red-600 font-bold line-through opacity-70' : ''}
+                            ${isExpiringSoon ? 'text-amber-600 font-black' : ''}
+                          `}>
                             {worker.endDate || 'يعمل'}
                           </span>
                         </div>
@@ -520,7 +548,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       <td className={`px-4 py-3 whitespace-nowrap text-xs text-center font-black transition-colors ${
                         !worker.endDate 
                           ? 'bg-emerald-50/50 text-emerald-600'
-                          : new Date(worker.endDate) < new Date(today)
+                          : isExpired
                             ? 'bg-red-50 text-red-600'
                             : isExpiringSoon 
                               ? 'bg-amber-100/30 text-amber-600' 
@@ -530,9 +558,14 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           {calculateDays(worker.startDate, worker.endDate)}
                           {!worker.endDate 
                             ? <span className="text-[8px] uppercase tracking-tighter opacity-70">نشط</span>
-                            : new Date(worker.endDate) < new Date(today) 
-                              ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي</span>
-                              : isExpiringSoon && <span className="text-[8px] uppercase tracking-tighter opacity-70">تنتهي قريباً</span>
+                            : isExpired
+                              ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي ({Math.abs(daysRemaining || 0)} يوم مضت)</span>
+                              : isExpiringSoon && (
+                                <div className="flex items-center gap-0.5 text-[8px] uppercase tracking-tighter">
+                                  <Clock className="w-2 h-2" />
+                                  <span>{daysRemaining} أيام متبقية</span>
+                                </div>
+                              )
                           }
                         </div>
                       </td>
@@ -653,21 +686,33 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       >
                         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 border-t border-border bg-background/[0.02]">
                           {groupWorkers.map(worker => {
-                            const daysRemaining = calculateDays(new Date().toISOString().split('T')[0], worker.endDate);
-                            const isExpiringSoon = daysRemaining <= 7 && daysRemaining >= 0;
+                            const daysRemaining = getRemainingDays(worker.endDate);
+                            const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+                            const isExpired = daysRemaining !== null && daysRemaining < 0;
 
                             return (
                               <motion.div 
                                 key={worker.id}
                                 whileHover={{ y: -5 }}
                                 onClick={() => setSelectedWorkerForDetails(worker)}
-                                className={`bg-surface p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden ${isExpiringSoon ? 'border-amber-200 shadow-amber-100/50' : 'border-border hover:border-primary/30 hover:shadow-lg shadow-sm'}`}
+                                className={`bg-surface p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden ${
+                                  isExpired ? 'border-red-200 shadow-red-100/30' :
+                                  isExpiringSoon ? 'border-amber-200 shadow-amber-100/50' : 
+                                  'border-border hover:border-primary/30 hover:shadow-lg shadow-sm'
+                                }`}
                               >
+                                {isExpired && <div className="absolute top-0 right-0 w-2 h-full bg-red-500" />}
                                 {isExpiringSoon && <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />}
                                 
                                 <div className="flex items-start justify-between mb-3">
-                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-colors ${isExpiringSoon ? 'bg-amber-100/50 text-amber-600 border-amber-200' : 'bg-primary/5 text-primary border-primary/10 group-hover:bg-primary group-hover:text-white'}`}>
-                                    <User className="w-5 h-5" />
+                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-colors ${
+                                    isExpired
+                                      ? 'bg-red-100/50 text-red-600 border-red-200'
+                                      : isExpiringSoon 
+                                        ? 'bg-amber-100/50 text-amber-600 border-amber-200' 
+                                        : 'bg-primary/5 text-primary border-primary/10 group-hover:bg-primary group-hover:text-white'
+                                  }`}>
+                                    {isExpired || isExpiringSoon ? <AlertTriangle className="w-5 h-5" /> : <User className="w-5 h-5" />}
                                   </div>
                                   <div className="text-left">
                                     <p className="text-[10px] font-black text-text-muted opacity-60">#{worker.workerNumber}</p>
@@ -714,11 +759,27 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                   </div>
                                   <div className="flex flex-col text-left">
                                     <span className="text-[8px] text-text-muted uppercase font-bold">نهاية العمل</span>
-                                    <span className={`text-[10px] font-black ${!worker.endDate ? 'text-emerald-600' : isExpiringSoon ? 'text-amber-600' : 'text-text-main'}`}>
+                                    <span className={`text-[10px] font-black ${
+                                      !worker.endDate ? 'text-emerald-600' : 
+                                      isExpired ? 'text-red-600 line-through opacity-70' :
+                                      isExpiringSoon ? 'text-amber-600' : 
+                                      'text-text-main'
+                                    }`}>
                                       {worker.endDate || 'يعمل'}
                                     </span>
                                   </div>
                                 </div>
+                                
+                                {(isExpiringSoon || isExpired) && (
+                                  <div className={`mt-3 p-2 rounded-lg text-[9px] font-bold flex items-center gap-2 ${isExpired ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                                    <Clock className="w-3 h-3" />
+                                    {isExpired ? (
+                                      <span>انتهى العقد منذ {Math.abs(daysRemaining || 0)} يوم</span>
+                                    ) : (
+                                      <span>ينتهي العقد خلال {daysRemaining} أيام</span>
+                                    )}
+                                  </div>
+                                )}
                                 
                                 {isAdmin && (
                                   <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-lg border border-border shadow-sm">

@@ -24,6 +24,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     clientName: '',
     assignedBusId: '',
     assignedBusOperationalNumber: '',
+    assignedBusPlateNumber: '',
     notes: ''
   });
 
@@ -41,6 +42,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         clientName: worker.clientName,
         assignedBusId: worker.assignedBusId || '',
         assignedBusOperationalNumber: worker.assignedBusOperationalNumber || '',
+        assignedBusPlateNumber: worker.assignedBusPlateNumber || '',
         notes: worker.notes || ''
       });
     }
@@ -48,7 +50,39 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    
+    let finalNotes = formData.notes;
+    
+    // Check if we are editing an existing worker and the bus has changed
+    if (worker && worker.assignedBusId && worker.assignedBusId !== formData.assignedBusId) {
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+      
+      const historyHeader = "--- سجل الحافلات السابقة ---";
+      let nextIndex = 1;
+
+      // Count existing entries to determine next number
+      if (finalNotes && finalNotes.includes(historyHeader)) {
+        const historyPart = finalNotes.split(historyHeader)[1];
+        const matches = historyPart.match(/\d+-\s/g);
+        if (matches) {
+          nextIndex = matches.length + 1;
+        }
+      }
+      
+      const logEntry = `${nextIndex}- تم فك الارتباط في ${dateStr} عن الحافلة رقم تشغيل: ${worker.assignedBusOperationalNumber} / رقم اللوحة: ${worker.assignedBusPlateNumber}`;
+      
+      if (!finalNotes || !finalNotes.includes(historyHeader)) {
+        finalNotes = finalNotes ? `${finalNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
+      } else {
+        finalNotes = `${finalNotes}\n${logEntry}`;
+      }
+    }
+
+    onSave({
+      ...formData,
+      notes: finalNotes
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -59,7 +93,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
       setFormData(prev => ({ 
         ...prev, 
         assignedBusId: value,
-        assignedBusOperationalNumber: selectedBus ? selectedBus.operationalNumber : ''
+        assignedBusPlateNumber: selectedBus ? selectedBus.plateNumber : ''
       }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
@@ -208,32 +242,55 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                   />
                </div>
-               <div>
+               <div className="space-y-4">
                   <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2 text-primary">
-                    <BusIcon className="w-3 h-3" /> الحافلة المرتبطة (اختياري)
+                    <BusIcon className="w-3 h-3" /> الحافلة المرتبطة
                   </label>
-                  <select 
-                    name="assignedBusId"
-                    value={formData.assignedBusId}
-                    onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all font-bold"
-                  >
-                    <option value="">لا توجد حافلة مرتبطة</option>
-                    {buses
-                      .filter(bus => {
-                        // A bus is available if it's not assigned to ANY worker, 
-                        // OR if it's assigned to the worker currently being edited.
-                        const isAssignedToOtherWorker = allWorkers.some(w => 
-                          w.assignedBusId === bus.id && w.id !== worker?.id
-                        );
-                        return !isAssignedToOtherWorker;
-                      })
-                      .map(bus => (
-                      <option key={bus.id} value={bus.id}>
-                        {bus.operationalNumber} - {bus.plateNumber} ({bus.category})
-                      </option>
-                    ))}
-                  </select>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-text-muted mb-1 block">رقم التشغيل (يدوي)</label>
+                      <input 
+                        name="assignedBusOperationalNumber"
+                        list="bus-numbers"
+                        value={formData.assignedBusOperationalNumber}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const selectedBus = buses.find(b => b.operationalNumber === val);
+                          setFormData(prev => ({
+                            ...prev,
+                            assignedBusOperationalNumber: val,
+                            assignedBusId: selectedBus ? selectedBus.id : '',
+                            assignedBusPlateNumber: selectedBus ? selectedBus.plateNumber : ''
+                          }));
+                        }}
+                        placeholder="اكتب رقم التشغيل..."
+                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all font-bold"
+                      />
+                      <datalist id="bus-numbers">
+                        {buses.map(bus => (
+                          <option key={bus.id} value={bus.operationalNumber}>
+                            {bus.plateNumber} ({bus.category})
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-text-muted mb-1 block">رقم اللوحة (تلقائي)</label>
+                      <input 
+                        readOnly
+                        value={formData.assignedBusPlateNumber || ''}
+                        placeholder="سيظهر تلقائياً"
+                        className="w-full bg-gray-50 border border-border rounded-xl px-4 py-3 text-sm font-mono text-text-muted cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                  
+                  {!formData.assignedBusId && formData.assignedBusOperationalNumber && (
+                    <p className="text-[9px] text-amber-600 font-bold px-1">
+                      * لم يتم العثور على حافلة بهذا الرقم في النظام
+                    </p>
+                  )}
                </div>
             </div>
           </div>

@@ -21,8 +21,10 @@ export const AuthPage: React.FC = () => {
       console.error('Sign in error:', err);
       if (err.code === 'auth/popup-blocked') {
         setError('تعذر فتح نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة.');
-      } else if (err.code === 'auth/cancelled-popup-request') {
+      } else if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
         // User closed the popup, don't show error
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('هذا النطاق غير مصرح به في إعدادات Firebase. يرجى إضافة النطاق الحالي إلى قائمة النطاقات المصرح بها في وحدة تحكم Firebase (Authentication > Settings > Authorized domains).');
       } else {
         setError('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
       }
@@ -93,8 +95,7 @@ export const AuthPage: React.FC = () => {
           className="bg-surface p-10 md:p-14 rounded-[32px] shadow-2xl border border-border w-full max-w-md ring-8 ring-background"
         >
           <div className="mb-10 text-center md:text-right">
-            <h3 className="text-3xl font-black text-primary mb-3">تسجيل الدخول إلى نظام إدارة الأسطول</h3>
-            <p className="text-text-muted font-bold text-sm">ابدأ بإدارة أسطول الحافلات بكل سهولة واحترافية</p>
+            <h3 className="text-3xl font-black text-primary mb-3">تسجيل الدخول إلى قسم التشغيل - نقل العمال</h3>
           </div>
 
           <button 
@@ -190,21 +191,11 @@ export const AuthPage: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
-          className="relative z-10 flex items-center gap-6"
+          className="relative z-10"
         >
-           <div className="flex -space-x-4">
-              {[1,2,3,4].map(i => (
-                <div key={i} className="w-12 h-12 rounded-full border-4 border-primary bg-accent/20 flex items-center justify-center overflow-hidden">
-                   <div className="w-full h-full bg-white/10 backdrop-blur-md" />
-                </div>
-              ))}
-           </div>
-           <div className="flex flex-col">
-              <p className="text-white text-sm font-bold">منضم إلينا أكثر من 50 سائق ومشغل</p>
-              <div className="flex items-center gap-1 mt-0.5">
-                 {[1,2,3,4,5].map(i => <div key={i} className="w-1.5 h-1.5 bg-accent rounded-full" />)}
-              </div>
-           </div>
+           <p className="text-white/60 text-xs font-bold leading-relaxed">
+             تم تصميمه بحب من قبل فريق تشغيل درة المنورة - جميع الحقوق محفوظة لشركة درة المنورة
+           </p>
         </motion.div>
       </div>
     </div>

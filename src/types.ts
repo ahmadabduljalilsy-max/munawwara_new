@@ -27,6 +27,7 @@ export interface Worker {
   clientName: string;
   assignedBusId?: string;
   assignedBusOperationalNumber?: string;
+  assignedBusPlateNumber?: string;
   notes: string;
   createdAt?: any;
 }

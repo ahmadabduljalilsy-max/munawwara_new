@@ -160,7 +160,9 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                       <div>
                         <p className="text-[10px] font-bold text-text-muted uppercase">الحافلة</p>
                         <p className={`text-sm font-black ${worker.assignedBusId ? 'text-primary' : 'text-text-muted italic'}`}>
-                          {worker.assignedBusId ? worker.assignedBusOperationalNumber : 'غير مرتبط'}
+                          {worker.assignedBusId 
+                            ? `${worker.assignedBusOperationalNumber} ${worker.assignedBusPlateNumber ? `[${worker.assignedBusPlateNumber}]` : ''}` 
+                            : 'غير مرتبط'}
                         </p>
                       </div>
                    </div>

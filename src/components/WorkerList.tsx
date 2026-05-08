@@ -82,7 +82,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         w.iqamaNumber.includes(search) ||
         w.workplace.toLowerCase().includes(search.toLowerCase()) ||
         w.workerNumber.includes(search) ||
-        (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(search.toLowerCase()));
+        (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(search.toLowerCase())) ||
+        (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(search.toLowerCase()));
       
       const matchesWorkplace = !filters.workplace || w.workplace === filters.workplace;
       const matchesClient = !filters.clientName || w.clientName === filters.clientName;
@@ -476,11 +477,16 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-center">
-                        {worker.assignedBusOperationalNumber ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black border border-primary/20 shadow-sm shadow-primary/5">
-                            <BusIcon className="w-2.5 h-2.5" />
-                            {worker.assignedBusOperationalNumber}
-                          </span>
+                        {worker.assignedBusId ? (
+                          <div className="flex flex-col items-center">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black border border-primary/20 shadow-sm shadow-primary/5">
+                              <BusIcon className="w-2.5 h-2.5" />
+                              {worker.assignedBusOperationalNumber}
+                            </span>
+                            {worker.assignedBusPlateNumber && (
+                              <span className="text-[9px] font-mono text-text-muted mt-0.5">{worker.assignedBusPlateNumber}</span>
+                            )}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold border border-amber-200">
                             غير مرتبط
@@ -596,11 +602,16 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                   </div>
                                   <div className="text-left">
                                     <p className="text-[10px] font-black text-text-muted opacity-60">#{worker.workerNumber}</p>
-                                    {worker.assignedBusOperationalNumber ? (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-600 text-[8px] font-black mt-1">
-                                        <BusIcon className="w-2.5 h-2.5" />
-                                        {worker.assignedBusOperationalNumber}
-                                      </span>
+                                    {worker.assignedBusId ? (
+                                      <div className="flex flex-col items-end gap-1 mt-1">
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-600 text-[8px] font-black">
+                                          <BusIcon className="w-2.5 h-2.5" />
+                                          {worker.assignedBusOperationalNumber}
+                                        </span>
+                                        {worker.assignedBusPlateNumber && (
+                                          <span className="text-[7px] font-mono text-text-muted bg-gray-50 px-1 rounded">{worker.assignedBusPlateNumber}</span>
+                                        )}
+                                      </div>
                                     ) : (
                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-red-50 text-red-600 text-[8px] font-black mt-1">
                                         بدون حافلة

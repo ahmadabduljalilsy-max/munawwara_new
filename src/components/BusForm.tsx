@@ -30,7 +30,39 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    
+    let finalNotes = formData.notes;
+
+    // Check if we are editing an existing bus and the location has changed
+    if (bus && bus.location && bus.location !== formData.location) {
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+      
+      const historyHeader = "--- سجل المواقع السابقة ---";
+      let nextIndex = 1;
+
+      // Count existing entries to determine next number
+      if (finalNotes && finalNotes.includes(historyHeader)) {
+        const historyPart = finalNotes.split(historyHeader)[1];
+        const matches = historyPart.match(/\d+-\s/g);
+        if (matches) {
+          nextIndex = matches.length + 1;
+        }
+      }
+      
+      const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${bus.location}`;
+      
+      if (!finalNotes || !finalNotes.includes(historyHeader)) {
+        finalNotes = finalNotes ? `${finalNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
+      } else {
+        finalNotes = `${finalNotes}\n${logEntry}`;
+      }
+    }
+
+    onSave({
+      ...formData,
+      notes: finalNotes
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

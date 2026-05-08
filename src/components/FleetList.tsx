@@ -331,13 +331,14 @@ export const FleetList: React.FC<FleetListProps> = ({
                   })()}
                 </td>
                 <td className="px-6 py-2.5 whitespace-nowrap text-center">
-                  <div className="flex items-center justify-center gap-0.5">
+                  <div className="flex items-center justify-center gap-2">
                     <button 
                       onClick={() => onGenerateBusPdf(bus)}
-                      className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg transition-all text-[10px] font-bold border border-primary/10"
                       title="تحميل تقرير الحافلة"
                     >
-                      <FileDown className="w-4 h-4" />
+                      <FileDown className="w-3.5 h-3.5" />
+                      تقرير PDF
                     </button>
                     {isAdmin && (
                       <>

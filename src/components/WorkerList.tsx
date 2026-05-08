@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, 
   Filter,
@@ -57,6 +57,9 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [sortField, setSortField] = useState<keyof Worker>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     id: string | null;
@@ -80,6 +83,10 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const activeWorkers = useMemo(() => {
     return workers.filter(w => !w.endDate || w.endDate >= today);
   }, [workers, today]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, JSON.stringify(filters)]);
 
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
@@ -110,6 +117,13 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       return 0;
     });
   }, [workers, search, filters, sortField, sortOrder]);
+
+  const paginatedWorkers = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredWorkers.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredWorkers, currentPage]);
+
+  const totalPages = Math.ceil(filteredWorkers.length / PAGE_SIZE);
 
   const groupedWorkers = useMemo(() => {
     const groups: { [key: string]: Worker[] } = {};
@@ -416,9 +430,9 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
-                <AnimatePresence>
-                {filteredWorkers.map((worker) => {
-                  const daysRemaining = calculateDays(new Date().toISOString().split('T')[0], worker.endDate);
+                <AnimatePresence mode="wait">
+                {paginatedWorkers.length > 0 ? paginatedWorkers.map((worker) => {
+                  const daysRemaining = calculateDays(today, worker.endDate || '');
                   const isExpiringSoon = daysRemaining <= 7 && daysRemaining >= 0;
 
                   return (
@@ -564,7 +578,16 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       )}
                     </motion.tr>
                   );
-                })}
+                }) : (
+                  <tr>
+                    <td colSpan={12} className="px-4 py-20 text-center text-text-muted font-bold text-sm">
+                      <div className="flex flex-col items-center gap-2">
+                        <Search className="w-10 h-10 opacity-20" />
+                        لا يوجد عمال يطابقون بحثك
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 </AnimatePresence>
               </tbody>
             </table>
@@ -709,6 +732,52 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {viewMode === 'table' && totalPages > 1 && (
+          <div className="p-4 border-t border-border bg-background/5 flex items-center justify-between gap-4">
+            <span className="text-[10px] font-bold text-text-muted">
+              عرض {Math.min(filteredWorkers.length, currentPage * PAGE_SIZE)} من أصل {filteredWorkers.length} عامل
+            </span>
+            <div className="flex items-center gap-2">
+              <button 
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-black disabled:opacity-50 hover:bg-background transition-colors"
+                dir="rtl"
+              >
+                السابق
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                  let pageNum = i + 1;
+                  // Simple logic to show pages around current page if total > 5
+                  if (totalPages > 5 && currentPage > 3) {
+                    pageNum = currentPage - 3 + i + 1;
+                    if (pageNum > totalPages) pageNum = totalPages - (4 - i);
+                  }
+                  
+                  return (
+                    <button 
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${currentPage === pageNum ? 'bg-primary text-white' : 'bg-surface text-text-muted border border-border hover:bg-background'}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button 
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-black disabled:opacity-50 hover:bg-background transition-colors"
+                dir="rtl"
+              >
+                التالي
+              </button>
+            </div>
           </div>
         )}
 

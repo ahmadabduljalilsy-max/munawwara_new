@@ -28,7 +28,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
           </div>
           <div>
             <h1 className="text-2xl font-black text-[#111827]">درة المنورة لنقل الحجاج والمعتمرين</h1>
-            <p className="text-sm font-bold text-[#6B7280]">مكتب التشغيل - مكتب نقل العمال</p>
+            <p className="text-sm font-bold text-[#6B7280]">مكتب التشغيل - فريق تشغيل درة المنورة</p>
           </div>
         </div>
         <div className="text-left">
@@ -53,8 +53,8 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
         </div>
       )}
 
-      {/* Table */}
-      {buses && (
+      {/* Table for multiple buses */}
+      {buses && buses.length > 1 && (
         <table className="w-full border-collapse border border-[#E5E7EB] text-sm">
           <thead>
             <tr className="bg-[#F9FAFB]">
@@ -79,6 +79,51 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* Detail view for single bus */}
+      {buses && buses.length === 1 && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="p-4 bg-[#F9FAFB] rounded-2xl border border-[#E5E7EB]">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">رقم التشغيل</p>
+                <p className="text-lg font-black text-primary">{buses[0].operationalNumber}</p>
+              </div>
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">رقم اللوحة</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].plateNumber}</p>
+              </div>
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الموديل</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].model}</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الموقع الحالي</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].location}</p>
+              </div>
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الحالة الفنية</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].technicalStatus}</p>
+              </div>
+              <div className="p-4 border border-[#E5E7EB] rounded-2xl">
+                <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الفئة</p>
+                <p className="text-base font-bold text-[#111827]">{buses[0].category}</p>
+              </div>
+            </div>
+          </div>
+          
+          {buses[0].notes && (
+            <div className="p-6 border border-[#E5E7EB] rounded-2xl bg-[#F9FAFB]/50">
+              <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-2 border-b border-[#E5E7EB] pb-2">ملاحظات إضافية وسجل المواقع</p>
+              <div className="text-sm text-[#374151] whitespace-pre-wrap leading-relaxed font-medium">
+                {buses[0].notes}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {workers && (
@@ -113,7 +158,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
       {/* Footer */}
       <div className="mt-12 pt-6 border-t border-[#E5E7EB] flex justify-between items-center text-[10px] text-[#9CA3AF] font-bold">
         <p>© {new Date().getFullYear()} شركة درة المنورة - جميع الحقوق محفوظة</p>
-        <p>نظام إدارة الأسطول الذكي</p>
+        <p>فريق تشغيل درة المنورة</p>
       </div>
     </div>
   );

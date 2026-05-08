@@ -424,15 +424,15 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${isExpiringSoon ? 'bg-amber-50/30' : ''}`}
+                      className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${worker.endDate ? (differenceInDays(parseISO(worker.endDate), parseISO(today)) <= 7 && differenceInDays(parseISO(worker.endDate), parseISO(today)) >= 0 ? 'bg-amber-50/30' : '') : ''}`}
                       onClick={() => setSelectedWorkerForDetails(worker)}
                     >
                   <td className="px-4 py-3 whitespace-nowrap text-xs font-black text-text-main">
                         <div className="flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${
-                             new Date(worker.endDate) < new Date(today) 
+                             worker.endDate && new Date(worker.endDate) < new Date(today) 
                               ? 'bg-red-500' 
-                              : isExpiringSoon 
+                              : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) 
                                 ? 'bg-amber-500 animate-pulse' 
                                 : 'bg-emerald-500'
                           }`} />
@@ -480,22 +480,28 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-[11px] text-text-main">
                         <div className="flex items-center gap-1">
-                          <Calendar className={`w-3 h-3 ${isExpiringSoon ? 'text-amber-500' : 'text-red-600/50'}`} />
-                          <span className={isExpiringSoon ? 'font-black text-amber-600' : ''}>{worker.endDate}</span>
+                          <Calendar className={`w-3 h-3 ${!worker.endDate ? 'text-emerald-500' : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) ? 'text-amber-500' : 'text-red-600/50'}`} />
+                          <span className={!worker.endDate ? 'text-emerald-600 font-black' : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) ? 'font-black text-amber-600' : ''}>
+                            {worker.endDate || 'يعمل'}
+                          </span>
                         </div>
                       </td>
                       <td className={`px-4 py-3 whitespace-nowrap text-xs text-center font-black transition-colors ${
-                        new Date(worker.endDate) < new Date(today)
-                          ? 'bg-red-50 text-red-600'
-                          : isExpiringSoon 
-                            ? 'bg-amber-100/30 text-amber-600' 
-                            : 'bg-primary/[0.02] text-primary'
+                        !worker.endDate
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : (worker.endDate && new Date(worker.endDate) < new Date(today))
+                            ? 'bg-red-50 text-red-600'
+                            : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) 
+                              ? 'bg-amber-100/30 text-amber-600' 
+                              : 'bg-primary/[0.02] text-primary'
                       }`}>
                         <div className="flex flex-col items-center">
-                          {calculateDays(worker.startDate, worker.endDate)}
-                          {new Date(worker.endDate) < new Date(today) 
-                            ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي</span>
-                            : isExpiringSoon && <span className="text-[8px] uppercase tracking-tighter opacity-70">تنتهي قريباً</span>
+                          {worker.endDate ? calculateDays(worker.startDate, worker.endDate) : calculateDays(worker.startDate, today)}
+                          {!worker.endDate
+                            ? <span className="text-[8px] uppercase tracking-tighter opacity-70">يعمل</span>
+                            : (worker.endDate && new Date(worker.endDate) < new Date(today))
+                              ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي</span>
+                              : (worker.endDate && calculateDays(today, worker.endDate) <= 7 && calculateDays(today, worker.endDate) >= 0) && <span className="text-[8px] uppercase tracking-tighter opacity-70">تنتهي قريباً</span>
                           }
                         </div>
                       </td>

@@ -56,7 +56,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     workplace: '',
     clientName: '',
     recruitmentCompany: '',
-    busStatus: 'all' as 'all' | 'linked' | 'unlinked'
+    busStatus: 'all' as 'all' | 'linked' | 'unlinked',
+    workerStatus: 'active' as 'all' | 'active' | 'terminated'
   });
   const [showFilters, setShowFilters] = useState(false);
   const [sortField, setSortField] = useState<keyof Worker>('name');
@@ -113,7 +114,12 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         filters.busStatus === 'linked' ? !!w.assignedBusId :
         !w.assignedBusId;
 
-      return matchesSearch && matchesWorkplace && matchesClient && matchesCompany && matchesBusStatus;
+      const matchesWorkerStatus = 
+        filters.workerStatus === 'all' ? true :
+        filters.workerStatus === 'active' ? (!w.endDate || w.endDate >= today) :
+        (w.endDate && w.endDate < today);
+
+      return matchesSearch && matchesWorkplace && matchesClient && matchesCompany && matchesBusStatus && matchesWorkerStatus;
     }).sort((a, b) => {
       const valA = a[sortField] || '';
       const valB = b[sortField] || '';
@@ -368,7 +374,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden border-t border-border pt-4 mt-2"
               >
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4" dir="rtl">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4" dir="rtl">
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-text-muted mr-1">حالة الحافلة</label>
                     <div className="flex bg-surface border border-border rounded-xl p-1 shadow-sm">
@@ -391,6 +397,18 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                         غير مرتبط
                       </button>
                     </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-text-muted mr-1">حالة العمال</label>
+                    <select 
+                      value={filters.workerStatus}
+                      onChange={(e) => setFilters(f => ({ ...f, workerStatus: e.target.value as any }))}
+                      className="w-full p-2.5 bg-surface border border-border rounded-xl outline-none focus:border-primary text-xs shadow-sm font-black"
+                    >
+                      <option value="active">العمال النشطين فقط</option>
+                      <option value="all">الكل (نشط + منتهي)</option>
+                      <option value="terminated">المنتهية عقودهم</option>
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-text-muted mr-1">مكان العمل</label>
@@ -428,7 +446,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 </div>
                 <div className="flex justify-end mt-4">
                   <button 
-                    onClick={() => setFilters({ workplace: '', clientName: '', recruitmentCompany: '', busStatus: 'all' })}
+                    onClick={() => setFilters({ workplace: '', clientName: '', recruitmentCompany: '', busStatus: 'all', workerStatus: 'active' })}
                     className="text-[10px] font-bold text-primary hover:underline bg-primary/5 px-3 py-1 rounded-full"
                   >
                     إعادة ضبط الفلاتر

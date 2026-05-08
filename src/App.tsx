@@ -486,8 +486,8 @@ function AppContent() {
               onDelete={handleDeleteBus}
               onDeleteAll={handleDeleteAllBuses}
               onImport={handleImportExcel}
-              onExport={() => exportToExcel(buses)}
-              onGenerateFullPdf={() => handleGeneratePdf('تقرير أسطول الحافلات الشامل', buses)}
+              onExport={(data) => exportToExcel(data)}
+              onGenerateFullPdf={(data) => handleGeneratePdf('تقرير أسطول الحافلات الشامل', data)}
               onGenerateFilteredPdf={(filtered) => handleGeneratePdf('تقرير أسطول الحافلات (بناءً على الفلترة)', filtered)}
               onGenerateBusPdf={(bus) => handleGeneratePdf(`تقرير تفصيلي للحافلة - ${bus.operationalNumber}`, [bus])}
             />

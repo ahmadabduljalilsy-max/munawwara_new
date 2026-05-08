@@ -72,7 +72,7 @@ export const AuthPage: React.FC = () => {
           </div>
           <h1 className="text-2xl font-black text-text-main mb-4">بانتظار الموافقة</h1>
           <p className="text-text-muted text-base font-bold leading-relaxed mb-10">
-            شكرًا لتسجيلك! حسابك حاليًا قيد المراجعة من قبل مدير نظام شركة درة المنورة. يرجى التواصل مع الإدارة لتفعيل حسابك.
+            شكرا لتسجيلك حسابك حاليا قيد المراجعة من قبل مدير التشغيل الاستاذ عبد الحميد سالمة وفريق التشغيل يرجى الانتظار لتفعيل حسابك
           </p>
           <div className="p-5 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center gap-3 text-amber-700 text-sm font-black shadow-sm">
             <ShieldAlert className="w-5 h-5" />

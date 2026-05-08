@@ -31,8 +31,8 @@ interface FleetListProps {
   onDelete: (id: string) => void;
   onDeleteAll: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onExport: () => void;
-  onGenerateFullPdf: () => void;
+  onExport: (data: Bus[]) => void;
+  onGenerateFullPdf: (data: Bus[]) => void;
   onGenerateFilteredPdf: (buses: Bus[]) => void;
   onGenerateBusPdf: (bus: Bus) => void;
 }
@@ -112,6 +112,26 @@ export const FleetList: React.FC<FleetListProps> = ({
     return filteredBuses.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredBuses, currentPage]);
 
+  const getBusColorHex = (colorName: string) => {
+    const c = (colorName || '').toLowerCase();
+    if (c.includes('أحمر') || c.includes('احمر')) return '#ef4444'; // red-500
+    if (c.includes('أزرق') || c.includes('ازرق')) return '#3b82f6'; // blue-500
+    if (c.includes('أخضر') || c.includes('اخضر')) return '#22c55e'; // green-500
+    if (c.includes('أصفر') || c.includes('اصفر')) return '#eab308'; // yellow-500
+    if (c.includes('برتقالي')) return '#f97316'; // orange-500
+    if (c.includes('رمادي')) return '#64748b'; // slate-500
+    if (c.includes('أسود') || c.includes('اسود')) return '#0f172a'; // slate-900
+    if (c.includes('أبيض') || c.includes('ابيض')) return '#f8fafc'; // slate-50
+    if (c.includes('ذهبي')) return '#fbbf24'; // amber-400
+    if (c.includes('فضي')) return '#94a3b8'; // slate-400
+    if (c.includes('بني')) return '#78350f'; // amber-900
+    if (c.includes('كحلي')) return '#1e3a8a'; // blue-900
+    if (c.includes('نبيتي') || c.includes('خمري')) return '#7f1d1d'; // red-950
+    if (c.includes('بنفسجي')) return '#a855f7'; // purple-500
+    if (c.includes('وردي')) return '#ec4899'; // pink-500
+    return null;
+  };
+
   const getStatusBadge = (status: string) => {
     const s = status || '';
     if (s.includes('ممتاز') || s.includes('جديد')) {
@@ -177,14 +197,14 @@ export const FleetList: React.FC<FleetListProps> = ({
                 <input type="file" ref={fileInputRef} onChange={onImport} className="hidden" accept=".xlsx, .xls, .csv" />
               </button>
               <button 
-                onClick={onExport}
+                onClick={() => onExport(filteredBuses)}
                 className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-lg text-sm font-semibold hover:bg-background transition-colors"
                >
                 <Download className="w-4 h-4 text-emerald-600" />
                 تصدير Excel
               </button>
               <button 
-                onClick={onGenerateFullPdf}
+                onClick={() => onGenerateFullPdf(filteredBuses)}
                 className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-lg text-sm font-semibold hover:bg-background transition-colors"
                >
                 <FileDown className="w-4 h-4 text-red-600" />
@@ -338,84 +358,137 @@ export const FleetList: React.FC<FleetListProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Table Section */}
-      <div className="bg-surface rounded-xl border border-border shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-right border-collapse min-w-[900px]">
-          <thead>
-            <tr className="bg-background border-b border-border">
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">رقم التشغيل</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">رقم اللوحة</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">فئة الحافلة</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">اللون</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الموديل</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الموقع</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider">الحالة الفنية</th>
-              <th className="px-6 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider text-center">الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/30 bg-surface">
-            {paginatedBuses.map((bus) => (
-              <tr key={bus.id} className="hover:bg-primary/[0.02] transition-colors group">
-                <td className="px-6 py-2.5 whitespace-nowrap text-sm font-black text-text-main group-hover:text-primary transition-colors">{bus.operationalNumber}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.plateNumber}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-medium text-text-muted">{bus.category}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.color || '-'}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-black text-text-main">{bus.model}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-xs font-bold text-text-main">{bus.location}</td>
-                <td className="px-6 py-2.5 whitespace-nowrap">
-                  {(() => {
-                    const badge = getStatusBadge(bus.technicalStatus);
-                    return (
-                      <span className={`
-                        inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black border tracking-tight
-                        ${badge.className}
-                      `}>
-                        {badge.icon}
-                        {badge.label}
-                      </span>
-                    );
-                  })()}
-                </td>
-                <td className="px-6 py-2.5 whitespace-nowrap text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <button 
-                      onClick={() => onGenerateBusPdf(bus)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg transition-all text-[10px] font-bold border border-primary/10"
-                      title="تحميل تقرير الحافلة"
-                    >
-                      <FileDown className="w-3.5 h-3.5" />
-                      تقرير PDF
-                    </button>
-                    {isAdmin && (
-                      <>
-                        <button 
-                          onClick={() => onEdit(bus)}
-                          className="p-1.5 text-text-muted hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="تعديل"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => setDeleteModal({ isOpen: true, id: bus.id, name: bus.operationalNumber, isAll: false })}
-                          className="p-1.5 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="حذف"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
+      {/* Cards Grid Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <AnimatePresence mode="popLayout">
+          {paginatedBuses.map((bus, index) => {
+            const badge = getStatusBadge(bus.technicalStatus);
+            const busColorHex = getBusColorHex(bus.color);
+            return (
+              <motion.div
+                key={bus.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2, delay: index * 0.03 }}
+                className="group bg-surface rounded-2xl border border-border shadow-sm hover:shadow-xl transition-all overflow-hidden flex flex-col relative"
+                style={{ 
+                  borderColor: busColorHex ? `${busColorHex}40` : undefined,
+                  boxShadow: busColorHex ? `0 0 15px -3px ${busColorHex}15, 0 4px 6px -4px ${busColorHex}20` : undefined
+                }}
+              >
+                {/* Color Strip at top */}
+                {busColorHex && (
+                  <div 
+                    className="h-1.5 w-full absolute top-0 left-0" 
+                    style={{ backgroundColor: busColorHex }}
+                  />
+                )}
+                {/* Card Header - Main Info */}
+                <div className="p-4 bg-gradient-to-br from-primary/[0.03] to-transparent border-b border-border/50">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest mb-1">رقم التشغيل</span>
+                      <h3 className="text-lg font-black text-text-main group-hover:text-primary transition-colors leading-none tracking-tight">
+                        {bus.operationalNumber}
+                      </h3>
+                    </div>
+                    <span className={`
+                      inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border tracking-tight shadow-sm
+                      ${badge.className}
+                    `}>
+                      {badge.icon}
+                      {badge.label}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-background border border-border rounded-lg shadow-sm">
+                      <FileText className="w-3 h-3 text-text-muted" />
+                      <span className="text-[11px] font-black text-text-main">{bus.plateNumber}</span>
+                    </div>
+                    {bus.category && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-background border border-border rounded-lg shadow-sm">
+                        <span className="text-[10px] font-bold text-text-muted">{bus.category}</span>
+                      </div>
                     )}
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filteredBuses.length === 0 && (
-          <div className="p-12 text-center text-text-muted font-medium bg-surface">
-            لا توجد بيانات متاحة حالياً
-          </div>
-        )}
+                </div>
+
+                {/* Card Body - Details */}
+                <div className="p-4 flex-1 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-black text-text-muted uppercase opacity-60">الموقع</span>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-text-main">
+                        <MapPin className="w-3.5 h-3.5 text-red-500" />
+                        {bus.location}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-black text-text-muted uppercase opacity-60">الموديل</span>
+                      <div className="flex items-center gap-1.5 text-xs font-black text-text-main">
+                        <span className="w-2 h-2 rounded-full bg-primary/40 animate-pulse" />
+                        {bus.model}
+                      </div>
+                    </div>
+                  </div>
+
+                  {bus.color && (
+                    <div className="pt-2 border-t border-border/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
+                        <span className="text-[11px] font-bold text-text-main bg-slate-100 px-2 py-0.5 rounded-md">{bus.color}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Footer - Actions */}
+                <div className="p-3 bg-slate-50/50 border-t border-border/50 mt-auto flex items-center justify-between gap-2">
+                  <button 
+                    onClick={() => onGenerateBusPdf(bus)}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white text-primary border border-primary/20 rounded-xl hover:bg-primary hover:text-white transition-all text-[11px] font-black shadow-sm group/btn"
+                  >
+                    <FileDown className="w-3.5 h-3.5 group-hover/btn:scale-110 transition-transform" />
+                    تقرير PDF
+                  </button>
+
+                  {isAdmin && (
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => onEdit(bus)}
+                        className="p-2 text-text-muted hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all border border-transparent hover:border-emerald-200"
+                        title="تعديل"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setDeleteModal({ isOpen: true, id: bus.id, name: bus.operationalNumber, isAll: false })}
+                        className="p-2 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
+
+      {filteredBuses.length === 0 && (
+        <div className="p-20 text-center bg-surface rounded-2xl border-2 border-dashed border-border">
+          <div className="bg-primary/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Search className="w-8 h-8 text-primary/40" />
+          </div>
+          <h3 className="text-lg font-black text-text-main mb-1">لا توجد حافلات مطابقة</h3>
+          <p className="text-sm text-text-muted font-medium">جرب تغيير معايير البحث أو الفلترة لتظهر النتائج هنا</p>
+        </div>
+      )}
 
       {/* Pagination Controls */}
       {totalPages > 1 && (

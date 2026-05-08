@@ -18,6 +18,7 @@ import {
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useLogo } from '../lib/LogoContext';
+import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import type { AppUser } from '../types';
 
 export const AdminPanel: React.FC = () => {
@@ -31,18 +32,20 @@ export const AdminPanel: React.FC = () => {
 
   useEffect(() => {
     // Sync Users
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const pathUsers = 'users';
+    const unsubUsers = onSnapshot(collection(db, pathUsers), (snapshot) => {
       const userData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as AppUser));
       setUsers(userData);
       setLoading(false);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, pathUsers));
 
     // Sync App Settings
+    const pathSettings = 'settings/app';
     const unsubSettings = onSnapshot(doc(db, 'settings', 'app'), (docSnap) => {
       if (docSnap.exists() && docSnap.data()?.logoURL) {
         setAppLogo(docSnap.data()?.logoURL);
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, pathSettings));
 
     return () => {
       unsubUsers();
@@ -64,12 +67,16 @@ export const AdminPanel: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64String = reader.result as string;
-        await setDoc(doc(db, 'settings', 'app'), { 
-          logoURL: base64String,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        setIsUpdatingLogo(false);
-        alert('تم تحديث شعار التطبيق بنجاح');
+        try {
+          await setDoc(doc(db, 'settings', 'app'), { 
+            logoURL: base64String,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          setIsUpdatingLogo(false);
+          alert('تم تحديث شعار التطبيق بنجاح');
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, 'settings/app');
+        }
       };
       reader.readAsDataURL(file);
     } catch (error) {
@@ -81,44 +88,42 @@ export const AdminPanel: React.FC = () => {
 
   const handleApprove = async (uid: string) => {
     if (window.confirm('هل أنت متأكد من تفعيل صلاحيات هذا المستخدم؟')) {
-      await updateDoc(doc(db, 'users', uid), { approved: true, role: 'user' });
+      try {
+        await updateDoc(doc(db, 'users', uid), { approved: true, role: 'user' });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      }
     }
   };
 
   const handleMakeSupervisor = async (uid: string) => {
     if (window.confirm('هل أنت متأكد من ترقية هذا المستخدم إلى مشرف؟')) {
-      await updateDoc(doc(db, 'users', uid), { role: 'supervisor', approved: true });
+      try {
+        await updateDoc(doc(db, 'users', uid), { role: 'supervisor', approved: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      }
     }
   };
 
   const handleMakeUser = async (uid: string) => {
     if (window.confirm('هل أنت متأكد من تغيير صلاحيات هذا المستخدم إلى مستخدم عادي؟')) {
-      await updateDoc(doc(db, 'users', uid), { role: 'user', approved: true });
+      try {
+        await updateDoc(doc(db, 'users', uid), { role: 'user', approved: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      }
     }
   };
 
   const handleDeactivate = async (uid: string) => {
     if (window.confirm('هل أنت متأكد من إلغاء تفعيل هذا المستخدم؟')) {
-      await updateDoc(doc(db, 'users', uid), { approved: false });
+      try {
+        await updateDoc(doc(db, 'users', uid), { approved: false });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+      }
     }
-  };
-
-  const handleFirestoreError = (error: unknown, operationType: string, path: string | null) => {
-    const errInfo = {
-      error: error instanceof Error ? error.message : String(error),
-      authInfo: {
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        emailVerified: auth.currentUser?.emailVerified,
-        isAnonymous: auth.currentUser?.isAnonymous,
-      },
-      operationType,
-      path
-    };
-    const jsonStr = JSON.stringify(errInfo);
-    console.error('Firestore Error: ', jsonStr);
-    alert(`خطأ في قاعدة البيانات: ${errInfo.error === 'Missing or insufficient permissions.' ? 'لا تملك الصلاحيات الكافية للقيام بهذا الإجراء' : errInfo.error}`);
-    throw new Error(jsonStr);
   };
 
   const handleDelete = async () => {
@@ -135,7 +140,7 @@ export const AdminPanel: React.FC = () => {
       alert('تم حذف المستخدم بنجاح.');
       setUserToDelete(null);
     } catch (error) {
-      handleFirestoreError(error, 'delete', `users/${userToDelete.uid}`);
+      handleFirestoreError(error, OperationType.DELETE, `users/${userToDelete.uid}`);
     }
   };
 

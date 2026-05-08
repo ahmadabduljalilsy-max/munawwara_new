@@ -18,8 +18,9 @@ import { WorkerForm } from './components/WorkerForm';
 import { ContractList } from './components/ContractList';
 import { ContractForm } from './components/ContractForm';
 import { AnimatePresence, motion } from 'motion/react';
-import { db, auth } from './lib/firebase';
+import { db, auth, testConnection } from './lib/firebase';
 import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel } from './lib/excelService';
 import { generatePdf } from './lib/pdfService';
 import type { Bus, Worker, Contract } from './types';
@@ -42,34 +43,35 @@ function AppContent() {
 
   useEffect(() => {
     if (user && profile?.approved) {
-      const q = query(collection(db, 'buses'));
-      const unsub = onSnapshot(q, (snapshot) => {
+      // Test connection once
+      testConnection().catch(e => console.error("Initial connection test failed", e));
+
+      const pathBuses = 'buses';
+      const qBuses = query(collection(db, pathBuses));
+      const unsubBuses = onSnapshot(qBuses, (snapshot) => {
         const fleet = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bus));
         setBuses(fleet);
-      });
-      return unsub;
-    }
-  }, [user, profile]);
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathBuses));
 
-  useEffect(() => {
-    if (user && profile?.approved) {
-      const q = query(collection(db, 'workers'));
-      const unsub = onSnapshot(q, (snapshot) => {
+      const pathWorkers = 'workers';
+      const qWorkers = query(collection(db, pathWorkers));
+      const unsubWorkers = onSnapshot(qWorkers, (snapshot) => {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Worker));
         setWorkers(list);
-      });
-      return unsub;
-    }
-  }, [user, profile]);
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathWorkers));
 
-  useEffect(() => {
-    if (user && profile?.approved) {
-      const q = query(collection(db, 'contracts'));
-      const unsub = onSnapshot(q, (snapshot) => {
+      const pathContracts = 'contracts';
+      const qContracts = query(collection(db, pathContracts));
+      const unsubContracts = onSnapshot(qContracts, (snapshot) => {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
         setContracts(list);
-      });
-      return unsub;
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathContracts));
+
+      return () => {
+        unsubBuses();
+        unsubWorkers();
+        unsubContracts();
+      };
     }
   }, [user, profile]);
 
@@ -117,20 +119,34 @@ function AppContent() {
       setIsFormOpen(false);
       setEditingBus(null);
     } catch (error) {
-      console.error('Error saving bus:', error);
-      alert('حدث خطأ أثناء حفظ البيانات');
+      handleFirestoreError(error, editingBus ? OperationType.UPDATE : OperationType.CREATE, 'buses');
     }
   };
 
   const handleSaveWorker = async (data: Omit<Worker, 'id'>) => {
     try {
       const cleaned = cleanData(data);
+      const batch = writeBatch(db);
       
-      // If a bus is assigned, ensure no other worker is assigned to it
-      if (cleaned.assignedBusId) {
-        const batch = writeBatch(db);
+      const oldBusId = editingWorker?.assignedBusId;
+      const newBusId = cleaned.assignedBusId;
+
+      // 1. Handle old bus unlinking
+      if (oldBusId && oldBusId !== newBusId) {
+        const oldBus = buses.find(b => b.id === oldBusId);
+        if (oldBus) {
+          batch.update(doc(db, 'buses', oldBusId), {
+            location: 'غير محدد',
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+
+      // 2. Handle new bus linking and sync location
+      if (newBusId) {
+        // First, unassign other workers from this bus
         const otherWorkersWithSameBus = workers.filter(w => 
-          w.assignedBusId === cleaned.assignedBusId && w.id !== (editingWorker?.id || '')
+          w.assignedBusId === newBusId && w.id !== (editingWorker?.id || '')
         );
 
         for (const other of otherWorkersWithSameBus) {
@@ -141,43 +157,62 @@ function AppContent() {
           });
         }
 
-        if (editingWorker) {
-          batch.update(doc(db, 'workers', editingWorker.id), {
-            ...cleaned,
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          const newDocRef = doc(collection(db, 'workers'));
-          batch.set(newDocRef, {
-            ...cleaned,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            createdBy: user.uid
-          });
-        }
-        await batch.commit();
-      } else {
-        // No bus assigned, normal save
-        if (editingWorker) {
-          await updateDoc(doc(db, 'workers', editingWorker.id), {
-            ...cleaned,
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          await addDoc(collection(db, 'workers'), {
-            ...cleaned,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            createdBy: user.uid
-          });
+        // Update the new bus's location to match worker's workplace/client
+        const newBus = buses.find(b => b.id === newBusId);
+        if (newBus) {
+          const newLocation = `${cleaned.clientName}${cleaned.clientName && cleaned.workplace ? ' / ' : ''}${cleaned.workplace}` || 'غير محدد';
+          
+          if (newBus.location !== newLocation) {
+            let finalNotes = newBus.notes || '';
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+            const historyHeader = "--- سجل المواقع السابقة ---";
+            let nextIndex = 1;
+
+            if (finalNotes.includes(historyHeader)) {
+              const historyPart = finalNotes.split(historyHeader)[1];
+              const matches = historyPart.match(/\d+-\s/g);
+              if (matches) nextIndex = matches.length + 1;
+            }
+
+            const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${newBus.location || 'غير محدد'} (عن طريق تعيين العامل ${cleaned.name})`;
+            
+            if (!finalNotes.includes(historyHeader)) {
+              finalNotes = finalNotes ? `${finalNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
+            } else {
+              finalNotes = `${finalNotes}\n${logEntry}`;
+            }
+
+            batch.update(doc(db, 'buses', newBusId), {
+              location: newLocation,
+              notes: finalNotes,
+              updatedAt: serverTimestamp()
+            });
+          }
         }
       }
-      
+
+      // 3. Save the worker
+      if (editingWorker) {
+        batch.update(doc(db, 'workers', editingWorker.id), {
+          ...cleaned,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        const newDocRef = doc(collection(db, 'workers'));
+        batch.set(newDocRef, {
+          ...cleaned,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          createdBy: user.uid
+        });
+      }
+
+      await batch.commit();
       setIsWorkerFormOpen(false);
       setEditingWorker(null);
     } catch (error) {
-      console.error('Error saving worker:', error);
-      alert('حدث خطأ أثناء حفظ بيانات العامل');
+      handleFirestoreError(error, OperationType.WRITE, 'workers');
     }
   };
 
@@ -199,27 +234,9 @@ function AppContent() {
       }
       setIsContractFormOpen(false);
       setEditingContract(null);
-    } catch (error: any) {
-      handleFirestoreError(error, editingContract ? 'update' : 'create', 'contracts');
+    } catch (error) {
+      handleFirestoreError(error, editingContract ? OperationType.UPDATE : OperationType.CREATE, 'contracts');
     }
-  };
-
-  const handleFirestoreError = (error: unknown, operationType: string, path: string | null) => {
-    const errInfo = {
-      error: error instanceof Error ? error.message : String(error),
-      authInfo: {
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        emailVerified: auth.currentUser?.emailVerified,
-        isAnonymous: auth.currentUser?.isAnonymous,
-      },
-      operationType,
-      path
-    };
-    const jsonStr = JSON.stringify(errInfo);
-    console.error('Firestore Error: ', jsonStr);
-    alert(`خطأ في قاعدة البيانات: ${errInfo.error === 'Missing or insufficient permissions.' ? 'لا تملك الصلاحيات الكافية للقيام بهذا الإجراء' : errInfo.error}`);
-    throw new Error(jsonStr);
   };
 
   const cleanData = (data: any) => {
@@ -236,8 +253,8 @@ function AppContent() {
     try {
       await deleteDoc(doc(db, 'buses', id));
       alert('تم حذف الحافلة بنجاح.');
-    } catch (error: any) {
-      handleFirestoreError(error, 'delete', `buses/${id}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `buses/${id}`);
     }
   };
 
@@ -245,8 +262,8 @@ function AppContent() {
     try {
       await deleteDoc(doc(db, 'workers', id));
       alert('تم حذف بيانات العامل بنجاح.');
-    } catch (error: any) {
-      handleFirestoreError(error, 'delete', `workers/${id}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `workers/${id}`);
     }
   };
 
@@ -254,8 +271,8 @@ function AppContent() {
     try {
       await deleteDoc(doc(db, 'contracts', id));
       alert('تم حذف العقد بنجاح.');
-    } catch (error: any) {
-      handleFirestoreError(error, 'delete', `contracts/${id}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `contracts/${id}`);
     }
   };
 
@@ -272,8 +289,8 @@ function AppContent() {
       });
       await batch.commit();
       alert('تم حذف جميع الحافلات بنجاح.');
-    } catch (error: any) {
-      handleFirestoreError(error, 'delete', 'buses');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'buses');
     }
   };
 
@@ -321,8 +338,7 @@ function AppContent() {
       
       alert(`تمت العملية بنجاح: إضافة ${added} حافلة جديدة وتحديث ${updated} حافلة موجودة`);
     } catch (error) {
-      console.error('Import error:', error);
-      alert('حدث خطأ أثناء الاستيراد');
+      handleFirestoreError(error, OperationType.WRITE, 'buses');
     }
   };
 
@@ -378,8 +394,7 @@ function AppContent() {
       
       alert(`تمت العملية بنجاح: إضافة ${added} عامل جديد وتحديث ${updated} عامل موجود`);
     } catch (error) {
-      console.error('Worker import error:', error);
-      alert('حدث خطأ أثناء استيراد بيانات العمال');
+      handleFirestoreError(error, OperationType.WRITE, 'workers');
     }
   };
 

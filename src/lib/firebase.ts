@@ -16,5 +16,18 @@ export const googleProvider = new GoogleAuthProvider();
 // Sign in logic
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
 
-// No automatic testConnection at module load to avoid "Missing or insufficient permissions" before sign-in
+// Test connection helper
+export async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test successful");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Firestore connection error: The client is offline. Please check your internet connection and Firebase configuration.");
+    } else {
+      console.error("Firestore connection error:", error);
+    }
+    throw error;
+  }
+}
 

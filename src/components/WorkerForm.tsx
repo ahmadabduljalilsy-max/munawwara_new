@@ -20,7 +20,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     recruitmentCompany: '',
     workplace: '',
     startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    endDate: '',
     clientName: '',
     assignedBusId: '',
     assignedBusOperationalNumber: '',
@@ -38,7 +38,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         recruitmentCompany: worker.recruitmentCompany,
         workplace: worker.workplace,
         startDate: worker.startDate,
-        endDate: worker.endDate,
+        endDate: worker.endDate || '',
         clientName: worker.clientName,
         assignedBusId: worker.assignedBusId || '',
         assignedBusOperationalNumber: worker.assignedBusOperationalNumber || '',
@@ -217,13 +217,12 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                   </div>
                   <div>
                     <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
-                      <Calendar className="w-3 h-3 text-red-600" /> نهاية العمل
+                      <Calendar className="w-3 h-3 text-red-600" /> نهاية العمل (اختياري)
                     </label>
                     <input 
                       type="date"
                       name="endDate"
                       lang="en-GB"
-                      required
                       value={formData.endDate}
                       onChange={handleChange}
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all text-right"

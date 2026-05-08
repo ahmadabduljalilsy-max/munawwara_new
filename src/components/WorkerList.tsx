@@ -32,6 +32,7 @@ interface WorkerListProps {
   onAdd: () => void;
   onEdit: (worker: Worker) => void;
   onDelete: (id: string) => void;
+  onDeleteAll: () => void;
   onExportExcel: (data: Worker[]) => void;
   onExportPdf: (data: Worker[]) => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -43,6 +44,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   onAdd, 
   onEdit, 
   onDelete,
+  onDeleteAll,
   onExportExcel,
   onExportPdf,
   onImport
@@ -68,6 +70,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     isOpen: false,
     id: null
   });
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [selectedWorkerForDetails, setSelectedWorkerForDetails] = useState<Worker | null>(null);
 
   const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
@@ -207,6 +210,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 onChange={onImport}
               />
             </label>
+          )}
+
+          {isAdmin && (
+            <button 
+              onClick={() => setIsDeleteAllModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all shadow-sm shadow-red-200 active:scale-95"
+              title="حذف جميع بيانات العمال"
+            >
+              <Trash2 className="w-4 h-4" />
+              حذف الكل
+            </button>
           )}
 
           <button 
@@ -803,6 +817,14 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         title="حذف بيانات عامل"
         message="هل أنت متأكد من رغبتك في حذف بيانات العامل:"
         itemName={deleteModal.name}
+      />
+
+      <DeleteConfirmModal 
+        isOpen={isDeleteAllModalOpen}
+        onClose={() => setIsDeleteAllModalOpen(false)}
+        onConfirm={onDeleteAll}
+        title="تأكيد حذف جميع العمال"
+        message="هل أنت متأكد من رغبتك في حذف جميع بيانات العمال من النظام؟"
       />
     </motion.div>
   );

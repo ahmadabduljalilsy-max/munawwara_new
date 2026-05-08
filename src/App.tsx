@@ -294,6 +294,24 @@ function AppContent() {
     }
   };
 
+  const handleDeleteAllWorkers = async () => {
+    if (workers.length === 0) {
+      alert('لا توجد بيانات عمال لحذفها حالياً.');
+      return;
+    }
+
+    try {
+      const batch = writeBatch(db);
+      workers.forEach(worker => {
+        batch.delete(doc(db, 'workers', worker.id));
+      });
+      await batch.commit();
+      alert('تم حذف جميع بيانات العمال بنجاح.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'workers');
+    }
+  };
+
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -492,6 +510,7 @@ function AppContent() {
               onAdd={() => { setEditingWorker(null); setIsWorkerFormOpen(true); }}
               onEdit={(w) => { setEditingWorker(w); setIsWorkerFormOpen(true); }}
               onDelete={handleDeleteWorker}
+              onDeleteAll={handleDeleteAllWorkers}
               onImport={handleImportWorkersExcel}
               onExportExcel={(data) => exportWorkersToExcel(data)}
               onExportPdf={(data) => handleGenerateWorkerPdf('تقرير الرقابة والمتابعة - العمال', data)}

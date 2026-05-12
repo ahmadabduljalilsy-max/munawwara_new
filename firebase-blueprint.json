@@ -36,22 +36,27 @@
       },
       "required": ["workerNumber", "name", "iqamaNumber"]
     },
-    "Contract": {
-      "title": "Contract",
-      "description": "A business agreement with a client",
+    "Salary": {
+      "title": "Salary",
+      "description": "Monthly salary record for a worker",
       "type": "object",
       "properties": {
-        "contractNumber": { "type": "string" },
-        "clientName": { "type": "string" },
-        "startDate": { "type": "string" },
-        "endDate": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "expired", "pending"] },
-        "value": { "type": "number" },
-        "description": { "type": "string" },
+        "workerId": { "type": "string" },
+        "workerName": { "type": "string" },
+        "workerNumber": { "type": "string" },
+        "month": { "type": "string" },
+        "baseSalary": { "type": "number" },
+        "extraHours": { "type": "number" },
+        "extraHoursValue": { "type": "number" },
+        "morabata": { "type": "number" },
+        "totalSalary": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "paid"] },
+        "workLocation": { "type": "string" },
+        "notes": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["contractNumber", "clientName", "startDate", "endDate", "status", "value"]
+      "required": ["workerId", "month", "baseSalary", "totalSalary", "status"]
     },
     "User": {
       "title": "User",
@@ -81,7 +86,7 @@
   "firestore": {
     "/buses/{busId}": { "schema": "Bus", "description": "Fleet data" },
     "/workers/{workerId}": { "schema": "Worker", "description": "Worker records" },
-    "/contracts/{contractId}": { "schema": "Contract", "description": "Business contracts" },
+    "/salaries/{salaryId}": { "schema": "Salary", "description": "Worker monthly salaries" },
     "/users/{userId}": { "schema": "User", "description": "User profiles" },
     "/settings/app": { "schema": "AppSettings", "description": "Global settings" }
   }

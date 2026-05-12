@@ -36,6 +36,25 @@ export const exportWorkersToExcel = (data: Worker[]) => {
   XLSX.writeFile(workbook, `عمال_درة_المنورة_${new Date().toLocaleDateString('ar-SA')}.xlsx`);
 };
 
+export const exportSalariesToExcel = (data: any[]) => {
+  const worksheet = XLSX.utils.json_to_sheet(data.map(s => ({
+    'الشهر': s.month,
+    'الرقم الوظيفي': s.workerNumber,
+    'اسم العامل': s.workerName,
+    'موقع العمل': s.workLocation || '',
+    'الراتب الأساسي': s.baseSalary,
+    'ساعات العمل الإضافي': s.extraHours,
+    'قيمة العمل الإضافي': s.extraHoursValue,
+    'المرابطة': s.morabata,
+    'إجمالي المستحق': s.totalSalary,
+    'الحالة': s.status === 'paid' ? 'تم الدفع' : 'قيد الانتظار',
+    'ملاحظات': s.notes
+  })));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'الرواتب');
+  XLSX.writeFile(workbook, `كشف_الرواتب_${data[0]?.month || ''}_${new Date().toLocaleDateString('ar-SA')}.xlsx`);
+};
+
 const formatExcelDate = (val: any) => {
   if (!val) return '';
   if (val instanceof Date) {

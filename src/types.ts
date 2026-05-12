@@ -46,6 +46,24 @@ export interface Contract {
   updatedAt?: any;
 }
 
+export interface SalaryRecord {
+  id: string;
+  workerId: string;
+  workerName: string;
+  workerNumber: string;
+  month: string; // YYYY-MM
+  baseSalary: number;
+  extraHours: number;
+  extraHoursValue: number;
+  morabata: number;
+  totalSalary: number;
+  status: 'pending' | 'paid';
+  workLocation?: string;
+  notes: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export type UserRole = 'admin' | 'supervisor' | 'user' | 'pending';
 
 export interface AppUser {

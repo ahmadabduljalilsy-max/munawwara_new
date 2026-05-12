@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { X, Save, User, IdCard, Phone, Building, Briefcase, Calendar, FileText, Bus as BusIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X, Save, User, IdCard, Phone, Building, Briefcase, Calendar, FileText, Bus as BusIcon, AlertTriangle } from 'lucide-react';
 import { Worker, Bus } from '../types';
 
 interface WorkerFormProps {
@@ -28,6 +28,9 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     notes: ''
   });
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<Omit<Worker, 'id'> | null>(null);
+
   useEffect(() => {
     if (worker) {
       setFormData({
@@ -52,9 +55,10 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     e.preventDefault();
     
     let finalNotes = formData.notes;
+    const isReassignment = worker && worker.assignedBusId && worker.assignedBusId !== formData.assignedBusId;
     
     // Check if we are editing an existing worker and the bus has changed
-    if (worker && worker.assignedBusId && worker.assignedBusId !== formData.assignedBusId) {
+    if (isReassignment) {
       const today = new Date();
       const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
       
@@ -79,10 +83,24 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
       }
     }
 
-    onSave({
+    const saveData = {
       ...formData,
       notes: finalNotes
-    });
+    };
+
+    if (isReassignment) {
+      setPendingSaveData(saveData);
+      setShowConfirmModal(true);
+    } else {
+      onSave(saveData);
+    }
+  };
+
+  const handleConfirmSave = () => {
+    if (pendingSaveData) {
+      onSave(pendingSaveData);
+    }
+    setShowConfirmModal(false);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -325,6 +343,46 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
           </div>
         </form>
       </motion.div>
+
+      {/* Reassignment Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 bg-[#00000090] backdrop-blur-md z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-surface max-w-md w-full rounded-3xl overflow-hidden shadow-2xl border border-border"
+            >
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-black text-text-main mb-3">تأكيد تغيير الارتباط</h3>
+                <p className="text-text-muted text-sm font-bold leading-relaxed mb-8">
+                  هذا العامل مرتبط حالياً بالحافلة رقم 
+                  <span className="text-amber-600 px-1">({worker?.assignedBusOperationalNumber})</span>. 
+                  هل أنت متأكد من رغبتك في فك هذا الارتباط وتغييره للحافلة الجديدة؟ سيتم حفظ بيانات الحافلة السابقة في سجل الملاحظات تلقائياً.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={handleConfirmSave}
+                    className="w-full bg-primary text-white py-3.5 rounded-xl font-black hover:bg-secondary transition-all shadow-lg"
+                  >
+                    نعم، تأكيد تغيير الارتباط
+                  </button>
+                  <button
+                    onClick={() => setShowConfirmModal(false)}
+                    className="w-full bg-surface text-text-muted py-3.5 rounded-xl font-black border border-border hover:bg-background transition-all"
+                  >
+                    تراجع، البقاء على الارتباط الحالي
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -50,15 +50,18 @@ service cloud.firestore {
              (data.get('location', '') is string) && (data.get('notes', '') is string);
     }
 
-    // --- Contract Validation ---
-    function isValidContract(data) {
-      return data.contractNumber is string && data.contractNumber.size() <= 100 &&
-             data.clientName is string && data.clientName.size() <= 200 &&
-             data.startDate is string && data.endDate is string &&
-             data.status in ['active', 'expired', 'pending'] &&
-             data.value is number &&
-             (data.get('description', '') is string);
-    }
+     // --- Salary Validation ---
+     function isValidSalary(data) {
+       return data.workerId is string && data.workerId.size() <= 100 &&
+              data.month is string && data.month.size() <= 10 &&
+              (data.get('baseSalary', 0) is number || data.get('baseSalary', 0) is int) &&
+              (data.get('extraHours', 0) is number || data.get('extraHours', 0) is int) &&
+              (data.get('extraHoursValue', 0) is number || data.get('extraHoursValue', 0) is int) &&
+              (data.get('morabata', 0) is number || data.get('morabata', 0) is int) &&
+              (data.get('totalSalary', 0) is number || data.get('totalSalary', 0) is int) &&
+              (data.get('workLocation', '') is string) &&
+              data.status in ['pending', 'paid'];
+     }
 
     // --- Worker Validation ---
     function isValidWorker(data) {
@@ -108,10 +111,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    match /contracts/{contractId} {
+    match /salaries/{salaryId} {
       allow read: if isApproved();
-      allow create: if isAdmin() && isValidId(contractId) && isValidContract(request.resource.data);
-      allow update: if isAdmin() && isValidContract(request.resource.data);
+      allow create: if isEditor() && isValidId(salaryId) && isValidSalary(request.resource.data);
+      allow update: if isEditor() && isValidSalary(request.resource.data);
       allow delete: if isAdmin();
     }
 

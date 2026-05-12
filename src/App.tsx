@@ -15,15 +15,14 @@ import { BusForm } from './components/BusForm';
 import { ReportTemplate } from './components/ReportTemplates';
 import { WorkerList } from './components/WorkerList';
 import { WorkerForm } from './components/WorkerForm';
-import { ContractList } from './components/ContractList';
-import { ContractForm } from './components/ContractForm';
+import { SalaryList } from './components/SalaryList';
 import { AnimatePresence, motion } from 'motion/react';
 import { db, auth, testConnection } from './lib/firebase';
 import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
-import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel } from './lib/excelService';
+import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel } from './lib/excelService';
 import { generatePdf } from './lib/pdfService';
-import type { Bus, Worker, Contract } from './types';
+import type { Bus, Worker, SalaryRecord } from './types';
 
 function AppContent() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -32,13 +31,11 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [buses, setBuses] = useState<Bus[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBus, setEditingBus] = useState<Bus|null>(null);
   const [isWorkerFormOpen, setIsWorkerFormOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker|null>(null);
-  const [isContractFormOpen, setIsContractFormOpen] = useState(false);
-  const [editingContract, setEditingContract] = useState<Contract|null>(null);
   const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], stats: any}|null>(null);
 
   useEffect(() => {
@@ -60,17 +57,17 @@ function AppContent() {
         setWorkers(list);
       }, (error) => handleFirestoreError(error, OperationType.GET, pathWorkers));
 
-      const pathContracts = 'contracts';
-      const qContracts = query(collection(db, pathContracts));
-      const unsubContracts = onSnapshot(qContracts, (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
-        setContracts(list);
-      }, (error) => handleFirestoreError(error, OperationType.GET, pathContracts));
+      const pathSalaries = 'salaries';
+      const qSalaries = query(collection(db, pathSalaries));
+      const unsubSalaries = onSnapshot(qSalaries, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalaryRecord));
+        setSalaries(list);
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathSalaries));
 
       return () => {
         unsubBuses();
         unsubWorkers();
-        unsubContracts();
+        unsubSalaries();
       };
     }
   }, [user, profile]);
@@ -216,26 +213,27 @@ function AppContent() {
     }
   };
 
-  const handleSaveContract = async (data: Partial<Contract>) => {
+  const handleSaveSalary = async (data: Omit<SalaryRecord, 'id'>) => {
     try {
-      const cleaned = cleanData(data);
-      if (editingContract) {
-        await updateDoc(doc(db, 'contracts', editingContract.id), {
-          ...cleaned,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        await addDoc(collection(db, 'contracts'), {
-          ...cleaned,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          createdBy: user.uid
-        });
-      }
-      setIsContractFormOpen(false);
-      setEditingContract(null);
+      await addDoc(collection(db, 'salaries'), {
+        ...data,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: user?.uid
+      });
     } catch (error) {
-      handleFirestoreError(error, editingContract ? OperationType.UPDATE : OperationType.CREATE, 'contracts');
+      handleFirestoreError(error, OperationType.CREATE, 'salaries');
+    }
+  };
+
+  const handleUpdateSalary = async (id: string, updates: Partial<SalaryRecord>) => {
+    try {
+      await updateDoc(doc(db, 'salaries', id), {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `salaries/${id}`);
     }
   };
 
@@ -492,13 +490,14 @@ function AppContent() {
               onGenerateBusPdf={(bus) => handleGeneratePdf(`تقرير تفصيلي للحافلة - ${bus.operationalNumber}`, [bus])}
             />
           )}
-          {activeTab === 'contracts' && (
-            <ContractList 
-              contracts={contracts}
+          {activeTab === 'salaries' && (
+            <SalaryList 
+              workers={workers}
+              salaries={salaries}
               isAdmin={profile.role === 'admin'}
-              onAdd={() => { setEditingContract(null); setIsContractFormOpen(true); }}
-              onEdit={(c) => { setEditingContract(c); setIsContractFormOpen(true); }}
-              onDelete={handleDeleteContract}
+              onSaveSalary={handleSaveSalary}
+              onUpdateSalary={handleUpdateSalary}
+              onExportExcel={(data) => exportSalariesToExcel(data)}
             />
           )}
           {activeTab === 'admin' && profile.role === 'admin' && <AdminPanel />}
@@ -518,15 +517,6 @@ function AppContent() {
           )}
         </motion.div>
       </AnimatePresence>
-
-      {isContractFormOpen && (
-        <ContractForm 
-          editingContract={editingContract}
-          onSave={handleSaveContract}
-          onClose={() => { setIsContractFormOpen(false); setEditingContract(null); }}
-          isOpen={isContractFormOpen}
-        />
-      )}
 
       {isFormOpen && (
         <BusForm 

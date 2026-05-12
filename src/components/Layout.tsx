@@ -9,9 +9,10 @@ import {
   Menu, 
   X, 
   ShieldCheck,
+  CircleDollarSign,
   Search,
   Sun,
-  Moon
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { useLogo } from '../lib/LogoContext';
@@ -39,7 +40,7 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
     { id: 'fleet', label: 'أسطول الشركة', icon: Bus },
     { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck },
-    { id: 'contracts', label: 'العقود', icon: FileText },
+    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign },
   ];
 
   if (profile?.role === 'admin') {

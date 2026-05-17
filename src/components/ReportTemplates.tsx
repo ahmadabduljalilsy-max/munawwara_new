@@ -1,16 +1,17 @@
 import React from 'react';
-import { Bus, Worker } from '../types';
+import { Bus, Worker, SalaryRecord } from '../types';
 import { useLogo } from '../lib/LogoContext';
 
 interface ReportProps {
   title: string;
   buses?: Bus[];
   workers?: Worker[];
+  salaries?: SalaryRecord[];
   generatedBy: string;
   stats?: any;
 }
 
-export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, generatedBy, stats }) => {
+export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, salaries, generatedBy, stats }) => {
   const { logoURL } = useLogo();
   const now = new Date().toLocaleString('ar-SA');
 
@@ -65,6 +66,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
               <th className="border border-[#E5E7EB] p-3 text-right">الموديل</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الموقع</th>
               <th className="border border-[#E5E7EB] p-3 text-right">الحالة</th>
+              <th className="border border-[#E5E7EB] p-3 text-right">ملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -77,6 +79,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
                 <td className="border border-[#E5E7EB] p-3">{bus.model}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.location}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.technicalStatus}</td>
+                <td className="border border-[#E5E7EB] p-3 text-[10px] text-[#6B7280]">{bus.notes || '-'}</td>
               </tr>
             ))}
           </tbody>
@@ -143,6 +146,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
               <th className="border border-[#E5E7EB] p-3 text-right">البداية</th>
               <th className="border border-[#E5E7EB] p-3 text-right">النهاية</th>
               <th className="border border-[#E5E7EB] p-3 text-right">العميل</th>
+              <th className="border border-[#E5E7EB] p-3 text-right">ملاحظات</th>
             </tr>
           </thead>
           <tbody>
@@ -155,6 +159,40 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, g
                 <td className="border border-[#E5E7EB] p-3 font-mono">{worker.startDate}</td>
                 <td className="border border-[#E5E7EB] p-3 font-mono">{worker.endDate}</td>
                 <td className="border border-[#E5E7EB] p-3 font-bold">{worker.clientName}</td>
+                <td className="border border-[#E5E7EB] p-3 text-[10px] text-[#6B7280]">{worker.notes || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {salaries && (
+        <table className="w-full border-collapse border border-[#E5E7EB] text-sm">
+          <thead>
+            <tr className="bg-[#F9FAFB]">
+              <th className="border border-[#E5E7EB] p-3 text-right">اسم العامل</th>
+              <th className="border border-[#E5E7EB] p-3 text-right">رقم الوظيفي</th>
+              <th className="border border-[#E5E7EB] p-3 text-center">الشهر</th>
+              <th className="border border-[#E5E7EB] p-3 text-center">الأساسي</th>
+              <th className="border border-[#E5E7EB] p-3 text-center">الإضافي</th>
+              <th className="border border-[#E5E7EB] p-3 text-center">المرابطة</th>
+              <th className="border border-[#E5E7EB] p-3 text-center font-black">المجموع</th>
+              <th className="border border-[#E5E7EB] p-3 text-center">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {salaries.map((salary) => (
+              <tr key={salary.id || salary.workerId}>
+                <td className="border border-[#E5E7EB] p-3 font-bold">{salary.workerName}</td>
+                <td className="border border-[#E5E7EB] p-3 text-xs">{salary.workerNumber}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center font-mono">{salary.month}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center">{salary.baseSalary.toLocaleString()}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center">{salary.extraHoursValue.toLocaleString()}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center">{salary.morabata.toLocaleString()}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center font-black text-primary">{salary.totalSalary.toLocaleString()}</td>
+                <td className="border border-[#E5E7EB] p-3 text-center font-bold">
+                  {salary.status === 'paid' ? 'تم الصرف' : 'قيد الانتظار'}
+                </td>
               </tr>
             ))}
           </tbody>

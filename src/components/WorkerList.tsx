@@ -98,13 +98,16 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     return workers.filter(w => {
       const isTerminated = w.endDate && w.endDate < today;
       
+      const searchTerm = search.toLowerCase().trim();
       const matchesSearch = 
-        w.name.toLowerCase().includes(search.toLowerCase()) ||
-        w.iqamaNumber.includes(search) ||
-        w.workplace.toLowerCase().includes(search.toLowerCase()) ||
-        w.workerNumber.includes(search) ||
-        (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(search.toLowerCase())) ||
-        (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(search.toLowerCase()));
+        w.name.toLowerCase().includes(searchTerm) ||
+        w.iqamaNumber.includes(searchTerm) ||
+        (w.nationalId && w.nationalId.includes(searchTerm)) ||
+        w.workplace.toLowerCase().includes(searchTerm) ||
+        w.workerNumber.toLowerCase().includes(searchTerm) ||
+        (w.mobileNumber && w.mobileNumber.includes(searchTerm)) ||
+        (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(searchTerm)) ||
+        (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(searchTerm));
       
       const matchesWorkplace = !filters.workplace || w.workplace === filters.workplace;
       const matchesClient = !filters.clientName || w.clientName === filters.clientName;
@@ -343,7 +346,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
                 <input 
                   type="text"
-                  placeholder="ابحث باسم العامل، رقم الإقامة، مكان العمل، أو رقم الحافلة..."
+                  placeholder="ابحث باسم العامل، رقم الإقامة/الهوية، مكان العمل، أو رقم الحافلة..."
                   className="w-full pr-10 pl-4 py-2.5 bg-surface border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -464,7 +467,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 <tr className="bg-background/50 border-b border-border">
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('workerNumber')}>رقم العامل <SortIcon field="workerNumber" /></th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('name')}>اسم العامل <SortIcon field="name" /></th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('iqamaNumber')}>رقم الإقامة <SortIcon field="iqamaNumber" /></th>
+                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('iqamaNumber')}>رقم الإقامة/الهوية <SortIcon field="iqamaNumber" /></th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">الجوال</th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">شركة الاستقدام</th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">مكان العمل</th>
@@ -523,7 +526,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-mono">{worker.iqamaNumber}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-mono">{worker.iqamaNumber || worker.nationalId}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-medium">
                         <button 
                           onClick={(e) => {
@@ -762,7 +765,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                 <div className="grid grid-cols-2 gap-2 text-[10px] mb-4">
                                   <div className="flex items-center gap-1.5 text-text-muted">
                                     <Search className="w-3 h-3 opacity-50" />
-                                    <span className="font-mono">{worker.iqamaNumber}</span>
+                                    <span className="font-mono">{worker.iqamaNumber || worker.nationalId}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5 text-text-muted">
                                     <Phone className="w-3 h-3 opacity-50" />

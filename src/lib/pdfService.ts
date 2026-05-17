@@ -13,7 +13,7 @@ export const generatePdf = async (elementId: string, filename: string) => {
   element.style.top = '0';
 
   const canvas = await html2canvas(element, {
-    scale: 1.5, // Reduced from 2 to avoid memory issues with large reports
+    scale: 1.5,
     useCORS: true,
     logging: false,
     windowWidth: element.scrollWidth,

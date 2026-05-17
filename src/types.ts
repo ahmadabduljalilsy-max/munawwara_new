@@ -19,6 +19,7 @@ export interface Worker {
   workerNumber: string;
   name: string;
   iqamaNumber: string;
+  nationalId?: string;
   mobileNumber: string;
   recruitmentCompany: string;
   workplace: string;

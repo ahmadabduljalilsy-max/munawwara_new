@@ -26,6 +26,7 @@ interface SalaryListProps {
   onSaveSalary: (record: Omit<SalaryRecord, 'id'>) => void;
   onUpdateSalary: (id: string, updates: Partial<SalaryRecord>) => void;
   onExportExcel: (data: any[]) => void;
+  onGeneratePDF: (config: { title: string; salaries: SalaryRecord[]; stats: any }) => void;
 }
 
 export const SalaryList: React.FC<SalaryListProps> = ({ 
@@ -34,7 +35,8 @@ export const SalaryList: React.FC<SalaryListProps> = ({
   isAdmin, 
   onSaveSalary,
   onUpdateSalary,
-  onExportExcel
+  onExportExcel,
+  onGeneratePDF
 }) => {
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -168,6 +170,25 @@ export const SalaryList: React.FC<SalaryListProps> = ({
           >
             <Download className="w-4 h-4" />
             تصدير كشف الرواتب
+          </button>
+          <button 
+             onClick={() => {
+               const currentSalaries = salaries.filter(s => s.month === selectedMonth);
+               onGeneratePDF({
+                 title: `كشف رواتب شهر ${selectedMonth}`,
+                 salaries: currentSalaries,
+                 stats: {
+                   'إجمالي الرواتب': stats.total.toLocaleString() + ' ريال',
+                   'العمل الإضافي': stats.totalExtra.toLocaleString() + ' ريال',
+                   'بدل المرابطة': stats.totalMorabata.toLocaleString() + ' ريال',
+                   'عدد الموظفين': currentSalaries.length
+                 }
+               });
+             }}
+             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-black hover:bg-red-700 transition-all shadow-md"
+          >
+            <RefreshCw className="w-4 h-4" />
+            طباعة تقرير PDF
           </button>
         </div>
       </div>

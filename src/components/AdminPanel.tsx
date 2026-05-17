@@ -13,7 +13,13 @@ import {
   Settings,
   UploadCloud,
   ChevronRight,
-  Clock
+  Clock,
+  ArrowUpDown,
+  SortAsc,
+  SortDesc,
+  Search,
+  Filter,
+  RefreshCw
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
@@ -21,14 +27,157 @@ import { useLogo } from '../lib/LogoContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import type { AppUser } from '../types';
 
+type SortField = 'displayName' | 'email' | 'role';
+type SortOrder = 'asc' | 'desc';
+
+interface UserCardProps {
+  user: AppUser;
+  isPending: boolean;
+  onApprove: (uid: string) => void;
+  onMakeSupervisor: (uid: string) => void;
+  onMakeUser: (uid: string) => void;
+  onDeactivate: (uid: string) => void;
+  onDelete: (user: { uid: string; name: string }) => void;
+  adminEmails: string[];
+}
+
+const UserCard: React.FC<UserCardProps> = ({ 
+  user, 
+  isPending, 
+  onApprove, 
+  onMakeSupervisor, 
+  onMakeUser, 
+  onDeactivate, 
+  onDelete,
+  adminEmails
+}) => (
+  <motion.div 
+    layout
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    className="bg-surface p-6 rounded-[32px] border border-border shadow-sm flex flex-col hover:shadow-md transition-all group relative overflow-hidden h-full"
+  >
+    {/* Role/Status Badge */}
+    <div className="absolute top-4 left-4 z-10">
+      {isPending ? (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 shadow-sm border border-amber-200">
+          قيد المراجعة
+        </span>
+      ) : (
+        <span className={`
+          inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm
+          ${user.role === 'admin' ? 'bg-indigo-500 text-white' : 
+            user.role === 'supervisor' ? 'bg-emerald-500 text-white' : 
+            'bg-blue-500 text-white'}
+        `}>
+          {user.role === 'admin' ? 'مدير' : 
+           user.role === 'supervisor' ? 'مشرف' : 
+           'سائق/عامل'}
+        </span>
+      )}
+    </div>
+
+    <div className="flex flex-col items-center text-center gap-4 mb-6 mt-4">
+      <div className="relative group/avatar">
+        <div className="w-20 h-20 rounded-[28px] overflow-hidden p-1 bg-white border border-border shadow-md group-hover:scale-105 transition-transform duration-500">
+          <img 
+            src={user.photoURL || ''} 
+            alt="" 
+            className={`w-full h-full object-cover rounded-[22px] ${isPending ? 'grayscale' : ''}`} 
+          />
+        </div>
+        {!isPending && user.role === 'admin' && (
+          <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1.5 rounded-xl border-4 border-white shadow-lg">
+            <Shield className="w-3.5 h-3.5 text-white" />
+          </div>
+        )}
+        {isPending && (
+          <div className="absolute -bottom-1 -right-1 bg-amber-500 w-5 h-5 rounded-full border-2 border-white animate-pulse" />
+        )}
+      </div>
+      
+      <div className="space-y-1 w-full overflow-hidden">
+        <h4 className="font-black text-lg text-text-main leading-tight truncate">{user.displayName}</h4>
+        <p className="text-xs text-text-muted font-bold flex items-center justify-center gap-1.5 truncate">
+          <Mail className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate">{user.email}</span>
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-auto space-y-3">
+      {adminEmails.includes(user.email) ? (
+        <div className="w-full py-2.5 bg-slate-50 rounded-2xl text-xs font-black text-slate-400 text-center border border-slate-100 italic">
+          حساب المدير محمي
+        </div>
+      ) : isPending ? (
+        <div className="flex items-stretch gap-2">
+          <button 
+            onClick={() => onApprove(user.uid)}
+            className="flex-[2] bg-[#10B981] text-white py-3.5 rounded-2xl font-black text-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 shadow-emerald-100"
+          >
+            <CheckCircle className="w-5 h-5" /> تفعيل
+          </button>
+          <button 
+            onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
+            className="flex-1 bg-red-50 text-red-600 py-3.5 rounded-2xl font-black text-sm hover:bg-red-100 transition-all flex items-center justify-center gap-2 border-2 border-red-200 active:scale-95"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            {user.role !== 'supervisor' && (
+              <button 
+                onClick={() => onMakeSupervisor(user.uid)}
+                className="flex-1 px-3 py-2.5 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100"
+              >
+                ترقية لمشرف
+              </button>
+            )}
+            {user.role !== 'user' && (
+              <button 
+                onClick={() => onMakeUser(user.uid)}
+                className="flex-1 px-3 py-2.5 bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-black hover:bg-slate-200 transition-all active:scale-95 border border-slate-200"
+              >
+                تخفيض لمستخدم
+              </button>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => onDeactivate(user.uid)}
+              className="flex-1 px-4 py-3 bg-amber-50 text-amber-600 rounded-2xl text-xs font-black hover:bg-amber-100 transition-all flex items-center justify-center gap-2 border border-amber-100 active:scale-95"
+            >
+              <XCircle className="w-4 h-4" /> تعطيل
+            </button>
+            <button 
+              onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
+              className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100 active:scale-95 group/del"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+    <div className="absolute inset-0 pointer-events-none opacity-[0.02] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px] -z-10" />
+  </motion.div>
+);
+
 export const AdminPanel: React.FC = () => {
   const { logoURL: currentLogo } = useLogo();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'active' | 'pending'>('active');
+  const [viewMode, setViewMode] = useState<'all' | 'active' | 'pending'>('all');
   const [userToDelete, setUserToDelete] = useState<{ uid: string; name: string } | null>(null);
   const [appLogo, setAppLogo] = useState<string>(currentLogo);
   const [isUpdatingLogo, setIsUpdatingLogo] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<SortField>('displayName');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   useEffect(() => {
     // Sync Users
@@ -144,344 +293,225 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const pendingUsers = users.filter(u => !u.approved);
-  const activeUsers = users.filter(u => u.approved);
+  const getSortedAndFilteredUsers = (userList: AppUser[]) => {
+    return [...userList]
+      .filter(u => 
+        u.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .sort((a, b) => {
+        const valA = (a[sortField] || '').toString().toLowerCase();
+        const valB = (b[sortField] || '').toString().toLowerCase();
+        
+        if (sortOrder === 'asc') {
+          return valA > valB ? 1 : -1;
+        } else {
+          return valA < valB ? 1 : -1;
+        }
+      });
+  };
+
+  const pendingUsers = getSortedAndFilteredUsers(users.filter(u => !u.approved));
+  const activeUsers = getSortedAndFilteredUsers(users.filter(u => u.approved));
 
   const ADMIN_EMAILS = ['ahmad.abduljalil.sy@gmail.com', 'ahmad.abduljalilmunawwara@gmail.com'];
 
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-8 pb-20">
       {/* Admin Header Section */}
-      <div className="bg-surface p-8 rounded-3xl border border-border shadow-sm flex items-center justify-between relative overflow-hidden group">
+      <div className="bg-surface p-8 rounded-[40px] border border-border shadow-sm flex flex-col md:flex-row items-center justify-between relative overflow-hidden group gap-6">
         <div className="flex items-center gap-6 relative z-10 text-right">
-          <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-500">
+          <div className="w-20 h-20 bg-primary/10 rounded-[28px] flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-500">
              <Users className="w-10 h-10 text-primary" />
           </div>
           <div>
             <h2 className="text-3xl font-black text-text-main leading-none">
-              إدارة المستخدمين والصلاحيات
+              مركز إدارة الكوادر
             </h2>
             <p className="text-text-muted font-bold mt-3 flex items-center gap-2">
               <Shield className="w-4 h-4 text-accent" />
-              منصة التحكم في أذونات الدخول وإدارة الهويات الرقمية
+              منصة التحكم المركزية في الهويات والصلاحيات التشغيلية
             </p>
           </div>
         </div>
         
-        {/* App Settings & Logo Section */}
-        <div className="hidden md:flex items-center gap-3 bg-background/80 backdrop-blur-sm px-5 py-3 rounded-2xl border border-border/50 shadow-sm relative z-10">
-           <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center p-1 border border-border shadow-sm">
-             <img 
-               src={appLogo} 
-               alt="Logo" 
-               className="w-full h-full object-contain"
-             />
-           </div>
-           <div className="flex flex-col text-right">
-              <span className="text-xs font-black text-text-main tracking-widest uppercase truncate max-w-[120px]">درة المنورة</span>
-              <span className="text-[10px] font-bold text-primary truncate max-w-[120px]">لنقل الحجاج والمعتمرين</span>
-              <span className="text-[9px] font-black text-primary/80 truncate max-w-[120px]">مكتب نقل العمال</span>
+        <div className="flex items-center gap-4 relative z-10">
+           {/* Logo Management Section Small */}
+           <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-border shadow-sm group/logo transition-all hover:border-primary/30">
+              <div className="relative w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center p-1 overflow-hidden border border-border">
+                <img src={appLogo} alt="Logo" className="w-full h-full object-contain" />
+                {isUpdatingLogo && (
+                  <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                    <RefreshCw className="w-4 h-4 text-primary animate-spin" />
+                  </div>
+                )}
+              </div>
+              <label className="flex flex-col text-right cursor-pointer">
+                <span className="text-[10px] font-black text-text-main">شعار المؤسسة</span>
+                <span className="text-[9px] font-bold text-primary group-hover:underline flex items-center gap-1">
+                  تحديث الهوية <UploadCloud className="w-3 h-3" />
+                </span>
+                <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} disabled={isUpdatingLogo} />
+              </label>
            </div>
         </div>
 
-        {/* Decorative Background Element */}
         <div className="absolute top-0 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 opacity-50" />
       </div>
 
-      {/* Summary Stats Summary (Optional inline) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 px-2">
-         {/* Logo Management Card */}
-         <div className="bg-surface p-6 rounded-2xl border-2 border-dashed border-primary/20 shadow-sm flex flex-col gap-4 relative overflow-hidden group">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary relative overflow-hidden">
-                 <img src={appLogo} alt="" className="w-full h-full object-contain p-1" />
-                 {isUpdatingLogo && (
-                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-                       <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    </div>
-                 )}
-              </div>
-              <div className="flex-1">
-                 <div className="text-[10px] font-black text-primary uppercase tracking-wider mb-1">شعار التطبيق</div>
-                 <h4 className="text-sm font-black text-text-main">تخصيص الهوية البصرية</h4>
-              </div>
-            </div>
-            
-            <label className="w-full bg-primary text-white py-2.5 rounded-xl font-black text-[11px] hover:bg-primary-dark transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-primary/20 active:scale-95">
-              <UploadCloud className="w-4 h-4" /> تغيير الشعار
-              <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} disabled={isUpdatingLogo} />
-            </label>
+      {/* Control Bar: Search & Sorting */}
+      <div className="bg-surface p-4 rounded-3xl border border-border shadow-sm flex flex-col lg:flex-row gap-4 sticky top-4 z-50 backdrop-blur-md bg-white/95">
+        <div className="relative flex-1">
+          <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted w-5 h-5" />
+          <input 
+            type="text"
+            placeholder="بحث بالاسم أو البريد الإلكتروني..."
+            className="w-full pr-12 pl-4 py-3 bg-background border border-border rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-inner"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
 
-            {/* Decorative background icon */}
-            <Settings className="absolute -bottom-2 -left-2 w-16 h-16 text-primary/5 -rotate-12" />
-         </div>
+        <div className="flex items-center gap-3 overflow-x-auto pb-1 lg:pb-0 scrollbar-hide">
+          <div className="flex bg-background p-1.5 rounded-2xl border border-border/50 gap-1 flex-shrink-0">
+             <button 
+               onClick={() => setViewMode('all')}
+               className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${viewMode === 'all' ? 'bg-primary text-white shadow-md' : 'text-text-muted hover:bg-gray-100'}`}
+             >الكل</button>
+             <button 
+               onClick={() => setViewMode('active')}
+               className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${viewMode === 'active' ? 'bg-emerald-500 text-white shadow-md' : 'text-text-muted hover:bg-gray-100'}`}
+             >النشطين</button>
+             <button 
+               onClick={() => setViewMode('pending')}
+               className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${viewMode === 'pending' ? 'bg-amber-500 text-white shadow-md' : 'text-text-muted hover:bg-gray-100'}`}
+             >المعلقين</button>
+          </div>
 
-         <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-               <Users className="w-6 h-6" />
-            </div>
-            <div>
-               <div className="text-[10px] font-black text-text-muted uppercase tracking-wider">إجمالي المسجلين</div>
-               <div className="text-xl font-black text-text-main">{users.length} مستخدم</div>
-            </div>
-         </div>
-         <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex items-center gap-4 border-r-4 border-r-amber-400">
-            <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
-               <UserPlus className="w-6 h-6" />
-            </div>
-            <div>
-               <div className="text-[10px] font-black text-text-muted uppercase tracking-wider">طلبات معلقة</div>
-               <div className="text-xl font-black text-text-main">{pendingUsers.length} طلب</div>
-            </div>
-         </div>
-         <div className="bg-surface p-6 rounded-2xl border border-border shadow-sm flex items-center gap-4 border-r-4 border-r-emerald-400">
-            <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-               <UserCheck className="w-6 h-6" />
-            </div>
-            <div>
-               <div className="text-[10px] font-black text-text-muted uppercase tracking-wider">الحسابات النشطة</div>
-               <div className="text-xl font-black text-text-main">{activeUsers.length} مستخدم</div>
-            </div>
-         </div>
-      </div>
+          <div className="h-8 w-[1px] bg-border mx-1 flex-shrink-0" />
 
-      {/* User Management Tabs */}
-      <div className="bg-surface p-2 rounded-[24px] border border-border shadow-sm flex items-center justify-between gap-4 sticky top-4 z-40 backdrop-blur-md bg-white/90">
-         <div className="flex bg-background p-1.5 rounded-2xl border border-border/50 shadow-inner w-full md:w-auto">
-            <button 
-              onClick={() => setActiveTab('active')}
-              className={`
-                flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2
-                ${activeTab === 'active' 
-                  ? 'bg-primary text-white shadow-lg shadow-primary/20' 
-                  : 'text-text-muted hover:text-primary hover:bg-primary/5'}
-              `}
-            >
-              <UserCheck className="w-4 h-4" />
-              المستخدمين النشطين
-              <span className={`px-2 py-0.5 rounded-full text-[9px] ${activeTab === 'active' ? 'bg-white/20' : 'bg-primary/10 text-primary'}`}>
-                {activeUsers.length}
-              </span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('pending')}
-              className={`
-                flex-1 md:flex-none px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2
-                ${activeTab === 'pending' 
-                  ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' 
-                  : 'text-text-muted hover:text-amber-600 hover:bg-amber-50'}
-              `}
-            >
-              <Clock className="w-4 h-4" />
-              طلبات معلقة
-              <span className={`px-2 py-0.5 rounded-full text-[9px] ${activeTab === 'pending' ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>
-                {pendingUsers.length}
-              </span>
-            </button>
-         </div>
-
-         <div className="hidden md:flex items-center gap-2 text-[11px] font-black text-text-muted px-4">
-            <Settings className="w-4 h-4 text-primary animate-spin-slow" />
-            تحكم الصلاحيات المتقدم
-         </div>
-      </div>
-
-      <AnimatePresence mode="wait">
-        {activeTab === 'pending' ? (
-          <motion.section 
-            key="pending"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="space-y-4"
-          >
-            <div className="flex items-center gap-3 px-2">
-              <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-                <UserPlus className="w-5 h-5 text-amber-600" />
-              </div>
-              <h3 className="text-xl font-bold text-text-main">طلبات الانضمام المعلقة ({pendingUsers.length})</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pendingUsers.map(user => (
-                <motion.div 
-                  key={user.uid}
-                  layoutId={user.uid}
-                  className="bg-surface p-6 rounded-[32px] border border-border shadow-sm flex flex-col gap-5 hover:shadow-md transition-all group relative overflow-hidden h-full"
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-[10px] font-black text-text-muted uppercase ml-2 flex items-center gap-1">
+              <ArrowUpDown className="w-3 h-3" /> ترتيب حسب:
+            </span>
+            <div className="flex gap-1.5">
+              {(['displayName', 'email', 'role'] as SortField[]).map(field => (
+                <button 
+                  key={field}
+                  onClick={() => toggleSort(field)}
+                  className={`
+                    px-3 py-2 rounded-xl text-[11px] font-black border transition-all flex items-center gap-1.5
+                    ${sortField === field 
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                      : 'bg-white border-border text-text-muted hover:border-gray-300'}
+                  `}
                 >
-                  {/* Status Badge */}
-                  <div className="absolute top-4 left-4 z-10">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 shadow-sm border border-amber-200">
-                      قيد المراجعة
-                    </span>
-                  </div>
+                  {field === 'displayName' ? 'الاسم' : field === 'email' ? 'البريد' : 'الصلاحية'}
+                  {sortField === field && (
+                    sortOrder === 'asc' ? <SortAsc className="w-3 h-3" /> : <SortDesc className="w-3 h-3" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
-                  <div className="flex items-center gap-4 mt-4">
-                    <div className="relative">
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden p-0.5 bg-white border border-border shadow-sm">
-                        <img src={user.photoURL || ''} alt="" className="w-full h-full object-cover rounded-[14px] grayscale" />
-                      </div>
-                      <div className="absolute -bottom-1 -right-1 bg-amber-500 w-4 h-4 rounded-full border-2 border-white animate-pulse" />
-                    </div>
-                    <div className="flex flex-col overflow-hidden">
-                      <span className="font-black text-text-main truncate text-lg leading-tight">{user.displayName}</span>
-                      <span className="text-xs text-text-muted truncate font-bold flex items-center gap-1 mt-0.5">
-                        <Mail className="w-3 h-3" /> {user.email}
-                      </span>
-                    </div>
-                  </div>
+      <div className="space-y-12">
+        {/* Pending Users Section */}
+        {(viewMode === 'all' || viewMode === 'pending') && (
+          <section className="space-y-6">
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                   <h3 className="text-xl font-black text-text-main flex items-center gap-2">
+                     طلبات الانضمام الجديدة
+                     <span className="bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-lg text-xs border border-amber-200">{pendingUsers.length}</span>
+                   </h3>
+                   <p className="text-[11px] font-bold text-text-muted">مستخدمين بانتظار مراجعة وتفعيل الحساب من قبل الإدارة</p>
+                </div>
+              </div>
+            </div>
 
-                  <div className="flex items-stretch gap-2 mt-auto">
-                    <button 
-                      onClick={() => handleApprove(user.uid)}
-                      className="flex-[2] bg-[#10B981] text-white py-3.5 rounded-2xl font-black text-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 shadow-emerald-100"
-                    >
-                      <CheckCircle className="w-5 h-5" /> تفعيل الحساب
-                    </button>
-                    <button 
-                      onClick={() => setUserToDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
-                      className="flex-1 bg-red-50 text-red-600 py-3.5 rounded-2xl font-black text-sm hover:bg-red-100 transition-all flex items-center justify-center gap-2 border-2 border-red-200 active:scale-95"
-                      title="رفض وحذف الحساب"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Decorative detail */}
-                  <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-amber-50 rounded-full blur-2xl opacity-40 group-hover:opacity-100 transition-opacity" />
-                </motion.div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {pendingUsers.map(user => (
+                <UserCard 
+                  key={user.uid} 
+                  user={user} 
+                  isPending={true} 
+                  onApprove={handleApprove}
+                  onMakeSupervisor={handleMakeSupervisor}
+                  onMakeUser={handleMakeUser}
+                  onDeactivate={handleDeactivate}
+                  onDelete={setUserToDelete}
+                  adminEmails={ADMIN_EMAILS}
+                />
               ))}
               {pendingUsers.length === 0 && (
-                <div className="col-span-full py-12 text-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                   <p className="text-gray-400 font-bold">لا يوجد طلبات انضمام حالياً</p>
+                <div className="col-span-full py-16 text-center bg-gray-50/50 rounded-[40px] border-2 border-dashed border-gray-200 flex flex-col items-center gap-3">
+                   <UserPlus className="w-10 h-10 text-gray-300" />
+                   <p className="text-gray-400 font-bold">لا يوجد طلبات انضمام تتوافق مع البحث</p>
                 </div>
               )}
             </div>
-          </motion.section>
-        ) : (
-          <motion.section 
-            key="active"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
-          >
-            <div className="flex items-center justify-between px-2">
+          </section>
+        )}
+
+        {/* Active Users Section */}
+        {(viewMode === 'all' || viewMode === 'active') && (
+          <section className="space-y-6">
+            <div className="flex items-center justify-between px-2 border-t border-border pt-12">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <UserCheck className="w-5 h-5 text-blue-600" />
+                <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center border border-emerald-100">
+                  <UserCheck className="w-5 h-5 text-emerald-600" />
                 </div>
-                <h3 className="text-xl font-bold text-text-main">قائمة العاملين النشطة ({activeUsers.length})</h3>
+                <div>
+                   <h3 className="text-xl font-black text-text-main flex items-center gap-2">
+                     قائمة الكادر النشطة
+                     <span className="bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-lg text-xs border border-emerald-200">{activeUsers.length}</span>
+                   </h3>
+                   <p className="text-[11px] font-bold text-text-muted">المستخدمين المصرح لهم بالدخول واستخدام ميزات النظام كاملة</p>
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {activeUsers.map(user => (
-                <motion.div 
-                  key={user.uid}
-                  layoutId={user.uid}
-                  className="bg-surface p-6 rounded-[32px] border border-border shadow-sm flex flex-col hover:shadow-md transition-all group relative overflow-hidden h-full"
-                >
-                  {/* Role Badge - Floating */}
-                  <div className="absolute top-4 left-4 z-10">
-                    <span className={`
-                      inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm
-                      ${user.role === 'admin' ? 'bg-indigo-500 text-white' : 
-                        user.role === 'supervisor' ? 'bg-emerald-500 text-white' : 
-                        'bg-blue-500 text-white'}
-                    `}>
-                      {user.role === 'admin' ? 'مدير' : 
-                       user.role === 'supervisor' ? 'مشرف' : 
-                       'سائق/عامل'}
-                    </span>
-                  </div>
-
-                  {/* User Identity */}
-                  <div className="flex flex-col items-center text-center gap-4 mb-6 mt-4">
-                    <div className="relative group/avatar">
-                      <div className="w-20 h-20 rounded-[28px] overflow-hidden p-1 bg-white border border-border shadow-md group-hover:scale-105 transition-transform duration-500">
-                        <img 
-                          src={user.photoURL || ''} 
-                          alt="" 
-                          className={`w-full h-full object-cover rounded-[22px] ${user.role === 'pending' ? 'grayscale' : ''}`} 
-                        />
-                      </div>
-                      {user.role === 'admin' && (
-                        <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1.5 rounded-xl border-4 border-white shadow-lg">
-                          <Shield className="w-3.5 h-3.5 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <h4 className="font-black text-lg text-text-main leading-tight">{user.displayName}</h4>
-                      <p className="text-xs text-text-muted font-bold flex items-center justify-center gap-1.5">
-                        <Mail className="w-3 h-3" />
-                        {user.email}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Actions Section */}
-                  <div className="mt-auto space-y-3">
-                    {ADMIN_EMAILS.includes(user.email) ? (
-                      <div className="w-full py-2.5 bg-slate-50 rounded-2xl text-xs font-black text-slate-400 text-center border border-slate-100 italic">
-                        حساب المدير محمي من التعديلات
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          {user.role !== 'supervisor' && (
-                            <button 
-                              onClick={() => handleMakeSupervisor(user.uid)}
-                              className="flex-1 px-3 py-2.5 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100"
-                            >
-                              تعيين مشرف
-                            </button>
-                          )}
-                          {user.role !== 'user' && (
-                            <button 
-                              onClick={() => handleMakeUser(user.uid)}
-                              className="flex-1 px-3 py-2.5 bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-black hover:bg-slate-200 transition-all active:scale-95 border border-slate-200"
-                            >
-                              تخفيض لمستخدم
-                            </button>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => handleDeactivate(user.uid)}
-                            className="flex-1 px-4 py-3 bg-amber-50 text-amber-600 rounded-2xl text-xs font-black hover:bg-amber-100 transition-all flex items-center justify-center gap-2 border border-amber-100 active:scale-95"
-                          >
-                            <XCircle className="w-4 h-4" /> تعطيل العمل
-                          </button>
-                          <button 
-                            onClick={() => setUserToDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
-                            className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100 active:scale-95 group/del"
-                            title="حذف نهائي"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Subtle Grid Background Pattern */}
-                  <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px] -z-10" />
-                </motion.div>
+                <UserCard 
+                  key={user.uid} 
+                  user={user} 
+                  isPending={false} 
+                  onApprove={handleApprove}
+                  onMakeSupervisor={handleMakeSupervisor}
+                  onMakeUser={handleMakeUser}
+                  onDeactivate={handleDeactivate}
+                  onDelete={setUserToDelete}
+                  adminEmails={ADMIN_EMAILS}
+                />
               ))}
               {activeUsers.length === 0 && (
-                <div className="col-span-full py-20 text-center bg-surface/50 rounded-[40px] border-2 border-dashed border-border flex flex-col items-center gap-4">
-                   <Users className="w-12 h-12 text-slate-200" />
-                   <p className="text-text-muted font-bold">لا يوجد عاملين نشطين حالياً</p>
+                <div className="col-span-full py-16 text-center bg-gray-50/50 rounded-[40px] border-2 border-dashed border-gray-200 flex flex-col items-center gap-3">
+                   <Users className="w-10 h-10 text-gray-300" />
+                   <p className="text-gray-400 font-bold">لا يوجد مستخدمين نشطين يتوافقون مع البحث</p>
                 </div>
               )}
             </div>
-          </motion.section>
+          </section>
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Delete Confirmation Modal */}
       {userToDelete && (

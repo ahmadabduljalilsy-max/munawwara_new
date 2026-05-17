@@ -101,8 +101,10 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                       <IdCard className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-text-muted uppercase">رقم الإقامة</p>
-                      <p className="text-sm font-black text-text-main font-mono">{worker.iqamaNumber}</p>
+                      <p className="text-[10px] font-bold text-text-muted uppercase">رقم الإقامة / الهوية</p>
+                      <p className="text-sm font-black text-text-main font-mono">
+                        {worker.iqamaNumber || worker.nationalId || 'غير مسجل'}
+                      </p>
                     </div>
                   </div>
 

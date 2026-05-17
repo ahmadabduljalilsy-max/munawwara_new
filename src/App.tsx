@@ -36,7 +36,7 @@ function AppContent() {
   const [editingBus, setEditingBus] = useState<Bus|null>(null);
   const [isWorkerFormOpen, setIsWorkerFormOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker|null>(null);
-  const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], stats: any}|null>(null);
+  const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], salaries?: SalaryRecord[], stats: any}|null>(null);
 
   useEffect(() => {
     if (user && profile?.approved) {
@@ -462,6 +462,18 @@ function AppContent() {
     }, 500);
   };
 
+  const handleGenerateSalaryPdf = async (config: { title: string; salaries: SalaryRecord[]; stats: any }) => {
+    setReportConfig({
+      title: config.title,
+      salaries: config.salaries,
+      stats: config.stats
+    });
+
+    setTimeout(async () => {
+      await generatePdf('pdf-report', `${config.title}.pdf`);
+    }, 500);
+  };
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
       <AnimatePresence mode="wait">
@@ -498,6 +510,7 @@ function AppContent() {
               onSaveSalary={handleSaveSalary}
               onUpdateSalary={handleUpdateSalary}
               onExportExcel={(data) => exportSalariesToExcel(data)}
+              onGeneratePDF={handleGenerateSalaryPdf}
             />
           )}
           {activeTab === 'admin' && profile.role === 'admin' && <AdminPanel />}
@@ -543,6 +556,7 @@ function AppContent() {
             title={reportConfig.title} 
             buses={reportConfig.buses} 
             workers={reportConfig.workers}
+            salaries={reportConfig.salaries}
             generatedBy={profile.displayName || 'مستخدم النظام'}
             stats={reportConfig.stats}
           />

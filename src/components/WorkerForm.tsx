@@ -16,6 +16,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     workerNumber: '',
     name: '',
     iqamaNumber: '',
+    nationalId: '',
     mobileNumber: '',
     recruitmentCompany: '',
     workplace: '',
@@ -37,6 +38,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         workerNumber: worker.workerNumber,
         name: worker.name,
         iqamaNumber: worker.iqamaNumber,
+        nationalId: worker.nationalId || '',
         mobileNumber: worker.mobileNumber,
         recruitmentCompany: worker.recruitmentCompany,
         workplace: worker.workplace,
@@ -170,12 +172,23 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                </div>
                <div>
                   <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
-                    <IdCard className="w-3 h-3" /> رقم الإقامة
+                    <IdCard className="w-3 h-3 text-emerald-600" /> رقم الإقامة (للمقيمين)
                   </label>
                   <input 
                     name="iqamaNumber"
-                    required
+                    required={!formData.nationalId}
                     value={formData.iqamaNumber}
+                    onChange={handleChange}
+                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  />
+               </div>
+               <div>
+                  <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
+                    <IdCard className="w-3 h-3 text-blue-600" /> رقم الهوية الوطنية (للسعوديين)
+                  </label>
+                  <input 
+                    name="nationalId"
+                    value={formData.nationalId}
                     onChange={handleChange}
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                   />

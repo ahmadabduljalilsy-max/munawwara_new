@@ -21,7 +21,7 @@ import {
   Filter,
   RefreshCw
 } from 'lucide-react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useLogo } from '../lib/LogoContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
@@ -178,6 +178,144 @@ export const AdminPanel: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('displayName');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [showSyncConfirm, setShowSyncConfirm] = useState(false);
+  const [showResultModal, setShowResultModal] = useState<{
+    type: 'success' | 'info' | 'error';
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const executeSyncPreviousBuses = async () => {
+    setShowSyncConfirm(false);
+    setIsSyncing(true);
+    setSyncStatus('جاري فحص وتحديث وترتيب بيانات الحافلات من سجل الملاحظات...');
+    
+    try {
+      const workersSnap = await getDocs(collection(db, 'workers'));
+      let batch = writeBatch(db);
+      let batchSize = 0;
+      let updatedCount = 0;
+      let totalCount = 0;
+
+      workersSnap.forEach((workerDoc) => {
+        totalCount++;
+        const workerId = workerDoc.id;
+        const workerData = workerDoc.data();
+        const notes = (workerData.notes || '').toString().trim();
+        const existingPreviousStr = (workerData.previousBuses || '').toString().trim();
+
+        if (!notes) return;
+
+        // --- ULTRA-ROBUST PARSING METHOD ---
+        let cleanNotes = notes;
+
+        // 1. Convert all Arabic-Indic numbers (e.g., ٢٠٢٦, ٣١٦) to standard digits (e.g., 2026, 316)
+        cleanNotes = cleanNotes.replace(/[\u0660-\u0669]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 1632));
+
+        // 2. Remove any standard digit-based dates (e.g. YYYY/MM/DD, DD/MM/YYYY, DD-MM-YYYY, DD/MM/YY, etc.)
+        cleanNotes = cleanNotes.replace(/\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}/g, ''); // YYYY/MM/DD
+        cleanNotes = cleanNotes.replace(/\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}/g, ''); // DD/MM/YY or DD/MM/YYYY
+
+        // 3. Remove Arabic written dates (e.g. "11 مايو 2026", "22 مايو 2026")
+        cleanNotes = cleanNotes.replace(/\d{1,2}\s+[\u0600-\u06FFa-zA-Z]+\s+\d{4}/g, '');
+
+        // 4. Remove vehicle plates explicitly to avoid matching plate digits (e.g. "اللوحة: أ ر د 2411" or "لوحة أدق 2569")
+        // We match up to 20 alphabetic/spacing characters between "لوحة" and the digits to be completely clean
+        cleanNotes = cleanNotes.replace(/(اللوحة|لوحة|اللوحه|لوحه)\s*[:：-]*\s*[a-zA-Z\u0600-\u06FF\s]{0,20}\d+/gi, '');
+
+        // 5. Scan the remaining string for any sequences of digits (the actual bus numbers!)
+        const extracted: string[] = [];
+        const digitMatches = cleanNotes.match(/\d+/g);
+
+        if (digitMatches) {
+          digitMatches.forEach(numStr => {
+            const val = numStr.trim();
+            const num = parseInt(val, 10);
+            
+            // Exclude small index numbers like 1, 2, 3 corresponding to lists
+            // Exclude current/future year digits (e.g., 2020 to 2030) to skip any years that weren't captured by dates patterns
+            if (val.length >= 2 && val.length <= 4) {
+              if (num < 2020 || num > 2030) {
+                if (!extracted.includes(val)) {
+                  extracted.push(val);
+                }
+              }
+            }
+          });
+        }
+
+        // Parse current previousBuses and split cleanly
+        const existingList = existingPreviousStr
+          ? existingPreviousStr.split(/[\s,،\-]+/).map((item: string) => item.trim()).filter(Boolean)
+          : [];
+
+        // Combine non-duplicated list values
+        const mergedList = Array.from(new Set([...existingList, ...extracted]));
+
+        // Sort numerically (ascending order)
+        mergedList.sort((a, b) => {
+          const numA = parseInt(a, 10);
+          const numB = parseInt(b, 10);
+          if (isNaN(numA) || isNaN(numB)) {
+            return a.localeCompare(b);
+          }
+          return numA - numB;
+        });
+
+        const newPreviousBuses = mergedList.join(' - ');
+
+        // If the calculated string differs from current state, compile it to batch queue
+        if (newPreviousBuses !== existingPreviousStr) {
+          batch.update(doc(db, 'workers', workerId), {
+            previousBuses: newPreviousBuses,
+            updatedAt: new Date().toISOString()
+          });
+          updatedCount++;
+          batchSize++;
+
+          // Commit batch incrementally if we reach Firestore limit of 500 documents
+          if (batchSize >= 400) {
+            batch.commit();
+            batch = writeBatch(db);
+            batchSize = 0;
+          }
+        }
+      });
+
+      // Commit remaining batch updates
+      if (batchSize > 0) {
+        await batch.commit();
+      }
+
+      if (updatedCount > 0) {
+        setSyncStatus(`تم بنجاح! تم استخراج وترتيب بيانات الحافلات السابقة لـ ${updatedCount} عمال من أصل ${totalCount}.`);
+        setShowResultModal({
+          type: 'success',
+          title: 'اكتمل التحديث بنجاح',
+          message: `تم نسخ وترتيب مصفوفة الحافلات السابقة لـ ${updatedCount} عمال بنجاح بناءً على الملاحظات وحفظ التغييرات في السحابة.`
+        });
+      } else {
+        setSyncStatus(`قاعدة البيانات محدثة ومطابقة بالكامل! (تم فحص ${totalCount} عمال ولم يستدعِ أي تعديلات).`);
+        setShowResultModal({
+          type: 'info',
+          title: 'البيانات متطابقة بالفعل',
+          message: 'كافة حقول "الحافلات السابقة" متطابقة تماماً ومحدثة بالفعل مع سجل الملاحظات لجميع العمال.'
+        });
+      }
+    } catch (error) {
+      console.error('Error syncing previous buses from notes:', error);
+      setSyncStatus('حدث خطأ أثناء فحص وتحديث البيانات من السحابة.');
+      setShowResultModal({
+        type: 'error',
+        title: 'فشل التحديث',
+        message: 'حدث خطأ غير متوقع أثناء الاتصال بقاعدة البيانات السحابية. يرجى التحقق من جودة الاتصال بالإنترنت والمحاولة مجدداً.'
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
     // Sync Users
@@ -369,6 +507,38 @@ export const AdminPanel: React.FC = () => {
         <div className="absolute top-0 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 opacity-50" />
       </div>
 
+      {/* Maintenance & Data Synchronization Card */}
+      <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm relative overflow-hidden group">
+         <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 text-right">
+           <div className="flex items-center gap-4">
+             <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center shadow-inner text-indigo-600 flex-shrink-0">
+               <RefreshCw className={`w-6 h-6 ${isSyncing ? 'animate-spin' : ''}`} />
+             </div>
+             <div>
+               <h3 className="text-base font-black text-text-main flex items-center gap-2">
+                 مزامنة وإصلاح بيانات الحافلات السابقة
+               </h3>
+               <p className="text-xs text-text-muted mt-1 font-bold leading-relaxed max-w-2xl">
+                 يقوم هذا الفحص بقراءة حقل الملاحظات لكل عامل واستخراج أرقام الحافلات السابقة المسجلة فيه تلقائياً، ثم تحديث قائمة "الحافلات السابقة" لكل عامل لضمان استرجاع ومزامنة كافة التعديلات وعمليات فك الارتباط السابقة.
+               </p>
+               {syncStatus && (
+                 <div className="mt-2 text-xs font-black text-indigo-700 bg-indigo-50/50 px-3 py-1.5 rounded-lg border border-indigo-100 inline-block">
+                   {syncStatus}
+                 </div>
+               )}
+             </div>
+           </div>
+           <button 
+             onClick={() => setShowSyncConfirm(true)}
+             disabled={isSyncing}
+             className="bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-black text-xs hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100 disabled:opacity-50 flex-shrink-0 w-full md:w-auto justify-center cursor-pointer active:scale-[0.98]"
+           >
+             <Settings className="w-4 h-4" /> تحديث الحافلات السابقة من الملاحظات
+           </button>
+         </div>
+         <div className="absolute inset-0 pointer-events-none opacity-[0.015] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px]" />
+      </div>
+
       {/* Control Bar: Search & Sorting */}
       <div className="bg-surface p-4 rounded-3xl border border-border shadow-sm flex flex-col lg:flex-row gap-4 sticky top-4 z-50 backdrop-blur-md bg-white/95">
         <div className="relative flex-1">
@@ -549,6 +719,84 @@ export const AdminPanel: React.FC = () => {
 
             {/* Decorative background circle */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          </motion.div>
+        </div>
+      )}
+
+      {/* Sync Confirmation Modal */}
+      {showSyncConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-surface p-8 rounded-[40px] shadow-2xl border border-border max-w-lg w-full text-center relative overflow-hidden"
+            dir="rtl"
+          >
+            <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner border border-indigo-100">
+               <RefreshCw className="w-10 h-10 animate-spin" />
+            </div>
+            <h3 className="text-2xl font-black text-text-main mb-3">تحديث وترتيب الحافلات السابقة؟</h3>
+            <p className="text-text-muted font-bold text-sm leading-relaxed mb-8">
+              هل أنت متأكد من رغبتك في تحديث وترتيب بيانات الحافلات السابقة لجميع العمال بناءً على حقل الملاحظات وسجلات الفك والتركيب السابقة الخاصة بكل عامل؟
+              <br />
+              <span className="text-indigo-600 font-extrabold mt-2 block bg-indigo-50/50 py-2.5 px-4 rounded-xl border border-indigo-100/50 text-xs">
+                سيقوم هذا الإجراء تلقائياً بجمع وتصفية وترتيب أرقام الحافلات السابقة لكل عامل بشكل صحيح.
+              </span>
+            </p>
+            
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={executeSyncPreviousBuses}
+                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95 cursor-pointer"
+              >
+                تأكيد التحديث والترتيب الآن
+              </button>
+              <button 
+                onClick={() => setShowSyncConfirm(false)}
+                className="w-full bg-slate-50 text-text-main py-4 rounded-2xl font-black text-sm hover:bg-slate-100 transition-all border border-border active:scale-95 cursor-pointer"
+              >
+                إلغاء التحديث
+              </button>
+            </div>
+
+            {/* Decorative background circle */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          </motion.div>
+        </div>
+      )}
+
+      {/* Result feedback Modal */}
+      {showResultModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-surface p-8 rounded-[40px] shadow-2xl border border-border max-w-md w-full text-center relative overflow-hidden"
+            dir="rtl"
+          >
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner border ${
+              showResultModal.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+              showResultModal.type === 'error' ? 'bg-red-50 text-red-600 border-red-100' : 
+              'bg-blue-50 text-indigo-600 border-blue-100'
+            }`}>
+               {showResultModal.type === 'success' && <CheckCircle className="w-10 h-10" />}
+               {showResultModal.type === 'error' && <XCircle className="w-10 h-10" />}
+               {showResultModal.type === 'info' && <RefreshCw className="w-10 h-10" />}
+            </div>
+            <h3 className="text-xl font-black text-text-main mb-3">{showResultModal.title}</h3>
+            <p className="text-text-muted font-bold text-sm leading-relaxed mb-8">
+              {showResultModal.message}
+            </p>
+            
+            <button 
+              onClick={() => setShowResultModal(null)}
+              className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              موافق
+            </button>
+
+            {/* Decorative background circle */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
           </motion.div>
         </div>
       )}

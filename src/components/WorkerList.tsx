@@ -475,6 +475,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">نهاية العمل</th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center bg-primary/5">أيام الدوام</th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الحافلة المرتبطة</th>
+                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الحافلات السابقة</th>
                   <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">العميل</th>
                   {isAdmin && <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الإجراءات</th>}
                 </tr>
@@ -605,6 +606,20 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold border border-amber-200">
                             غير مرتبط
                           </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        {worker.previousBuses ? (
+                          <div className="flex flex-wrap justify-center gap-1 max-w-[150px] mx-auto">
+                            {worker.previousBuses.split(/[\s,،\-]+/).map(item => item.trim()).filter(Boolean).map((bus, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">
+                                <BusIcon className="w-2 h-2 text-indigo-500" />
+                                {bus}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-text-muted/60 text-xs">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-bold">{worker.clientName}</td>
@@ -772,6 +787,14 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                     <span>{worker.mobileNumber}</span>
                                   </div>
                                 </div>
+
+                                {worker.previousBuses && (
+                                  <div className="mb-4 flex items-center gap-1.5 text-[9px] text-text-muted bg-indigo-50/50 p-1.5 rounded-xl border border-indigo-100/30">
+                                    <BusIcon className="w-3 h-3 text-indigo-500 shrink-0" />
+                                    <span className="font-semibold shrink-0">الحافلات السابقة:</span>
+                                    <span className="font-black text-indigo-700 truncate">{worker.previousBuses}</span>
+                                  </div>
+                                )}
 
                                 <div className="flex items-center justify-between pt-3 border-t border-border mt-auto">
                                   <div className="flex flex-col">

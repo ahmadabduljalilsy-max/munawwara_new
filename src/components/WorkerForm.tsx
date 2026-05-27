@@ -26,6 +26,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     assignedBusId: '',
     assignedBusOperationalNumber: '',
     assignedBusPlateNumber: '',
+    previousBuses: '',
     notes: ''
   });
 
@@ -48,6 +49,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         assignedBusId: worker.assignedBusId || '',
         assignedBusOperationalNumber: worker.assignedBusOperationalNumber || '',
         assignedBusPlateNumber: worker.assignedBusPlateNumber || '',
+        previousBuses: worker.previousBuses || '',
         notes: worker.notes || ''
       });
     }
@@ -57,6 +59,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     e.preventDefault();
     
     let finalNotes = formData.notes;
+    let finalPreviousBuses = formData.previousBuses || '';
     const isReassignment = worker && worker.assignedBusId && worker.assignedBusId !== formData.assignedBusId;
     
     // Check if we are editing an existing worker and the bus has changed
@@ -83,11 +86,24 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
       } else {
         finalNotes = `${finalNotes}\n${logEntry}`;
       }
+
+      // Automatically append old bus to previousBuses field
+      if (worker?.assignedBusOperationalNumber) {
+        const oldBusNum = worker.assignedBusOperationalNumber.trim();
+        const existingList = finalPreviousBuses 
+          ? finalPreviousBuses.split(/[\s,،\-]+/).map(item => item.trim()).filter(Boolean) 
+          : [];
+        if (!existingList.includes(oldBusNum)) {
+          existingList.push(oldBusNum);
+          finalPreviousBuses = existingList.join(' - ');
+        }
+      }
     }
 
     const saveData = {
       ...formData,
-      notes: finalNotes
+      notes: finalNotes,
+      previousBuses: finalPreviousBuses
     };
 
     if (isReassignment) {
@@ -323,6 +339,20 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                   )}
                </div>
             </div>
+          </div>
+
+          <div className="mt-6">
+              <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2 text-indigo-600">
+                <BusIcon className="w-3.5 h-3.5 text-indigo-600" /> الحافلات السابقة
+              </label>
+              <input 
+                name="previousBuses"
+                value={formData.previousBuses || ''}
+                onChange={handleChange}
+                placeholder="مثال: 102 - 105 - 304"
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all font-bold"
+              />
+              <p className="text-[10px] text-text-muted mt-1 font-medium">تُسجّل تلقائياً عند فك ارتباط وتغيير الحافلة، وتُعرض كقائمة أرقام تشغيل مفصولة بشرطة (-).</p>
           </div>
 
           <div className="mt-6">

@@ -208,7 +208,21 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                      </div>
                    )}
                 </div>
-              </div>
+
+                <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm transition-all ${worker.previousBuses ? 'bg-indigo-50/20 border-indigo-200/50' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
+                   <div className="flex items-center gap-3 w-full">
+                      <div className={`p-2 rounded-xl border ${worker.previousBuses ? 'bg-white text-indigo-600 border-indigo-200' : 'bg-white text-text-muted border-slate-200'}`}>
+                        <BusIcon className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold text-text-muted uppercase">الحافلات السابقة المستلمة</p>
+                        <p className={`text-sm font-black ${worker.previousBuses ? 'text-indigo-800' : 'text-text-muted italic'}`}>
+                          {worker.previousBuses || 'لا يوجد حافلات سابقة'}
+                        </p>
+                      </div>
+                   </div>
+                </div>
+             </div>
 
               {/* Timeline Section */}
               <div className="bg-slate-50 rounded-2xl p-6 border border-border">

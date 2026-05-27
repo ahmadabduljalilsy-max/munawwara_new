@@ -29,6 +29,7 @@ export interface Worker {
   assignedBusId?: string;
   assignedBusOperationalNumber?: string;
   assignedBusPlateNumber?: string;
+  previousBuses?: string;
   notes: string;
   createdAt?: any;
 }

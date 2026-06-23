@@ -199,14 +199,14 @@ export const AdminPanel: React.FC = () => {
       let updatedCount = 0;
       let totalCount = 0;
 
-      workersSnap.forEach((workerDoc) => {
+      for (const workerDoc of workersSnap.docs) {
         totalCount++;
         const workerId = workerDoc.id;
         const workerData = workerDoc.data();
         const notes = (workerData.notes || '').toString().trim();
         const existingPreviousStr = (workerData.previousBuses || '').toString().trim();
 
-        if (!notes) return;
+        if (!notes) continue;
 
         // --- ULTRA-ROBUST PARSING METHOD ---
         let cleanNotes = notes;
@@ -277,12 +277,12 @@ export const AdminPanel: React.FC = () => {
 
           // Commit batch incrementally if we reach Firestore limit of 500 documents
           if (batchSize >= 400) {
-            batch.commit();
+            await batch.commit();
             batch = writeBatch(db);
             batchSize = 0;
           }
         }
-      });
+      }
 
       // Commit remaining batch updates
       if (batchSize > 0) {

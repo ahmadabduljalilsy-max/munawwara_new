@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   Bus, 
@@ -19,20 +19,58 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  Cell
+  Cell,
+  PieChart,
+  Pie,
+  Legend,
+  LabelList
 } from 'recharts';
-import type { Bus as BusType } from '../types';
+import type { Bus as BusType, Worker as WorkerType } from '../types';
 
 interface DashboardProps {
   buses: BusType[];
+  workers?: WorkerType[];
   profile: any;
   workersCount?: number;
 }
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
 
-export const Dashboard: React.FC<DashboardProps> = ({ buses, profile, workersCount = 0 }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profile, workersCount = 0 }) => {
   const totalBuses = buses.length;
+  const [chartTab, setChartTab] = useState<'year' | 'brand'>('year');
+
+  // Stats by Operational Status (متاحة، صيانة، في الخدمة)
+  const assignedBusIds = React.useMemo(() => {
+    return new Set(
+      workers.map(w => w.assignedBusId).filter(Boolean)
+    );
+  }, [workers]);
+
+  const opStatusCounts = React.useMemo(() => {
+    let available = 0;
+    let maintenance = 0;
+    let inService = 0;
+
+    buses.forEach(bus => {
+      const isUnderMaintenance = bus.technicalStatus === 'تحت الصيانة' || bus.technicalStatus === 'متوقف';
+      if (isUnderMaintenance) {
+        maintenance++;
+      } else if (assignedBusIds.has(bus.id)) {
+        inService++;
+      } else {
+        available++;
+      }
+    });
+
+    return { available, maintenance, inService };
+  }, [buses, assignedBusIds]);
+
+  const opStatusChartData = React.useMemo(() => [
+    { name: 'متاحة للتشغيل', value: opStatusCounts.available, color: '#10b981', shortName: 'متاحة' },
+    { name: 'في الخدمة', value: opStatusCounts.inService, color: '#6366f1', shortName: 'في الخدمة' },
+    { name: 'تحت الصيانة / متوقفة', value: opStatusCounts.maintenance, color: '#f43f5e', shortName: 'صيانة' },
+  ], [opStatusCounts]);
   
   // Stats by Location
   const locationCounts = buses.reduce((acc: any, bus) => {
@@ -71,6 +109,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, profile, workersCou
   const modelData = Object.keys(modelCounts)
     .map(year => ({ year, count: modelCounts[year] }))
     .sort((a, b) => Number(a.year) - Number(b.year));
+
+  // Stats by Manufacturer
+  const manufacturerData = React.useMemo(() => {
+    const counts = buses.reduce((acc: any, bus) => {
+      const brand = bus.manufacturer || 'غير محدد';
+      acc[brand] = (acc[brand] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.keys(counts)
+      .map(name => ({ name, count: counts[name] }))
+      .sort((a, b) => b.count - a.count);
+  }, [buses]);
+
+  // Model and fleet age stats
+  const fleetAgeStats = React.useMemo(() => {
+    if (buses.length === 0) {
+      return { avgAge: 0, mostCommonBrand: 'غير محدد', newest: 'غير محدد', oldest: 'غير محدد', avgYear: 0 };
+    }
+    
+    const currentYear = new Date().getFullYear();
+    const years = buses
+      .map(b => parseInt(b.model, 10))
+      .filter(y => !isNaN(y) && y > 1900 && y <= currentYear + 1);
+
+    const newest = years.length > 0 ? Math.max(...years) : 'غير معروف';
+    const oldest = years.length > 0 ? Math.min(...years) : 'غير معروف';
+    
+    const sumYears = years.reduce((sum, val) => sum + val, 0);
+    const avgYear = years.length > 0 ? Math.round(sumYears / years.length) : 0;
+    const avgAge = avgYear > 0 ? Math.max(0, currentYear - avgYear) : 0;
+
+    // Brand counts
+    const brands: { [key: string]: number } = {};
+    buses.forEach(b => {
+      const brand = b.manufacturer || 'غير محدد';
+      brands[brand] = (brands[brand] || 0) + 1;
+    });
+    let mostCommonBrand = 'غير محدد';
+    let maxBrandCount = 0;
+    Object.entries(brands).forEach(([brand, count]) => {
+      if (count > maxBrandCount) {
+        maxBrandCount = count;
+        mostCommonBrand = brand;
+      }
+    });
+
+    return { avgAge, newest, oldest, mostCommonBrand, avgYear };
+  }, [buses]);
 
   const statsCards = [
     { label: 'إجمالي الحافلات', value: totalBuses, icon: Bus, color: 'text-primary', bg: 'bg-emerald-50', trend: '↑ الأسطول مكتمل' },
@@ -159,59 +246,251 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, profile, workersCou
           </div>
         </motion.div>
 
-        {/* Model Distribution */}
+        {/* Operational Status (متاحة، صيانة، في الخدمة) Donut Chart */}
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-sm h-[400px] flex flex-col"
+        >
+          <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
+             <h3 className="text-base font-black flex items-center gap-2">
+               <Activity className="w-5 h-5 text-indigo-600" />
+               توزيع الحافلات حسب حالة التشغيل
+             </h3>
+             <span className="text-xs font-bold text-text-muted">
+               الوضعية الحالية الميدانية
+             </span>
+          </div>
+          
+          <div className="flex-1 flex flex-col md:flex-row items-center justify-around gap-6 min-h-0">
+            {/* The Donut Chart */}
+            <div className="relative w-full md:w-1/2 h-[220px] flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={opStatusChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={65}
+                    outerRadius={85}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {opStatusChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: '1px solid #E2E8F0', 
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                      textAlign: 'right',
+                      direction: 'rtl'
+                    }}
+                    itemStyle={{ fontWeight: 800 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Central text displaying total number of buses */}
+              <div className="absolute top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] text-center pointer-events-none">
+                <span className="text-4xl font-black text-text-main leading-none block">{totalBuses}</span>
+                <span className="text-[10px] font-extrabold text-text-muted mt-1 block">إجمالي الحافلات</span>
+              </div>
+            </div>
+
+            {/* Explanatory Legend / Details Cards */}
+            <div className="w-full md:w-1/2 flex flex-col gap-3">
+              {opStatusChartData.map((item) => {
+                const percentage = totalBuses > 0 ? (item.value / totalBuses) * 100 : 0;
+                return (
+                  <div 
+                    key={item.name} 
+                    className="p-3 bg-background rounded-xl border border-border/60 flex items-center justify-between hover:border-border transition-colors grow"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <div>
+                        <p className="text-xs font-black text-text-main">{item.name}</p>
+                        <p className="text-[10px] text-text-muted font-bold mt-0.5">{percentage.toFixed(1)}% من إجمالي الأسطول</p>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <span className="text-lg font-black text-text-main block leading-none">{item.value}</span>
+                      <span className="text-[9px] font-bold text-text-muted block mt-1">حافلة</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Model & Manufacturer Distribution */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-sm h-[500px] flex flex-col"
+          className="lg:col-span-12 bg-surface p-6 rounded-2xl border border-border shadow-sm flex flex-col min-h-[480px]"
         >
-          <div className="flex items-center justify-between mb-8 border-b border-border pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-border pb-4">
              <h3 className="text-base font-black flex items-center gap-2">
-               <Calendar className="w-5 h-5 text-primary" />
-               تحليل أسطول الحافلات حسب سنة الصنع
+                <Calendar className="w-5 h-5 text-primary" />
+                {chartTab === 'year' ? 'تحليل أسطول الحافلات حسب سنة الصنع' : 'تحليل أسطول الحافلات حسب الشركة المصنعة'}
              </h3>
+             <div className="flex bg-background p-1 rounded-xl border border-border self-start sm:self-auto">
+               <button
+                 onClick={() => setChartTab('year')}
+                 className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                   chartTab === 'year' 
+                     ? 'bg-surface text-primary shadow-sm border border-border/40' 
+                     : 'text-text-muted hover:text-text-main'
+                 }`}
+               >
+                 سنة الصنع (الموديل)
+               </button>
+               <button
+                 onClick={() => setChartTab('brand')}
+                 className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+                   chartTab === 'brand' 
+                     ? 'bg-surface text-primary shadow-sm border border-border/40' 
+                     : 'text-text-muted hover:text-text-main'
+                 }`}
+               >
+                 الشركة المصنعة (الماركة)
+               </button>
+             </div>
           </div>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={modelData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.5} />
-                <XAxis 
-                  dataKey="year" 
-                  fontSize={11} 
-                  fontWeight={800}
-                  tickLine={false} 
-                  axisLine={false}
-                  dy={10}
-                />
-                <YAxis 
-                  fontSize={11} 
-                  fontWeight={800}
-                  tickLine={false} 
-                  axisLine={false}
-                  dx={-10}
-                />
-                <Tooltip 
-                  cursor={{ fill: '#F8FAFC', radius: 8 }}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: '1px solid #E2E8F0', 
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    textAlign: 'right'
-                  }}
-                  itemStyle={{ fontWeight: 800, color: '#1e4d2b' }}
-                />
-                <Bar 
-                  dataKey="count" 
-                  fill="#059669" 
-                  radius={[8, 8, 8, 8]} 
-                  barSize={40}
-                >
-                  {modelData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+
+          {/* Quick Metrics of Fleet Age/Manufacturer */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 lg:mb-8" dir="rtl">
+            <div className="p-3 bg-background rounded-xl border border-border/50 flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-text-muted">متوسط عمر الأسطول</span>
+              <span className="text-base lg:text-lg font-black text-primary mt-1">
+                {fleetAgeStats.avgAge} سنوات <span className="text-xs text-text-muted font-bold">({fleetAgeStats.avgYear || '—'})</span>
+              </span>
+            </div>
+            <div className="p-3 bg-background rounded-xl border border-border/50 flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-text-muted">الشركة الأكثر انتشاراً</span>
+              <span className="text-sm font-black text-indigo-600 mt-1 truncate" title={fleetAgeStats.mostCommonBrand}>
+                {fleetAgeStats.mostCommonBrand}
+              </span>
+            </div>
+            <div className="p-3 bg-background rounded-xl border border-border/50 flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-text-muted">أحدث موديل بالأسطول</span>
+              <span className="text-base lg:text-lg font-black text-emerald-600 mt-1">
+                {fleetAgeStats.newest}
+              </span>
+            </div>
+            <div className="p-2.5 lg:p-3 bg-background rounded-xl border border-border/50 flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-text-muted">أقدم موديل بالأسطول</span>
+              <span className="text-base lg:text-lg font-black text-amber-600 mt-1">
+                {fleetAgeStats.oldest}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-[260px] relative">
+            {chartTab === 'year' ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={modelData} margin={{ top: 25, right: 15, left: 15, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.5} />
+                  <XAxis 
+                    dataKey="year" 
+                    fontSize={11} 
+                    fontWeight={800}
+                    tickLine={false} 
+                    axisLine={false}
+                    dy={10}
+                    stroke="#475569"
+                  />
+                  <YAxis 
+                    fontSize={11} 
+                    fontWeight={800}
+                    tickLine={false} 
+                    axisLine={false}
+                    dx={-10}
+                    stroke="#475569"
+                  />
+                  <Tooltip 
+                    cursor={{ fill: '#F8FAFC', radius: 8 }}
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: '1px solid #E2E8F0', 
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                      textAlign: 'right',
+                      direction: 'rtl'
+                    }}
+                    itemStyle={{ fontWeight: 800, color: '#10b981' }}
+                  />
+                  <Bar 
+                    dataKey="count" 
+                    fill="#059669" 
+                    radius={[6, 6, 0, 0]} 
+                    barSize={45}
+                  >
+                    {modelData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                    <LabelList 
+                      dataKey="count" 
+                      position="top" 
+                      offset={10}
+                      style={{ fontSize: 11, fontWeight: 900, fill: '#1e293b' }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={manufacturerData} margin={{ top: 25, right: 15, left: 15, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.5} />
+                  <XAxis 
+                    dataKey="name" 
+                    fontSize={11} 
+                    fontWeight={800}
+                    tickLine={false} 
+                    axisLine={false}
+                    dy={10}
+                    stroke="#475569"
+                  />
+                  <YAxis 
+                    fontSize={11} 
+                    fontWeight={800}
+                    tickLine={false} 
+                    axisLine={false}
+                    dx={-10}
+                    stroke="#475569"
+                  />
+                  <Tooltip 
+                    cursor={{ fill: '#F8FAFC', radius: 8 }}
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: '1px solid #E2E8F0', 
+                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                      textAlign: 'right',
+                      direction: 'rtl'
+                    }}
+                    itemStyle={{ fontWeight: 800, color: '#6366f1' }}
+                  />
+                  <Bar 
+                    dataKey="count" 
+                    fill="#6366f1" 
+                    radius={[6, 6, 0, 0]} 
+                    barSize={45}
+                  >
+                    {manufacturerData.map((_, index) => (
+                      <Cell key={`cell-brand-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                    ))}
+                    <LabelList 
+                      dataKey="count" 
+                      position="top" 
+                      offset={10}
+                      style={{ fontSize: 11, fontWeight: 900, fill: '#1e293b' }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </motion.div>
       </div>

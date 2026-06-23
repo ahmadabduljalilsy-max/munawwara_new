@@ -44,6 +44,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // We throw a standard error with JSON message as per instructions
-  throw new Error(JSON.stringify(errInfo));
+  // We throw a standard error with JSON message as per instructions for mutations only
+  if (operationType !== OperationType.GET && operationType !== OperationType.LIST) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }

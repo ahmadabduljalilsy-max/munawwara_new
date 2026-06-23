@@ -485,7 +485,7 @@ function AppContent() {
            transition={{ duration: 0.2, ease: "easeInOut" }}
            className="w-full h-full"
         >
-          {activeTab === 'dashboard' && <Dashboard buses={buses} profile={profile} workersCount={activeWorkersCount} />}
+          {activeTab === 'dashboard' && <Dashboard buses={buses} workers={workers} profile={profile} workersCount={activeWorkersCount} />}
           {activeTab === 'fleet' && (
             <FleetList 
               buses={buses} 

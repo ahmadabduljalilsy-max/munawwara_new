@@ -106,6 +106,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         w.workplace.toLowerCase().includes(searchTerm) ||
         w.workerNumber.toLowerCase().includes(searchTerm) ||
         (w.mobileNumber && w.mobileNumber.includes(searchTerm)) ||
+        (w.notes && w.notes.toLowerCase().includes(searchTerm)) ||
         (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(searchTerm)) ||
         (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(searchTerm));
       
@@ -346,11 +347,20 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
                 <input 
                   type="text"
-                  placeholder="ابحث باسم العامل، رقم الإقامة/الهوية، مكان العمل، أو رقم الحافلة..."
-                  className="w-full pr-10 pl-4 py-2.5 bg-surface border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
+                  placeholder="ابحث باسم العامل، الإقامة، مكان العمل، الحافلة، أو الملاحظات..."
+                  className="w-full pr-10 pl-10 py-2.5 bg-surface border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                {search && (
+                  <button 
+                    onClick={() => setSearch('')}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-red-500 rounded-lg p-1 hover:bg-black/5 transition-all"
+                    title="مسح البحث"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               <button 
                 onClick={() => setShowFilters(!showFilters)}
@@ -459,6 +469,27 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             )}
           </AnimatePresence>
         </div>
+
+        {/* Active Filters / Search Summary banner */}
+        {(search || filters.workplace || filters.clientName || filters.recruitmentCompany || filters.busStatus !== 'all' || filters.workerStatus !== 'active') && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 bg-primary/5 text-xs text-primary border-b border-border/80" dir="rtl">
+            <div className="flex items-center gap-2 font-black">
+              <span>تصفية نشطة:</span>
+              <span className="bg-primary/10 px-2 py-0.5 rounded-full font-black text-[11px]">
+                تم العثور على {filteredWorkers.length} من إجمالي {workers.length} عامل
+              </span>
+            </div>
+            <button 
+              onClick={() => {
+                setSearch('');
+                setFilters({ workplace: '', clientName: '', recruitmentCompany: '', busStatus: 'all', workerStatus: 'active' });
+              }}
+              className="text-[10px] font-black hover:underline text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100/60 px-2.5 py-1 rounded-lg transition-colors border border-red-100"
+            >
+              إلغاء البحث والتصفية
+            </button>
+          </div>
+        )}
 
         {viewMode === 'table' ? (
           <div className="overflow-x-auto flex-1">

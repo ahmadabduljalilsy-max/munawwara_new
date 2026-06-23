@@ -65,10 +65,10 @@ service cloud.firestore {
 
     // --- Worker Validation ---
     function isValidWorker(data) {
-      return data.workerNumber is string && data.workerNumber.size() <= 100 &&
-             data.name is string && data.name.size() <= 200 &&
-             data.iqamaNumber is string && data.iqamaNumber.size() <= 100 &&
-             (data.get('mobileNumber', '') is string) &&
+      return (data.get('workerNumber', '') is string || data.get('workerNumber', 0) is number || data.get('workerNumber', 0) is int) &&
+             (data.get('name', '') is string) &&
+             (data.get('iqamaNumber', '') is string || data.get('iqamaNumber', 0) is number || data.get('iqamaNumber', 0) is int) &&
+             (data.get('mobileNumber', '') is string || data.get('mobileNumber', 0) is number || data.get('mobileNumber', 0) is int) &&
              (data.get('recruitmentCompany', '') is string) &&
              (data.get('workplace', '') is string) &&
              (data.get('startDate', '') is string) &&

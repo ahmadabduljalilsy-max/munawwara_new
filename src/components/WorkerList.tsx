@@ -237,17 +237,6 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             </label>
           )}
 
-          {isAdmin && (
-            <button 
-              onClick={() => setIsDeleteAllModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all shadow-sm shadow-red-200 active:scale-95"
-              title="حذف جميع بيانات العمال"
-            >
-              <Trash2 className="w-4 h-4" />
-              حذف الكل
-            </button>
-          )}
-
           <button 
             onClick={() => onExportExcel(filteredWorkers)}
             className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all shadow-sm"

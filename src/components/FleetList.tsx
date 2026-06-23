@@ -210,16 +210,6 @@ export const FleetList: React.FC<FleetListProps> = ({
                 <FileDown className="w-4 h-4 text-red-600" />
                 تصدير PDF
               </button>
-              {isSystemAdmin && (
-                <button 
-                  onClick={() => setDeleteModal({ isOpen: true, id: null, isAll: true })}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/30 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-100 transition-colors"
-                  title="حذف جميع الحافلات من النظام"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  حذف الكل
-                </button>
-              )}
               <button 
                 onClick={onAdd}
                 className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-secondary transition-all"

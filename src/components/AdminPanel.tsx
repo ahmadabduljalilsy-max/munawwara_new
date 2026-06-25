@@ -19,8 +19,14 @@ import {
   SortDesc,
   Search,
   Filter,
-  RefreshCw
+  RefreshCw,
+  FileSpreadsheet,
+  Download,
+  Upload,
+  Database,
+  AlertTriangle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useLogo } from '../lib/LogoContext';
@@ -186,6 +192,342 @@ export const AdminPanel: React.FC = () => {
     title: string;
     message: string;
   } | null>(null);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
+
+  const handleExportBackup = async () => {
+    setIsExporting(true);
+    try {
+      // 1. Fetch all collections from Firestore on-demand
+      const busesSnap = await getDocs(collection(db, 'buses'));
+      const workersSnap = await getDocs(collection(db, 'workers'));
+      const salariesSnap = await getDocs(collection(db, 'salaries'));
+      const usersSnap = await getDocs(collection(db, 'users'));
+
+      const busesData = busesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const workersData = workersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const salariesData = salariesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const usersData = usersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+
+      // 2. Format data with Arabic friendly columns for the Excel sheets
+      const formattedBuses = busesData.map((b: any) => ({
+        'معرف فريد (ID)': b.id || '',
+        'الرقم التشغيلي': b.operationalNumber || '',
+        'رقم اللوحة': b.plateNumber || '',
+        'الفئة': b.category || '',
+        'الموديل': b.model || '',
+        'الشركة المصنعة': b.manufacturer || '',
+        'اللون': b.color || '',
+        'الحالة الفنية': b.technicalStatus || '',
+        'الموقع الحالي': b.location || '',
+        'ملاحظات': b.notes || '',
+        'تاريخ الإنشاء': b.createdAt || ''
+      }));
+
+      const formattedWorkers = workersData.map((w: any) => ({
+        'معرف فريد (ID)': w.id || '',
+        'رقم العامل': w.workerNumber || '',
+        'اسم العامل': w.name || '',
+        'رقم الإقامة/الهوية': w.iqamaNumber || w.nationalId || '',
+        'رقم الجوال': w.mobileNumber || '',
+        'شركة الاستقدام': w.recruitmentCompany || '',
+        'مكان العمل': w.workplace || '',
+        'العميل': w.clientName || '',
+        'تاريخ بداية العمل': w.startDate || '',
+        'تاريخ نهاية العمل': w.endDate || '',
+        'معرف الحافلة المرتبطة': w.assignedBusId || '',
+        'الرقم التشغيلي للحافلة': w.assignedBusOperationalNumber || '',
+        'لوحة الحافلة': w.assignedBusPlateNumber || '',
+        'الحافلات السابقة': w.previousBuses || '',
+        'ملاحظات': w.notes || '',
+        'تاريخ الإضافة': w.createdAt || ''
+      }));
+
+      const formattedSalaries = salariesData.map((s: any) => ({
+        'معرف فريد (ID)': s.id || '',
+        'معرف العامل': s.workerId || '',
+        'رقم العامل': s.workerNumber || '',
+        'اسم العامل': s.workerName || '',
+        'الشهر': s.month || '',
+        'الراتب الأساسي': s.baseSalary || 0,
+        'ساعات العمل الإضافية': s.extraHours || 0,
+        'قيمة العمل الإضافي': s.extraHoursValue || 0,
+        'المرابطة': s.morabata || 0,
+        'إجمالي المستحق': s.totalSalary || 0,
+        'الحالة': s.status === 'paid' ? 'مدفوع' : 'معلق',
+        'موقع العمل': s.workLocation || '',
+        'ملاحظات': s.notes || '',
+        'تاريخ العمل الإجرائي': s.createdAt || ''
+      }));
+
+      const formattedUsers = usersData.map((u: any) => ({
+        'معرف المستخدم (UID)': u.uid || '',
+        'الاسم الكامل': u.displayName || '',
+        'البريد الإلكتروني': u.email || '',
+        'الصلاحية في النظام': u.role === 'admin' ? 'مدير' : u.role === 'supervisor' ? 'مشرف' : u.role === 'user' ? 'سائق/عامل' : 'قيد المراجعة',
+        'حالة التفعيل': u.approved ? 'نشط' : 'معلق',
+        'تاريخ الإنشاء': u.createdAt || ''
+      }));
+
+      // 3. Create Excel workbook and worksheets
+      const wb = XLSX.utils.book_new();
+
+      const wsBuses = XLSX.utils.json_to_sheet(formattedBuses);
+      const wsWorkers = XLSX.utils.json_to_sheet(formattedWorkers);
+      const wsSalaries = XLSX.utils.json_to_sheet(formattedSalaries);
+      const wsUsers = XLSX.utils.json_to_sheet(formattedUsers);
+
+      // Add to workbook
+      XLSX.utils.book_append_sheet(wb, wsBuses, "أسطول الحافلات");
+      XLSX.utils.book_append_sheet(wb, wsWorkers, "سجل الكوادر والعمال");
+      XLSX.utils.book_append_sheet(wb, wsSalaries, "مسيرات الرواتب");
+      XLSX.utils.book_append_sheet(wb, wsUsers, "مستخدمي وصلاحيات النظام");
+
+      // Generate filename with timestamp
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `النسخة_الاحتياطية_الشاملة_${dateStr}.xlsx`;
+
+      // Trigger download
+      XLSX.writeFile(wb, filename);
+
+      setShowResultModal({
+        type: 'success',
+        title: 'تم تصدير النسخة الاحتياطية بنجاح',
+        message: `تم بنجاح إنشاء ملف إكسل شامل يحتوي على 4 صفحات بيانات: أسطول الحافلات (${formattedBuses.length})، سجل الكوادر (${formattedWorkers.length})، مسيرات الرواتب (${formattedSalaries.length})، والمستخدمين (${formattedUsers.length}).`
+      });
+    } catch (error: any) {
+      console.error(error);
+      setShowResultModal({
+        type: 'error',
+        title: 'فشل تصدير النسخة الاحتياطية',
+        message: `حدث خطأ أثناء الاتصال بقاعدة البيانات وتصدير الملف: ${error?.message || 'خطأ غير معروف'}`
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm('تنبيه هام جداً: هل أنت متأكد من رغبتك في استعادة واستيراد البيانات من ملف الإكسل؟ قد يؤدي هذا الإجراء إلى تحديث البيانات الحالية أو إضافة بيانات جديدة وفقاً للمحتوى المرفق.')) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsImporting(true);
+    setImportProgress('جاري قراءة وتحليل ملف النسخة الاحتياطية...');
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      let importedBusesCount = 0;
+      let importedWorkersCount = 0;
+      let importedSalariesCount = 0;
+      let importedUsersCount = 0;
+
+      // 1. IMPORT BUSES
+      const sheetBuses = workbook.Sheets["أسطول الحافلات"];
+      if (sheetBuses) {
+        setImportProgress('جاري استيراد وتحديث بيانات أسطول الحافلات...');
+        const rows: any[] = XLSX.utils.sheet_to_json(sheetBuses);
+        let batch = writeBatch(db);
+        let count = 0;
+
+        for (const row of rows) {
+          const id = row['معرف فريد (ID)'] || doc(collection(db, 'buses')).id;
+          const busData = {
+            operationalNumber: (row['الرقم التشغيلي'] || '').toString().trim(),
+            plateNumber: (row['رقم اللوحة'] || '').toString().trim(),
+            category: (row['الفئة'] || '').toString().trim(),
+            model: (row['الموديل'] || '').toString().trim(),
+            manufacturer: (row['الشركة المصنعة'] || '').toString().trim(),
+            color: (row['اللون'] || '').toString().trim(),
+            technicalStatus: (row['الحالة الفنية'] || '').toString().trim(),
+            location: (row['الموقع الحالي'] || '').toString().trim(),
+            notes: (row['ملاحظات'] || '').toString().trim(),
+            updatedAt: new Date().toISOString()
+          };
+
+          // Only keep valid operational number
+          if (busData.operationalNumber) {
+            batch.set(doc(db, 'buses', id), busData, { merge: true });
+            count++;
+            importedBusesCount++;
+
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+
+      // 2. IMPORT WORKERS
+      const sheetWorkers = workbook.Sheets["سجل الكوادر والعمال"];
+      if (sheetWorkers) {
+        setImportProgress('جاري استيراد وتحديث بيانات الكوادر والعمال...');
+        const rows: any[] = XLSX.utils.sheet_to_json(sheetWorkers);
+        let batch = writeBatch(db);
+        let count = 0;
+
+        for (const row of rows) {
+          const id = row['معرف فريد (ID)'] || doc(collection(db, 'workers')).id;
+          const workerData: any = {
+            workerNumber: (row['رقم العامل'] || '').toString().trim(),
+            name: (row['اسم العامل'] || '').toString().trim(),
+            iqamaNumber: (row['رقم الإقامة/الهوية'] || '').toString().trim(),
+            mobileNumber: (row['رقم الجوال'] || '').toString().trim(),
+            recruitmentCompany: (row['شركة الاستقدام'] || '').toString().trim(),
+            workplace: (row['مكان العمل'] || '').toString().trim(),
+            clientName: (row['العميل'] || '').toString().trim(),
+            startDate: (row['تاريخ بداية العمل'] || '').toString().trim(),
+            endDate: (row['تاريخ نهاية العمل'] || '').toString().trim(),
+            notes: (row['ملاحظات'] || '').toString().trim(),
+            updatedAt: new Date().toISOString()
+          };
+
+          if (row['معرف الحافلة المرتبطة']) {
+            workerData.assignedBusId = row['معرف الحافلة المرتبطة'].toString().trim();
+          }
+          if (row['الرقم التشغيلي للحافلة']) {
+            workerData.assignedBusOperationalNumber = row['الرقم التشغيلي للحافلة'].toString().trim();
+          }
+          if (row['لوحة الحافلة']) {
+            workerData.assignedBusPlateNumber = row['لوحة الحافلة'].toString().trim();
+          }
+          if (row['الحافلات السابقة']) {
+            workerData.previousBuses = row['الحافلات السابقة'].toString().trim();
+          }
+
+          if (workerData.name && workerData.workerNumber) {
+            batch.set(doc(db, 'workers', id), workerData, { merge: true });
+            count++;
+            importedWorkersCount++;
+
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+
+      // 3. IMPORT SALARIES
+      const sheetSalaries = workbook.Sheets["مسيرات الرواتب"];
+      if (sheetSalaries) {
+        setImportProgress('جاري استيراد وتحديث مسيرات الرواتب...');
+        const rows: any[] = XLSX.utils.sheet_to_json(sheetSalaries);
+        let batch = writeBatch(db);
+        let count = 0;
+
+        for (const row of rows) {
+          const id = row['معرف فريد (ID)'] || doc(collection(db, 'salaries')).id;
+          const salaryData = {
+            workerId: (row['معرف العامل'] || '').toString().trim(),
+            workerNumber: (row['رقم العامل'] || '').toString().trim(),
+            workerName: (row['اسم العامل'] || '').toString().trim(),
+            month: (row['الشهر'] || '').toString().trim(),
+            baseSalary: Number(row['الراتب الأساسي'] || 0),
+            extraHours: Number(row['ساعات العمل الإضافية'] || 0),
+            extraHoursValue: Number(row['قيمة العمل الإضافي'] || 0),
+            morabata: Number(row['المرابطة'] || 0),
+            totalSalary: Number(row['إجمالي المستحق'] || 0),
+            status: row['الحالة'] === 'مدفوع' ? 'paid' : 'pending',
+            workLocation: (row['موقع العمل'] || '').toString().trim(),
+            notes: (row['ملاحظات'] || '').toString().trim(),
+            updatedAt: new Date().toISOString()
+          };
+
+          if (salaryData.workerName && salaryData.month) {
+            batch.set(doc(db, 'salaries', id), salaryData, { merge: true });
+            count++;
+            importedSalariesCount++;
+
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+
+      // 4. IMPORT USERS
+      const sheetUsers = workbook.Sheets["مستخدمي وصلاحيات النظام"];
+      if (sheetUsers) {
+        setImportProgress('جاري استيراد وتحديث صلاحيات مستخدمي النظام...');
+        const rows: any[] = XLSX.utils.sheet_to_json(sheetUsers);
+        let batch = writeBatch(db);
+        let count = 0;
+
+        for (const row of rows) {
+          const uid = row['معرف المستخدم (UID)'];
+          if (uid) {
+            const roleStr = row['الصلاحية في النظام'];
+            const role = roleStr === 'مدير' ? 'admin' : roleStr === 'مشرف' ? 'supervisor' : roleStr === 'سائق/عامل' ? 'user' : 'pending';
+            const approved = row['حالة التفعيل'] === 'نشط';
+
+            batch.set(doc(db, 'users', uid), {
+              role,
+              approved,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+
+            count++;
+            importedUsersCount++;
+
+            if (count >= 400) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
+            }
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+
+      setImportProgress(null);
+      setShowResultModal({
+        type: 'success',
+        title: 'تم استيراد واستعادة النسخة الاحتياطية بنجاح',
+        message: `اكتملت عملية المعالجة وتحديث قاعدة البيانات بنجاح:
+        - تم تحديث ${importedBusesCount} حافلة في أسطول الشركة.
+        - تم تحديث ${importedWorkersCount} عامل في سجل الكوادر والمتابعة.
+        - تم تحديث ${importedSalariesCount} سجل رواتب في مسيرات الرواتب.
+        - تم تحديث صلاحيات وحالة ${importedUsersCount} مستخدم في النظام.`
+      });
+
+    } catch (error: any) {
+      console.error(error);
+      setImportProgress(null);
+      setShowResultModal({
+        type: 'error',
+        title: 'فشل استيراد النسخة الاحتياطية',
+        message: `حدث خطأ أثناء تحليل الملف واستيراد البيانات: ${error?.message || 'تأكد من اختيار ملف إكسل متوافق ومولد من النظام سابقاً.'}`
+      });
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  };
 
   const executeSyncPreviousBuses = async () => {
     setShowSyncConfirm(false);
@@ -505,6 +847,113 @@ export const AdminPanel: React.FC = () => {
         </div>
 
         <div className="absolute top-0 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 opacity-50" />
+      </div>
+
+      {/* Comprehensive Backup & Restore Center */}
+      <div className="bg-surface p-8 rounded-[40px] border border-border shadow-sm relative overflow-hidden group">
+         <div className="relative z-10 text-right space-y-6">
+           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-border/60">
+             <div className="flex items-center gap-4">
+               <div className="w-14 h-14 bg-emerald-50 border border-emerald-100 rounded-[22px] flex items-center justify-center shadow-inner text-emerald-600">
+                 <Database className="w-7 h-7" />
+               </div>
+               <div>
+                 <h3 className="text-xl font-black text-text-main flex items-center gap-2">
+                   مركز النسخ الاحتياطي واستعادة البيانات الشامل
+                 </h3>
+                 <p className="text-xs text-text-muted mt-1.5 font-bold leading-relaxed max-w-2xl">
+                   يمكنك هنا تصدير كامل بيانات المنصة (الأسطول، سجل الكوادر والمتابعة، مسيرات الرواتب، المستخدمين) في ملف Excel واحد ذي شيتات متعددة، أو استيرادها لاستعادة النظام وحفظ التغييرات.
+                 </p>
+               </div>
+             </div>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             {/* Export Section */}
+             <div className="bg-white p-6 rounded-3xl border border-border/80 hover:border-emerald-200 hover:shadow-md transition-all flex flex-col justify-between gap-6">
+               <div className="space-y-2">
+                 <div className="flex items-center gap-2.5">
+                   <div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                     <Download className="w-4 h-4" />
+                   </div>
+                   <h4 className="text-sm font-black text-text-main">تصدير نسخة احتياطية شاملة</h4>
+                 </div>
+                 <p className="text-[11px] text-text-muted font-bold leading-relaxed">
+                   يقوم بإنشاء وتنزيل ملف Excel (.xlsx) موحد يحتوي على:
+                 </p>
+                 <ul className="text-[10px] text-text-muted/90 font-bold space-y-1 pr-4 list-disc">
+                   <li>شيت أسطول حافلات الشركة (البيانات والحالة الفنية والمواقع)</li>
+                   <li>شيت سجل الكوادر والعمال (بيانات الهوية ومكان العمل والحافلات)</li>
+                   <li>شيت مسيرات الرواتب للشهر وساعات العمل والرواتب الإجمالية</li>
+                   <li>شيت مستخدمي النظام وصلاحياتهم المسجلة</li>
+                 </ul>
+               </div>
+
+               <button 
+                 onClick={handleExportBackup}
+                 disabled={isExporting}
+                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 px-5 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 active:scale-[0.98] cursor-pointer disabled:opacity-50"
+               >
+                 {isExporting ? (
+                   <>
+                     <RefreshCw className="w-4 h-4 animate-spin" /> جاري تجميع وتصدير البيانات...
+                   </>
+                 ) : (
+                   <>
+                     <FileSpreadsheet className="w-4 h-4" /> تصدير كامل البيانات إلى ملف Excel
+                   </>
+                 )}
+               </button>
+             </div>
+
+             {/* Import Section */}
+             <div className="bg-white p-6 rounded-3xl border border-border/80 hover:border-indigo-200 hover:shadow-md transition-all flex flex-col justify-between gap-6">
+               <div className="space-y-2">
+                 <div className="flex items-center gap-2.5">
+                   <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                     <Upload className="w-4 h-4" />
+                   </div>
+                   <h4 className="text-sm font-black text-text-main">استيراد واستعادة البيانات</h4>
+                 </div>
+                 <p className="text-[11px] text-text-muted font-bold leading-relaxed">
+                   ارفع ملف Excel متوافق (تم تصديره سابقاً من هذا النظام) لتحديث أو استعادة كافة الجداول في قاعدة البيانات السحابية دفعة واحدة بشكل آمن وسلس.
+                 </p>
+                 <div className="bg-amber-50 border border-amber-100 text-amber-800 p-3 rounded-xl flex items-start gap-2">
+                   <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                   <span className="text-[10px] font-black leading-relaxed">
+                     تنبيه: الاستعادة تعتمد على المعرف الفريد للمستندات لعدم التكرار وتحديث السجلات المطابقة بنجاح.
+                   </span>
+                 </div>
+               </div>
+
+               <div className="relative">
+                 <input 
+                   type="file" 
+                   id="excel-import-file" 
+                   className="hidden" 
+                   accept=".xlsx, .xls" 
+                   onChange={handleImportBackup} 
+                   disabled={isImporting} 
+                 />
+                 <label 
+                   htmlFor="excel-import-file"
+                   className={`w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 px-5 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 active:scale-[0.98] cursor-pointer ${isImporting ? 'opacity-50 pointer-events-none' : ''}`}
+                 >
+                   {isImporting ? (
+                     <>
+                       <RefreshCw className="w-4 h-4 animate-spin" /> جاري الاستعادة: {importProgress || 'يرجى الانتظار...'}
+                     </>
+                   ) : (
+                     <>
+                       <Upload className="w-4 h-4" /> رفع ملف Excel واستعادة البيانات الآن
+                     </>
+                   )}
+                 </label>
+               </div>
+             </div>
+           </div>
+         </div>
+         <div className="absolute inset-0 pointer-events-none opacity-[0.015] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px]" />
       </div>
 
       {/* Maintenance & Data Synchronization Card */}

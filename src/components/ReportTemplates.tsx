@@ -15,6 +15,11 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
   const { logoURL } = useLogo();
   const now = new Date().toLocaleString('ar-SA');
 
+  const totalBase = salaries ? salaries.reduce((sum, s) => sum + (s.baseSalary || 0), 0) : 0;
+  const totalExtra = salaries ? salaries.reduce((sum, s) => sum + (s.extraHoursValue || 0), 0) : 0;
+  const totalMorabata = salaries ? salaries.reduce((sum, s) => sum + (s.morabata || 0), 0) : 0;
+  const grandTotal = salaries ? salaries.reduce((sum, s) => sum + (s.totalSalary || 0), 0) : 0;
+
   return (
     <div id="pdf-report" className="p-10 bg-white w-[800px] text-right font-sans" dir="rtl">
       {/* Header */}
@@ -169,40 +174,102 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
       )}
 
       {salaries && (
-        <table className="w-full border-collapse border border-[#E5E7EB] text-sm">
+        <table className="w-full border-collapse border border-[#CBD5E1] text-[11px] shadow-sm rounded-lg overflow-hidden">
           <thead>
-            <tr className="bg-[#F9FAFB]">
-              <th className="border border-[#E5E7EB] p-3 text-right">اسم العامل</th>
-              <th className="border border-[#E5E7EB] p-3 text-right">رقم الوظيفي</th>
-              <th className="border border-[#E5E7EB] p-3 text-center">الشهر</th>
-              <th className="border border-[#E5E7EB] p-3 text-center">الأساسي</th>
-              <th className="border border-[#E5E7EB] p-3 text-center">الإضافي</th>
-              <th className="border border-[#E5E7EB] p-3 text-center">المرابطة</th>
-              <th className="border border-[#E5E7EB] p-3 text-center font-black">المجموع</th>
-              <th className="border border-[#E5E7EB] p-3 text-center">الحالة</th>
+            <tr className="bg-[#F1F5F9] text-right text-[#334155] border-b-2 border-[#94A3B8]">
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold w-10">م</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-right font-bold">الموظف / الرقم الوظيفي</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-right font-bold">موقع العمل</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">الراتب الأساسي</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">العمل الإضافي</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">بدل المرابطة</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-black">إجمالي المستحق</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">الحالة</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-right font-bold">ملاحظات</th>
             </tr>
           </thead>
           <tbody>
-            {salaries.map((salary) => (
-              <tr key={salary.id || salary.workerId}>
-                <td className="border border-[#E5E7EB] p-3 font-bold">{salary.workerName}</td>
-                <td className="border border-[#E5E7EB] p-3 text-xs">{salary.workerNumber}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center font-mono">{salary.month}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center">{salary.baseSalary.toLocaleString()}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center">{salary.extraHoursValue.toLocaleString()}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center">{salary.morabata.toLocaleString()}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center font-black text-primary">{salary.totalSalary.toLocaleString()}</td>
-                <td className="border border-[#E5E7EB] p-3 text-center font-bold">
-                  {salary.status === 'paid' ? 'تم الصرف' : 'قيد الانتظار'}
+            {salaries.map((salary, index) => (
+              <tr key={salary.id || salary.workerId} className={index % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                <td className="border border-[#CBD5E1] p-2 text-center text-slate-500 font-mono font-bold">
+                  {index + 1}
+                </td>
+                <td className="border border-[#CBD5E1] p-2 font-bold">
+                  <div className="font-bold text-[#1F2937]">{salary.workerName}</div>
+                  <div className="text-[9px] text-[#4B5563] font-mono mt-0.5">{salary.workerNumber}</div>
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-[#475569] font-semibold">
+                  {salary.workLocation || '-'}
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
+                  {salary.baseSalary.toLocaleString()} ريال
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-center">
+                  <div className="font-semibold text-slate-700">
+                    {salary.extraHoursValue.toLocaleString()} ريال
+                  </div>
+                  {salary.extraHours > 0 && (
+                    <div className="text-[9px] text-slate-500 mt-0.5">({salary.extraHours} ساعة)</div>
+                  )}
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
+                  {salary.morabata > 0 ? `${salary.morabata.toLocaleString()} ريال` : '-'}
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-center font-bold text-primary bg-primary/[0.01]">
+                  {salary.totalSalary.toLocaleString()} ريال
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-center font-bold">
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black tracking-wide ${
+                    salary.status === 'paid' 
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                      : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  }`}>
+                    {salary.status === 'paid' ? 'تم الصرف' : 'قيد الانتظار'}
+                  </span>
+                </td>
+                <td className="border border-[#CBD5E1] p-2 text-right text-[10px] text-slate-500 max-w-[120px] truncate" title={salary.notes}>
+                  {salary.notes || '-'}
                 </td>
               </tr>
             ))}
+
+            {/* Totals Row */}
+            <tr className="bg-slate-100/90 font-bold border-t-2 border-slate-300 text-slate-800">
+              <td colSpan={3} className="border border-[#CBD5E1] p-2.5 text-right font-black text-slate-700 bg-slate-100">
+                إجمالي الكشف المالي ({salaries.length} موظف مستحق)
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
+                {totalBase.toLocaleString()} ريال
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
+                {totalExtra.toLocaleString()} ريال
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
+                {totalMorabata.toLocaleString()} ريال
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-emerald-700 bg-emerald-50">
+                {grandTotal.toLocaleString()} ريال
+              </td>
+              <td colSpan={2} className="border border-[#CBD5E1] p-2.5 bg-slate-100"></td>
+            </tr>
           </tbody>
         </table>
       )}
 
+      {/* Approval Section */}
+      <div className="mt-16 mb-8 flex justify-between items-end px-4">
+        <div className="text-right">
+          <p className="text-xs text-slate-500 font-bold mb-12">توقيع محاسب الموقع:</p>
+          <div className="w-40 border-b border-dashed border-slate-400"></div>
+        </div>
+        <div className="text-left">
+          <p className="text-sm text-slate-800 font-extrabold mb-12">اعتماد مدير مكتب التشغيل:</p>
+          <div className="w-48 border-b border-dashed border-slate-400"></div>
+        </div>
+      </div>
+
       {/* Footer */}
-      <div className="mt-12 pt-6 border-t border-[#E5E7EB] flex justify-between items-center text-[10px] text-[#9CA3AF] font-bold">
+      <div className="mt-8 pt-4 border-t border-[#E5E7EB] flex justify-between items-center text-[10px] text-[#9CA3AF] font-bold">
         <p>© {new Date().getFullYear()} شركة درة المنورة - جميع الحقوق محفوظة</p>
         <p>فريق تشغيل درة المنورة</p>
       </div>

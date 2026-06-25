@@ -20,8 +20,25 @@ import {
   Bus as BusIcon,
   Eye,
   AlertTriangle,
-  Clock
+  Clock,
+  BarChart3,
+  PieChart as LucidePieChart,
+  TrendingUp,
+  AlertCircle,
+  Check
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  PieChart as RechartsPieChart, 
+  Pie, 
+  Cell,
+  Legend
+} from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Worker } from '../types';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -79,12 +96,77 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
   const [groupBy, setGroupBy] = useState<'workplace' | 'clientName'>('workplace');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const workplaces = useMemo(() => Array.from(new Set(workers.map(w => w.workplace))).filter(Boolean).sort(), [workers]);
   const clients = useMemo(() => Array.from(new Set(workers.map(w => w.clientName))).filter(Boolean).sort(), [workers]);
   const companies = useMemo(() => Array.from(new Set(workers.map(w => w.recruitmentCompany))).filter(Boolean).sort(), [workers]);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Expired and expiring counts
+  const expiredWorkers = useMemo(() => {
+    return workers.filter(w => {
+      if (!w.endDate) return false;
+      try {
+        const days = differenceInDays(parseISO(w.endDate), parseISO(today));
+        return days < 0;
+      } catch (e) { return false; }
+    });
+  }, [workers, today]);
+
+  const expiringWorkers = useMemo(() => {
+    return workers.filter(w => {
+      if (!w.endDate) return false;
+      try {
+        const days = differenceInDays(parseISO(w.endDate), parseISO(today));
+        return days >= 0 && days <= 7;
+      } catch (e) { return false; }
+    });
+  }, [workers, today]);
+
+  // Workplace distribution data for chart
+  const workplaceChartData = useMemo(() => {
+    const counts: { [key: string]: number } = {};
+    workers.forEach(w => {
+      const isTerminated = w.endDate && w.endDate < today;
+      if (!isTerminated) {
+        const wp = w.workplace || 'غير محدد';
+        counts[wp] = (counts[wp] || 0) + 1;
+      }
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [workers, today]);
+
+  // Bus connection rate data for chart
+  const busLinkageChartData = useMemo(() => {
+    const active = workers.filter(w => !w.endDate || w.endDate >= today);
+    const linked = active.filter(w => w.assignedBusId).length;
+    const unlinked = active.length - linked;
+    return [
+      { name: 'مرتبط بحافلة', value: linked, color: '#1e4d2b' },
+      { name: 'غير مرتبط', value: unlinked, color: '#f48e21' }
+    ];
+  }, [workers, today]);
+
+  // Recruitment Company breakdown data for chart
+  const companyChartData = useMemo(() => {
+    const counts: { [key: string]: number } = {};
+    workers.forEach(w => {
+      const isTerminated = w.endDate && w.endDate < today;
+      if (!isTerminated) {
+        const c = w.recruitmentCompany || 'غير محدد';
+        counts[c] = (counts[c] || 0) + 1;
+      }
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [workers, today]);
 
   const activeWorkers = useMemo(() => {
     return workers.filter(w => !w.endDate || w.endDate >= today);
@@ -252,6 +334,14 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             <FileDown className="w-4 h-4 text-red-600" />
             <span>تصدير PDF</span>
           </button>
+
+          <button 
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition-all shadow-sm ${showAnalytics ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-main hover:bg-slate-50'}`}
+          >
+            <BarChart3 className={`w-4 h-4 ${showAnalytics ? 'text-white' : 'text-accent'}`} />
+            <span>{showAnalytics ? 'إخفاء الإحصائيات' : 'مؤشرات الرقابة والتحليلات'}</span>
+          </button>
         </div>
       </div>
 
@@ -293,6 +383,171 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Alert Banner for Expired / Expiring Contracts */}
+      {(expiredWorkers.length > 0 || expiringWorkers.length > 0) && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm"
+          dir="rtl"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-amber-950">تنبيهات العقود والمتابعة القانونية</h4>
+              <p className="text-xs text-amber-800 font-medium mt-0.5">
+                {expiredWorkers.length > 0 && `يوجد عدد ${expiredWorkers.length} عقد عمل منتهي الصلاحية حالياً. `}
+                {expiringWorkers.length > 0 && `يوجد عدد ${expiringWorkers.length} عقد ينتهي خلال السبعة أيام القادمة.`}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              setFilters(f => ({ ...f, workerStatus: 'all' }));
+              setShowFilters(true);
+            }}
+            className="text-[10px] font-black bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+          >
+            مراجعة وفلترة القائمة
+          </button>
+        </motion.div>
+      )}
+
+      {/* Analytics & Metrics Dashboard */}
+      <AnimatePresence>
+        {showAnalytics && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden space-y-6"
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Card 1: Workplace distribution */}
+              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col">
+                <div className="flex items-center gap-2 mb-4 justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-primary" />
+                    <h3 className="text-xs font-black text-text-main">توزيع العمال حسب مناطق العمل</h3>
+                  </div>
+                  <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black">
+                    {workplaceChartData.length} منطقة
+                  </span>
+                </div>
+                
+                <div className="h-64 w-full text-xs font-semibold">
+                  {workplaceChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={workplaceChartData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} style={{ fontSize: '10px' }} />
+                        <Tooltip 
+                          formatter={(value) => [`${value} عامل`, 'العدد']} 
+                          contentStyle={{ textAlign: 'right', borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                        />
+                        <Bar dataKey="count" fill="#1e4d2b" radius={[0, 4, 4, 0]}>
+                          {workplaceChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? '#1e4d2b' : index % 2 === 0 ? '#4b2c82' : '#f48e21'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-text-muted italic text-xs">لا تتوفر بيانات كافية</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: Bus linkage donut chart */}
+              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col items-center justify-between">
+                <div className="w-full flex items-center gap-2 mb-4 justify-between">
+                  <div className="flex items-center gap-2">
+                    <BusIcon className="w-4 h-4 text-secondary" />
+                    <h3 className="text-xs font-black text-text-main">نسبة ربط السائقين بالحافلات</h3>
+                  </div>
+                  <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-black">
+                    {Math.round((activeWorkers.filter(w => w.assignedBusId).length / (activeWorkers.length || 1)) * 100)}% ربط
+                  </span>
+                </div>
+                
+                <div className="h-48 w-full flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={busLinkageChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {busLinkageChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value) => [`${value} عامل`, 'العدد']}
+                        contentStyle={{ textAlign: 'right', borderRadius: '12px' }}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="w-full grid grid-cols-2 gap-2 mt-2">
+                  {busLinkageChartData.map((item, idx) => (
+                    <div key={idx} className="flex flex-col items-center p-2 rounded-xl bg-background border border-border">
+                      <div className="flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="text-[10px] text-text-muted font-bold">{item.name}</span>
+                      </div>
+                      <span className="text-sm font-black text-text-main mt-0.5">{item.value} عامل</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card 3: Top recruitment companies */}
+              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col">
+                <div className="flex items-center gap-2 mb-4 justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-accent" />
+                    <h3 className="text-xs font-black text-text-main">أبرز شركات الاستقدام والمقاولين</h3>
+                  </div>
+                  <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded-full font-black">
+                    أعلى 5 جهات
+                  </span>
+                </div>
+                
+                <div className="h-64 w-full text-xs font-semibold">
+                  {companyChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={companyChartData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+                        <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '9px' }} />
+                        <YAxis hide />
+                        <Tooltip 
+                          formatter={(value) => [`${value} عامل`, 'العدد']}
+                          contentStyle={{ textAlign: 'right', borderRadius: '12px' }}
+                        />
+                        <Bar dataKey="count" fill="#4b2c82" radius={[4, 4, 0, 0]} barSize={25}>
+                          {companyChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? '#4b2c82' : index % 2 === 0 ? '#1e4d2b' : '#f48e21'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-text-muted italic text-xs">لا تتوفر بيانات كافية</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="bg-surface rounded-3xl border border-border shadow-sm overflow-hidden min-h-[500px] flex flex-col">
         <div className="p-6 border-b border-border bg-background/30 flex flex-col gap-4">
@@ -481,31 +736,32 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         )}
 
         {viewMode === 'table' ? (
-          <div className="overflow-x-auto flex-1">
+          <div className="overflow-x-auto flex-1 rounded-2xl border border-slate-200 shadow-sm bg-white">
             <table className="w-full text-right border-collapse">
               <thead>
-                <tr className="bg-background/50 border-b border-border">
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('workerNumber')}>رقم العامل <SortIcon field="workerNumber" /></th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('name')}>اسم العامل <SortIcon field="name" /></th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer hover:text-primary transition-colors" onClick={() => toggleSort('iqamaNumber')}>رقم الإقامة/الهوية <SortIcon field="iqamaNumber" /></th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">الجوال</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">شركة الاستقدام</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">مكان العمل</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">بداية العمل</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">نهاية العمل</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center bg-primary/5">أيام الدوام</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الحافلة المرتبطة</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الحافلات السابقة</th>
-                  <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase">العميل</th>
-                  {isAdmin && <th className="px-4 py-2.5 text-[10px] font-bold text-text-muted uppercase text-center">الإجراءات</th>}
+                <tr className="bg-slate-50/90 border-b-2 border-slate-200">
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all rounded-tr-xl" onClick={() => toggleSort('workerNumber')}>رقم العامل <SortIcon field="workerNumber" /></th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all" onClick={() => toggleSort('name')}>اسم العامل <SortIcon field="name" /></th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all" onClick={() => toggleSort('iqamaNumber')}>رقم الإقامة/الهوية <SortIcon field="iqamaNumber" /></th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">الجوال</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">شركة الاستقدام</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">مكان العمل</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">بداية العمل</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">نهاية العمل</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center bg-primary/[0.02]">أيام الدوام</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلة المرتبطة</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلات السابقة</th>
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">العميل</th>
+                  {isAdmin && <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center rounded-tl-xl">الإجراءات</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/30">
+              <tbody className="divide-y divide-slate-100">
                 <AnimatePresence mode="wait">
                 {paginatedWorkers.length > 0 ? paginatedWorkers.map((worker) => {
                   const daysRemaining = getRemainingDays(worker.endDate);
                   const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
                   const isExpired = daysRemaining !== null && daysRemaining < 0;
+                  const initials = worker.name ? worker.name.trim().split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('') : '';
 
                   return (
                     <motion.tr 
@@ -513,145 +769,164 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className={`hover:bg-primary/[0.01] transition-colors group cursor-pointer ${
-                        isExpired ? 'bg-red-50/20' : isExpiringSoon ? 'bg-amber-50/40' : ''
+                      className={`hover:bg-slate-50/70 border-b border-slate-100 transition-colors group cursor-pointer ${
+                        isExpired 
+                          ? 'bg-red-50/20 border-r-4 border-r-red-500' 
+                          : isExpiringSoon 
+                            ? 'bg-amber-50/30 border-r-4 border-r-amber-500' 
+                            : 'even:bg-slate-50/20'
                       }`}
                       onClick={() => setSelectedWorkerForDetails(worker)}
                     >
-                  <td className="px-4 py-3 whitespace-nowrap text-xs font-black text-text-main">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-black text-slate-700">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${
                              isExpired
                               ? 'bg-red-500' 
                               : isExpiringSoon
                                 ? 'bg-amber-500 animate-pulse' 
                                 : 'bg-emerald-500'
                           }`} />
-                          {worker.workerNumber}
+                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-mono font-black border border-slate-200/50">
+                            {worker.workerNumber}
+                          </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-text-main">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 border transition-colors ${
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-bold text-slate-800">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 border transition-all ${
                             isExpired 
-                              ? 'bg-red-100/50 text-red-600 border-red-200' 
+                              ? 'bg-red-100 text-red-700 border-red-200' 
                               : isExpiringSoon 
-                                ? 'bg-amber-100/50 text-amber-600 border-amber-200' 
+                                ? 'bg-amber-100 text-amber-700 border-amber-200' 
                                 : 'bg-primary/5 text-primary border-primary/10'
                           }`}>
-                            {isExpiringSoon || isExpired ? <AlertTriangle className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                            {initials || <User className="w-4 h-4" />}
                           </div>
                           <div className="flex flex-col">
-                            <span className={`${isExpired ? 'text-red-900' : isExpiringSoon ? 'text-amber-900' : 'text-text-main'}`}>{worker.name}</span>
-                            <span className="text-[9px] text-text-muted font-normal">{worker.recruitmentCompany}</span>
+                            <span className={`text-sm font-black transition-colors ${isExpired ? 'text-red-900 group-hover:text-red-700' : isExpiringSoon ? 'text-amber-900 group-hover:text-amber-700' : 'text-slate-800 group-hover:text-primary'}`}>{worker.name}</span>
+                            <span className="text-[10px] text-slate-500 font-medium mt-0.5">{worker.recruitmentCompany}</span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-mono">{worker.iqamaNumber || worker.nationalId}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-medium">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600 font-mono">
+                        <span className="bg-slate-50 border border-slate-200/60 px-2 py-1 rounded-md text-xs font-semibold text-slate-700 shadow-sm">
+                          {worker.iqamaNumber || worker.nationalId}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             navigator.clipboard.writeText(worker.mobileNumber);
-                            alert('تم نسخ الرقم: ' + worker.mobileNumber);
+                            setCopiedId(worker.id);
+                            setTimeout(() => setCopiedId(null), 2000);
                           }}
-                          className="flex items-center gap-1 hover:text-primary transition-colors cursor-copy group/phone"
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-mono font-bold ${
+                            copiedId === worker.id 
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-sm' 
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                          }`}
                           title="انقر لنسخ الرقم"
                         >
-                          <Phone className="w-3 h-3 text-text-muted group-hover/phone:text-primary" />
-                          {worker.mobileNumber}
+                          {copiedId === worker.id ? <Check className="w-3.5 h-3.5" /> : <Phone className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{copiedId === worker.id ? 'تم نسخ الرقم' : worker.mobileNumber}</span>
                         </button>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[11px] text-text-muted font-medium">{worker.recruitmentCompany}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-bold">
-                        <div className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3 text-emerald-600" />
-                          {worker.workplace}
-                        </div>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600 font-bold">{worker.recruitmentCompany}</td>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-black border border-emerald-100/50 shadow-sm shadow-emerald-500/[0.02]">
+                          <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                          {worker.workplace || '-'}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[11px] text-text-main">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-blue-600/50" />
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/50 text-blue-800 border border-blue-100/30 rounded-lg text-xs font-semibold">
+                          <Calendar className="w-3.5 h-3.5 text-blue-500" />
                           {worker.startDate}
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[11px] text-text-main">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
                         <div className="flex items-center gap-1">
-                          <Calendar className={`w-3 h-3 ${!worker.endDate ? 'text-emerald-500' : isExpired ? 'text-red-500' : isExpiringSoon ? 'text-amber-500' : 'text-text-muted/50'}`} />
+                          <Calendar className={`w-3.5 h-3.5 ${!worker.endDate ? 'text-emerald-500' : isExpired ? 'text-red-500' : isExpiringSoon ? 'text-amber-500' : 'text-slate-400'}`} />
                           <span className={`
                             ${!worker.endDate ? 'text-emerald-600 font-black' : ''}
                             ${isExpired ? 'text-red-600 font-bold line-through opacity-70' : ''}
                             ${isExpiringSoon ? 'text-amber-600 font-black' : ''}
                           `}>
-                            {worker.endDate || 'يعمل'}
+                            {worker.endDate || 'يعمل حالياً'}
                           </span>
                         </div>
                       </td>
-                      <td className={`px-4 py-3 whitespace-nowrap text-xs text-center font-black transition-colors ${
+                      <td className={`px-4 py-3.5 whitespace-nowrap text-xs text-center transition-colors ${
                         !worker.endDate 
-                          ? 'bg-emerald-50/50 text-emerald-600'
+                          ? 'bg-emerald-50/30 text-emerald-700 font-black'
                           : isExpired
-                            ? 'bg-red-50 text-red-600'
+                            ? 'bg-red-50/30 text-red-700 font-bold'
                             : isExpiringSoon 
-                              ? 'bg-amber-100/30 text-amber-600' 
-                              : 'bg-primary/[0.02] text-primary'
+                              ? 'bg-amber-50/30 text-amber-700 font-bold' 
+                              : 'bg-slate-50/30 text-slate-700 font-medium'
                       }`}>
-                        <div className="flex flex-col items-center">
-                          {calculateDays(worker.startDate, worker.endDate)}
+                        <div className="flex flex-col items-center justify-center">
+                          <span className="text-sm font-black">{calculateDays(worker.startDate, worker.endDate)}</span>
                           {!worker.endDate 
-                            ? <span className="text-[8px] uppercase tracking-tighter opacity-70">نشط</span>
+                            ? <span className="text-[9px] font-black text-emerald-600 tracking-wide mt-0.5">نشط</span>
                             : isExpired
-                              ? <span className="text-[8px] uppercase tracking-tighter opacity-70">منتهي ({Math.abs(daysRemaining || 0)} يوم مضت)</span>
+                              ? <span className="text-[9px] font-bold text-red-600 tracking-wide mt-0.5">منتهي ({Math.abs(daysRemaining || 0)} يوم مضت)</span>
                               : isExpiringSoon && (
-                                <div className="flex items-center gap-0.5 text-[8px] uppercase tracking-tighter">
-                                  <Clock className="w-2 h-2" />
+                                <div className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 tracking-wide mt-0.5">
+                                  <Clock className="w-2.5 h-2.5" />
                                   <span>{daysRemaining} أيام متبقية</span>
                                 </div>
                               )
                           }
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
                         {worker.assignedBusId ? (
-                          <div className="flex flex-col items-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black border border-primary/20 shadow-sm shadow-primary/5">
-                              <BusIcon className="w-2.5 h-2.5" />
-                              {worker.assignedBusOperationalNumber}
-                            </span>
+                          <div className="inline-flex flex-col items-center p-1.5 px-3 bg-indigo-50 border border-indigo-200/60 text-indigo-800 rounded-xl shadow-sm">
+                            <div className="flex items-center gap-1.5 text-xs font-black">
+                              <BusIcon className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>رقم {worker.assignedBusOperationalNumber}</span>
+                            </div>
                             {worker.assignedBusPlateNumber && (
-                              <span className="text-[9px] font-mono text-text-muted mt-0.5">{worker.assignedBusPlateNumber}</span>
+                              <span className="text-[9px] font-bold text-indigo-500/80 font-mono mt-0.5 tracking-wider bg-white px-1.5 py-0.5 rounded border border-indigo-100">{worker.assignedBusPlateNumber}</span>
                             )}
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold border border-amber-200">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold border border-slate-200/60">
                             غير مرتبط
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
                         {worker.previousBuses ? (
                           <div className="flex flex-wrap justify-center gap-1 max-w-[150px] mx-auto">
                             {worker.previousBuses.split(/[\s,،\-]+/).map(item => item.trim()).filter(Boolean).map((bus, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">
-                                <BusIcon className="w-2 h-2 text-indigo-500" />
+                              <span key={idx} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200/40">
+                                <BusIcon className="w-2.5 h-2.5 text-slate-400" />
                                 {bus}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-text-muted/60 text-xs">-</span>
+                          <span className="text-slate-400 text-xs font-semibold">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-text-main font-bold">{worker.clientName}</td>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-800 font-extrabold">
+                        <span className="bg-slate-50 border border-slate-200/50 px-2.5 py-1.5 rounded-xl shadow-sm">
+                          {worker.clientName || '-'}
+                        </span>
+                      </td>
                       {isAdmin && (
-                        <td className="px-4 py-3 whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center gap-0.5">
+                        <td className="px-4 py-3.5 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedWorkerForDetails(worker);
                               }}
-                              className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors border border-transparent hover:border-primary/20"
+                              className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
                               title="عرض التفاصيل"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -661,7 +936,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                 e.stopPropagation();
                                 onEdit(worker);
                               }}
-                              className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-colors border border-transparent hover:border-primary/20"
+                              className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
                               title="تعديل البيانات"
                             >
                               <Edit className="w-3.5 h-3.5" />
@@ -671,7 +946,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                 e.stopPropagation();
                                 setDeleteModal({ isOpen: true, id: worker.id, name: worker.name });
                               }}
-                              className="p-1.5 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-slate-200 hover:border-red-300"
                               title="حذف البيانات"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -683,7 +958,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                   );
                 }) : (
                   <tr>
-                    <td colSpan={12} className="px-4 py-20 text-center text-text-muted font-bold text-sm">
+                    <td colSpan={13} className="px-4 py-20 text-center text-slate-400 font-bold text-sm bg-white">
                       <div className="flex flex-col items-center gap-2">
                         <Search className="w-10 h-10 opacity-20" />
                         لا يوجد عمال يطابقون بحثك

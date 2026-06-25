@@ -39,10 +39,45 @@ export const SalaryList: React.FC<SalaryListProps> = ({
   onGeneratePDF
 }) => {
   const [search, setSearch] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(() => {
+  const [selectedYear, setSelectedYear] = useState(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return d.getFullYear().toString();
   });
+  const [selectedMonthNum, setSelectedMonthNum] = useState(() => {
+    const d = new Date();
+    return String(d.getMonth() + 1).padStart(2, '0');
+  });
+
+  const selectedMonth = useMemo(() => {
+    return `${selectedYear}-${selectedMonthNum}`;
+  }, [selectedYear, selectedMonthNum]);
+
+  const years = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const startYear = 2024;
+    const endYear = currentYear + 2;
+    const list = [];
+    for (let y = startYear; y <= endYear; y++) {
+      list.push(y.toString());
+    }
+    return list;
+  }, []);
+
+  const months = useMemo(() => [
+    { value: '01', name: 'يناير (01)' },
+    { value: '02', name: 'فبراير (02)' },
+    { value: '03', name: 'مارس (03)' },
+    { value: '04', name: 'أبريل (04)' },
+    { value: '05', name: 'مايو (05)' },
+    { value: '06', name: 'يونيو (06)' },
+    { value: '07', name: 'يوليو (07)' },
+    { value: '08', name: 'أغسطس (08)' },
+    { value: '09', name: 'سبتمبر (09)' },
+    { value: '10', name: 'أكتوبر (10)' },
+    { value: '11', name: 'نوفمبر (11)' },
+    { value: '12', name: 'ديسمبر (12)' }
+  ], []);
+
   const [companyFilter, setCompanyFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
 
@@ -71,13 +106,22 @@ export const SalaryList: React.FC<SalaryListProps> = ({
 
   const filteredWorkers = useMemo(() => {
     return workers.filter(w => {
+      // Check if employee's contract expired in a prior month
+      const hasSavedSalary = !!monthSalariesMap[w.id];
+      if (!hasSavedSalary && w.endDate) {
+        const endYearMonth = w.endDate.substring(0, 7); // "YYYY-MM"
+        if (endYearMonth < selectedMonth) {
+          return false;
+        }
+      }
+
       const matchesSearch = w.name.toLowerCase().includes(search.toLowerCase()) || 
                            w.workerNumber.includes(search);
       const matchesCompany = companyFilter === 'all' || w.recruitmentCompany === companyFilter;
       const matchesLocation = locationFilter === 'all' || w.workplace === locationFilter;
       return matchesSearch && matchesCompany && matchesLocation;
     });
-  }, [workers, search, companyFilter, locationFilter]);
+  }, [workers, search, companyFilter, locationFilter, selectedMonth, monthSalariesMap]);
 
   const handleInputChange = (workerId: string, field: keyof SalaryRecord, value: any) => {
     setLocalSalaries(prev => {
@@ -157,31 +201,117 @@ export const SalaryList: React.FC<SalaryListProps> = ({
           </h2>
           <p className="text-text-muted text-xs font-bold mt-1">إدخال ومراجعة الرواتب الشهرية والعمل الإضافي</p>
         </div>
-        <div className="flex items-center gap-3">
-          <input 
-            type="month" 
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-surface border border-border rounded-xl px-4 py-2 text-sm font-black text-primary outline-none focus:border-primary shadow-sm"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          {/* فلترة السنة والشهر */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-border/80 p-1.5 rounded-xl">
+            <div className="flex items-center gap-1.5" dir="rtl">
+              <span className="text-[10px] font-black text-text-muted uppercase">السنة:</span>
+              <select 
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="bg-surface border border-border/60 rounded-lg px-2.5 py-1 text-xs font-black text-primary outline-none focus:border-primary cursor-pointer"
+              >
+                {years.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-px h-4 bg-border/60" />
+            <div className="flex items-center gap-1.5" dir="rtl">
+              <span className="text-[10px] font-black text-text-muted uppercase">الشهر:</span>
+              <select 
+                value={selectedMonthNum}
+                onChange={(e) => setSelectedMonthNum(e.target.value)}
+                className="bg-surface border border-border/60 rounded-lg px-2.5 py-1 text-xs font-black text-primary outline-none focus:border-primary cursor-pointer"
+              >
+                {months.map(m => (
+                  <option key={m.value} value={m.value}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <button 
-             onClick={() => onExportExcel(salaries.filter(s => s.month === selectedMonth))}
+             onClick={() => {
+               const allWorkerSalaries = filteredWorkers.map(worker => {
+                 const saved = monthSalariesMap[worker.id];
+                 const local = localSalaries[worker.id];
+                 const data = local || saved || {};
+                 
+                 const baseSalary = Number(data.baseSalary ?? worker.basicSalary ?? 0);
+                 const extraHours = Number(data.extraHours ?? 0);
+                 const extraHoursValue = Number(data.extraHoursValue ?? 0);
+                 const morabata = Number(data.morabata ?? 0);
+                 const totalSalary = baseSalary + extraHoursValue + morabata;
+                 const status = (data.status || 'pending') as 'pending' | 'paid';
+                 const notes = data.notes || '';
+                 const workLocation = worker.workplace || saved?.workLocation || '';
+
+                 return {
+                   workerId: worker.id,
+                   workerName: worker.name,
+                   workerNumber: worker.workerNumber,
+                   month: selectedMonth,
+                   baseSalary,
+                   extraHours,
+                   extraHoursValue,
+                   morabata,
+                   totalSalary,
+                   status,
+                   notes,
+                   workLocation
+                 } as SalaryRecord;
+               }).filter(s => s.totalSalary > 0);
+               onExportExcel(allWorkerSalaries);
+             }}
              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-black hover:bg-emerald-700 transition-all shadow-md"
           >
-            <Download className="w-4 h-4" />
-            تصدير كشف الرواتب
+             <Download className="w-4 h-4" />
+             تصدير كشف الرواتب
           </button>
           <button 
              onClick={() => {
-               const currentSalaries = salaries.filter(s => s.month === selectedMonth);
+               const allWorkerSalaries = filteredWorkers.map(worker => {
+                 const saved = monthSalariesMap[worker.id];
+                 const local = localSalaries[worker.id];
+                 const data = local || saved || {};
+                 
+                 const baseSalary = Number(data.baseSalary ?? worker.basicSalary ?? 0);
+                 const extraHours = Number(data.extraHours ?? 0);
+                 const extraHoursValue = Number(data.extraHoursValue ?? 0);
+                 const morabata = Number(data.morabata ?? 0);
+                 const totalSalary = baseSalary + extraHoursValue + morabata;
+                 const status = (data.status || 'pending') as 'pending' | 'paid';
+                 const notes = data.notes || '';
+                 const workLocation = worker.workplace || saved?.workLocation || '';
+
+                 return {
+                   workerId: worker.id,
+                   workerName: worker.name,
+                   workerNumber: worker.workerNumber,
+                   month: selectedMonth,
+                   baseSalary,
+                   extraHours,
+                   extraHoursValue,
+                   morabata,
+                   totalSalary,
+                   status,
+                   notes,
+                   workLocation
+                 } as SalaryRecord;
+               }).filter(s => s.totalSalary > 0);
+
+               const repTotal = allWorkerSalaries.reduce((sum, s) => sum + s.totalSalary, 0);
+               const repExtra = allWorkerSalaries.reduce((sum, s) => sum + s.extraHoursValue, 0);
+               const repMorabata = allWorkerSalaries.reduce((sum, s) => sum + s.morabata, 0);
+
                onGeneratePDF({
-                 title: `كشف رواتب شهر ${selectedMonth}`,
-                 salaries: currentSalaries,
+                 title: `كشف رواتب تفصيلي - شهر ${selectedMonth}`,
+                 salaries: allWorkerSalaries,
                  stats: {
-                   'إجمالي الرواتب': stats.total.toLocaleString() + ' ريال',
-                   'العمل الإضافي': stats.totalExtra.toLocaleString() + ' ريال',
-                   'بدل المرابطة': stats.totalMorabata.toLocaleString() + ' ريال',
-                   'عدد الموظفين': currentSalaries.length
+                   'إجمالي الرواتب': repTotal.toLocaleString() + ' ريال',
+                   'العمل الإضافي': repExtra.toLocaleString() + ' ريال',
+                   'بدل المرابطة': repMorabata.toLocaleString() + ' ريال',
+                   'عدد الموظفين': allWorkerSalaries.length
                  }
                });
              }}

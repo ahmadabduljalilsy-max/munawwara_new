@@ -449,7 +449,15 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                     <tr key={worker.id} className="hover:bg-primary/[0.01] transition-colors">
                        <td className="px-6 py-4">
                           <div className="flex flex-col">
-                             <div className="text-sm font-black text-text-main leading-none mb-1">{worker.name}</div>
+                             <div className="flex flex-wrap items-center gap-2 mb-1">
+                               <span className="text-sm font-black text-text-main leading-none">{worker.name}</span>
+                               {worker.endDate && (
+                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-red-50 text-red-600 border border-red-100 rounded-full flex items-center gap-1">
+                                   <Clock className="w-2.5 h-2.5" />
+                                   <span>نهاية العمل: {worker.endDate}</span>
+                                 </span>
+                               )}
+                             </div>
                              <div className="flex items-center gap-2">
                                 <span className="text-[10px] font-bold text-text-muted">{worker.workerNumber}</span>
                                 {worker.workplace && (

@@ -59,7 +59,12 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
           <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1 border border-border shadow-sm">
             <img src={logoURL} alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <span className="font-bold text-lg text-text-main">درة المنورة</span>
+          <div className="flex flex-col">
+            <span className="font-bold text-base text-text-main leading-none">درة المنورة</span>
+            {profile?.role !== 'admin' && (
+              <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 mt-1">وضع القراءة فقط</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -155,10 +160,15 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                   </span>
                 )}
              </div>
-             <div className="flex flex-col min-w-0 flex-1">
+             <div className="flex flex-col min-w-0 flex-1 text-right">
                 <span className="font-bold text-[11px] text-text-main truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
-                <span className="text-[9px] text-text-muted font-bold tracking-tight">
-                  {profile?.role === 'admin' ? 'مدير النظام' : 'مستخدم'}
+                <span className="text-[9px] text-text-muted font-bold tracking-tight flex items-center gap-1.5 mt-0.5">
+                  {profile?.role === 'admin' ? 'مدير النظام' : (
+                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-black">
+                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                      وضع قراءة فقط
+                    </span>
+                  )}
                 </span>
              </div>
              <button 
@@ -201,7 +211,13 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                 {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </button>
              <div className="flex items-center gap-4">
-               <div className="text-left flex flex-col">
+               {profile?.role !== 'admin' && (
+                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-full shadow-sm ml-2">
+                   <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                   وضع القراءة فقط
+                 </span>
+               )}
+               <div className="text-right flex flex-col">
                   <span className="font-bold text-sm leading-tight">{profile?.displayName}</span>
                   <span className="text-[11px] text-text-muted">{profile?.role === 'admin' ? 'مدير النظام' : 'مستخدم'}</span>
                </div>

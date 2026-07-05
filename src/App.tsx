@@ -489,8 +489,8 @@ function AppContent() {
           {activeTab === 'fleet' && (
             <FleetList 
               buses={buses} 
-              isAdmin={true} 
-              isSystemAdmin={true}
+              isAdmin={profile?.role === 'admin'} 
+              isSystemAdmin={profile?.role === 'admin'}
               onAdd={() => { setEditingBus(null); setIsFormOpen(true); }}
               onEdit={(bus) => { setEditingBus(bus); setIsFormOpen(true); }}
               onDelete={handleDeleteBus}
@@ -506,19 +506,19 @@ function AppContent() {
             <SalaryList 
               workers={workers}
               salaries={salaries}
-              isAdmin={profile.role === 'admin'}
+              isAdmin={profile?.role === 'admin'}
               onSaveSalary={handleSaveSalary}
               onUpdateSalary={handleUpdateSalary}
               onExportExcel={(data) => exportSalariesToExcel(data)}
               onGeneratePDF={handleGenerateSalaryPdf}
             />
           )}
-          {activeTab === 'admin' && profile.role === 'admin' && <AdminPanel />}
+          {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
 
           {activeTab === 'monitoring' && (
             <WorkerList 
               workers={workers}
-              isAdmin={true}
+              isAdmin={profile?.role === 'admin'}
               onAdd={() => { setEditingWorker(null); setIsWorkerFormOpen(true); }}
               onEdit={(w) => { setEditingWorker(w); setIsWorkerFormOpen(true); }}
               onDelete={handleDeleteWorker}

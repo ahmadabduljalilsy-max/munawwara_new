@@ -52,8 +52,20 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         previousBuses: worker.previousBuses || '',
         notes: worker.notes || ''
       });
+    } else {
+      // Find the next available sequential integer worker number
+      const numbers = allWorkers
+        .map(w => parseInt(w.workerNumber, 10))
+        .filter(num => !isNaN(num) && isFinite(num));
+      const max = numbers.length > 0 ? Math.max(...numbers) : 0;
+      const nextNum = (max + 1).toString();
+      
+      setFormData(prev => ({
+        ...prev,
+        workerNumber: nextNum
+      }));
     }
-  }, [worker]);
+  }, [worker, allWorkers]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,14 +176,14 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
             <div className="space-y-4">
                <div>
                   <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
-                    <Briefcase className="w-3 h-3" /> رقم العامل
+                    <Briefcase className="w-3 h-3" /> رقم العامل (تلقائي متسلسل)
                   </label>
                   <input 
                     name="workerNumber"
                     required
+                    readOnly
                     value={formData.workerNumber}
-                    onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all text-text-muted cursor-not-allowed font-bold"
                   />
                </div>
                <div>

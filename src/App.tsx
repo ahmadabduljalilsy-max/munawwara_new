@@ -191,14 +191,40 @@ function AppContent() {
 
       // 3. Save the worker
       if (editingWorker) {
+        // Enforce no duplicates for workerNumber
+        const duplicate = workers.find(w => w.workerNumber === cleaned.workerNumber && w.id !== editingWorker.id);
+        if (duplicate) {
+          alert(`خطأ: رقم العامل ${cleaned.workerNumber} مكرر ومسجل بالفعل لعامل آخر باسم (${duplicate.name})`);
+          return;
+        }
+
         batch.update(doc(db, 'workers', editingWorker.id), {
           ...cleaned,
           updatedAt: serverTimestamp()
         });
+
+        // If the worker number changed, update all corresponding salary records
+        if (editingWorker.workerNumber !== cleaned.workerNumber) {
+          const assocSalaries = salaries.filter(s => s.workerId === editingWorker.id);
+          assocSalaries.forEach(salary => {
+            batch.update(doc(db, 'salaries', salary.id), {
+              workerNumber: cleaned.workerNumber,
+              updatedAt: serverTimestamp()
+            });
+          });
+        }
       } else {
+        // Find the absolute next sequential available number
+        const numbers = workers
+          .map(w => parseInt(w.workerNumber, 10))
+          .filter(num => !isNaN(num) && isFinite(num));
+        const max = numbers.length > 0 ? Math.max(...numbers) : 0;
+        const nextNum = (max + 1).toString();
+
         const newDocRef = doc(collection(db, 'workers'));
         batch.set(newDocRef, {
           ...cleaned,
+          workerNumber: nextNum, // Guaranteed sequential and unique
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           createdBy: user.uid
@@ -310,6 +336,85 @@ function AppContent() {
     }
   };
 
+  const handleRenumberWorkers = async () => {
+    if (workers.length === 0) {
+      alert('لا توجد بيانات عمال لإعادة ترقيمها.');
+      return;
+    }
+
+    const confirmRenumber = window.confirm(
+      'هل أنت متأكد من رغبتك في إعادة ترقيم جميع العمال الحاليين بشكل متسلسل وتحديث كافة سجلات الرواتب المرتبطة بهم؟ لا يمكن التراجع عن هذه العملية.'
+    );
+    if (!confirmRenumber) return;
+
+    try {
+      // Sort workers to preserve order as much as possible (numerical sorting first, name fallback)
+      const sortedWorkers = [...workers].sort((a, b) => {
+        const numA = parseInt(a.workerNumber, 10);
+        const numB = parseInt(b.workerNumber, 10);
+        const isNumA = !isNaN(numA) && isFinite(numA);
+        const isNumB = !isNaN(numB) && isFinite(numB);
+        
+        if (isNumA && isNumB) {
+          if (numA !== numB) return numA - numB;
+          return (a.name || '').localeCompare(b.name || '');
+        }
+        if (isNumA) return -1;
+        if (isNumB) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      const updates: { ref: any; data: any }[] = [];
+      let index = 1;
+
+      for (const worker of sortedWorkers) {
+        const newNum = String(index);
+        
+        // Unconditionally update to ensure perfect sequential numbering and no skipped duplicates
+        updates.push({
+          ref: doc(db, 'workers', worker.id),
+          data: {
+            workerNumber: newNum,
+            updatedAt: serverTimestamp()
+          }
+        });
+
+        // Find and update all associated salary records in Firestore to match
+        const assocSalaries = salaries.filter(s => s.workerId === worker.id);
+        assocSalaries.forEach(salary => {
+          updates.push({
+            ref: doc(db, 'salaries', salary.id),
+            data: {
+              workerNumber: newNum,
+              updatedAt: serverTimestamp()
+            }
+          });
+        });
+
+        index++;
+      }
+
+      if (updates.length > 0) {
+        // Execute updates in chunks of 250 to comply with Firestore transaction/batch limits safely
+        const CHUNK_SIZE = 250;
+        for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+          const chunk = updates.slice(i, i + CHUNK_SIZE);
+          const chunkBatch = writeBatch(db);
+          for (const item of chunk) {
+            chunkBatch.update(item.ref, item.data);
+          }
+          await chunkBatch.commit();
+        }
+        alert(`تمت إعادة ترقيم العمال بنجاح وتحديث كافة سجلات الرواتب التابعة لهم. (تم تحديث إجمالي ${updates.length} مستنداً)`);
+      } else {
+        alert('جميع العمال مرتبون تسلسلياً بالفعل، لا توجد تغييرات مطلوبة.');
+      }
+    } catch (error) {
+      console.error('Error renumbering workers:', error);
+      alert('حدث خطأ أثناء إعادة الترقيم: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -366,6 +471,15 @@ function AppContent() {
       let added = 0;
       let updated = 0;
 
+      // Keep track of maximum worker number to assign new ones sequentially
+      let currentMaxNum = workers.reduce((max, w) => {
+        const val = parseInt(w.workerNumber, 10);
+        return (!isNaN(val) && val > max) ? val : max;
+      }, 0);
+
+      // Keep track of all workers dynamically during import to prevent duplicates
+      let importedWorkersTracker = [...workers];
+
       const chunkSize = 500;
       for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, i + chunkSize);
@@ -382,26 +496,46 @@ function AppContent() {
             }
           }
 
-          // Match by iqamaNumber OR workerNumber
-          const existingWorker = workers.find(w => 
+          // Match by iqamaNumber OR workerNumber in our dynamic tracker
+          const existingWorkerIndex = importedWorkersTracker.findIndex(w => 
             (cleaned.iqamaNumber && w.iqamaNumber === cleaned.iqamaNumber) || 
             (cleaned.workerNumber && w.workerNumber === cleaned.workerNumber)
           );
 
-          if (existingWorker) {
+          if (existingWorkerIndex !== -1) {
+            const existingWorker = importedWorkersTracker[existingWorkerIndex];
+            const resolvedWorkerNumber = existingWorker.workerNumber || String(++currentMaxNum);
+            
             batch.update(doc(db, 'workers', existingWorker.id), {
               ...cleaned,
+              workerNumber: resolvedWorkerNumber,
               updatedAt: serverTimestamp()
             });
+
+            // Update our tracker
+            importedWorkersTracker[existingWorkerIndex] = {
+              ...existingWorker,
+              ...cleaned,
+              workerNumber: resolvedWorkerNumber
+            };
             updated++;
           } else {
+            const nextNum = String(++currentMaxNum);
             const newDocRef = doc(collection(db, 'workers'));
             batch.set(newDocRef, {
               ...cleaned,
+              workerNumber: nextNum,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
               createdBy: user.uid
             });
+
+            // Add to tracker
+            importedWorkersTracker.push({
+              id: newDocRef.id,
+              ...cleaned,
+              workerNumber: nextNum
+            } as any);
             added++;
           }
         }
@@ -526,6 +660,7 @@ function AppContent() {
               onImport={handleImportWorkersExcel}
               onExportExcel={(data) => exportWorkersToExcel(data)}
               onExportPdf={(data) => handleGenerateWorkerPdf('تقرير الرقابة والمتابعة - العمال', data)}
+              onRenumberWorkers={handleRenumberWorkers}
             />
           )}
         </motion.div>

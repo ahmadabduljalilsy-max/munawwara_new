@@ -55,6 +55,7 @@ interface WorkerListProps {
   onExportExcel: (data: Worker[]) => void;
   onExportPdf: (data: Worker[]) => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRenumberWorkers?: () => void;
 }
 
 export const WorkerList: React.FC<WorkerListProps> = ({ 
@@ -66,7 +67,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   onDeleteAll,
   onExportExcel,
   onExportPdf,
-  onImport
+  onImport,
+  onRenumberWorkers
 }) => {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
@@ -104,6 +106,18 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const companies = useMemo(() => Array.from(new Set(workers.map(w => w.recruitmentCompany))).filter(Boolean).sort(), [workers]);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const hasDuplicateNumbers = useMemo(() => {
+    const numbersSeen = new Set<string>();
+    for (const w of workers) {
+      if (!w.workerNumber) continue;
+      if (numbersSeen.has(w.workerNumber)) {
+        return true;
+      }
+      numbersSeen.add(w.workerNumber);
+    }
+    return false;
+  }, [workers]);
 
   // Expired and expiring counts
   const expiredWorkers = useMemo(() => {
@@ -207,6 +221,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
       return matchesSearch && matchesWorkplace && matchesClient && matchesCompany && matchesBusStatus && matchesWorkerStatus;
     }).sort((a, b) => {
+      if (sortField === 'workerNumber') {
+        const numA = parseInt(a.workerNumber, 10);
+        const numB = parseInt(b.workerNumber, 10);
+        const isNumA = !isNaN(numA) && isFinite(numA);
+        const isNumB = !isNaN(numB) && isFinite(numB);
+        if (isNumA && isNumB) {
+          return sortOrder === 'asc' ? numA - numB : numB - numA;
+        }
+        if (isNumA) return sortOrder === 'asc' ? -1 : 1;
+        if (isNumB) return sortOrder === 'asc' ? 1 : -1;
+      }
       const valA = a[sortField] || '';
       const valB = b[sortField] || '';
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
@@ -287,6 +312,27 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
+      {hasDuplicateNumbers && (
+        <div className="bg-red-50 dark:bg-red-950/20 border-r-4 border-red-500 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm text-red-800 dark:text-red-300 dark:border-red-800">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">تنبيه: تم كشف تكرار في أرقام بعض العمال</p>
+              <p className="text-xs opacity-90 mt-0.5">يوجد بعض العمال الذين يحملون نفس الرقم المسلسل بالخطأ. يرجى الضغط على زر "إعادة ترقيم تسلسلي فوراً" لإعادة ترتيب وتصحيح الأرقام لجميع العمال تلقائياً وبشكل متسلسل فريد.</p>
+            </div>
+          </div>
+          {onRenumberWorkers && (
+            <button 
+              onClick={onRenumberWorkers}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-red-500/10 shrink-0 self-start md:self-auto"
+            >
+              <RefreshCw className="w-4 h-4 text-white animate-spin" />
+              <span>إعادة ترقيم تسلسلي فوراً</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-text-main">الرقابة والمتابعة</h2>
@@ -334,6 +380,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             <FileDown className="w-4 h-4 text-red-600" />
             <span>تصدير PDF</span>
           </button>
+
+          {isAdmin && onRenumberWorkers && (
+            <button 
+              onClick={onRenumberWorkers}
+              className="flex items-center gap-2 px-4 py-2 bg-surface border border-indigo-200 text-indigo-700 dark:border-indigo-900/50 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all shadow-sm"
+              title="إعادة ترقيم جميع العمال الحاليين بشكل متسلسل"
+            >
+              <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>إعادة ترقيم تسلسلي</span>
+            </button>
+          )}
 
           <button 
             onClick={() => setShowAnalytics(!showAnalytics)}

@@ -47,7 +47,8 @@ service cloud.firestore {
              data.category is string && data.category.size() <= 100 &&
              (data.get('model', '') is string) && (data.get('manufacturer', '') is string) &&
              (data.get('color', '') is string) && (data.get('technicalStatus', '') is string) &&
-             (data.get('location', '') is string) && (data.get('notes', '') is string);
+             (data.get('location', '') is string) && (data.get('notes', '') is string) &&
+             (data.get('seatsCount', 0) is number || data.get('seatsCount', 0) is int);
     }
 
      // --- Salary Validation ---

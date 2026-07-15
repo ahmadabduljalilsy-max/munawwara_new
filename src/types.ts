@@ -9,6 +9,7 @@ export interface Bus {
   technicalStatus: string;
   location: string;
   notes: string;
+  seatsCount?: number;
   createdAt: any;
   updatedAt: any;
   createdBy: string;

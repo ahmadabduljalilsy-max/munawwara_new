@@ -81,7 +81,8 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
     color: '',
     technicalStatus: '',
     location: '',
-    notes: ''
+    notes: '',
+    seatsCount: undefined
   });
 
   // Extract previous location movement logs if editing a bus
@@ -112,7 +113,8 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
         color: '',
         technicalStatus: '',
         location: '',
-        notes: ''
+        notes: '',
+        seatsCount: undefined
       });
       setActiveTab('details');
     }
@@ -167,6 +169,7 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
 
     onSave({
       ...formData,
+      seatsCount: formData.seatsCount ? Number(formData.seatsCount) : undefined,
       notes: finalNotes
     });
   };
@@ -299,6 +302,18 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
                     value={formData.color}
                     onChange={handleChange}
                     placeholder="مثال: أبيض / أزرق"
+                    className="w-full p-2.5 bg-background border border-border rounded-xl outline-none focus:border-primary transition-all text-sm font-semibold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-text-muted mr-1 uppercase">عدد مقاعد الحافلة</label>
+                  <input 
+                    type="number"
+                    name="seatsCount"
+                    value={formData.seatsCount || ''}
+                    onChange={handleChange}
+                    placeholder="مثال: 50"
+                    min="1"
                     className="w-full p-2.5 bg-background border border-border rounded-xl outline-none focus:border-primary transition-all text-sm font-semibold"
                   />
                 </div>

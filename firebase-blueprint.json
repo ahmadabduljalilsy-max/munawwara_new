@@ -14,6 +14,7 @@
         "technicalStatus": { "type": "string" },
         "location": { "type": "string" },
         "notes": { "type": "string" },
+        "seatsCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["operationalNumber", "plateNumber", "category"]

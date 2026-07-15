@@ -9,6 +9,7 @@ export const exportToExcel = (data: Bus[]) => {
     'الموديل': bus.model,
     'الشركة المصنعة': bus.manufacturer,
     'اللون': bus.color,
+    'عدد المقاعد': bus.seatsCount || '',
     'حالة الباص الفنية': bus.technicalStatus,
     'موقع عمل الباص': bus.location,
     'ملاحظات': bus.notes,
@@ -83,17 +84,22 @@ export const parseExcel = (file: File): Promise<Partial<Bus>[]> => {
       const worksheet = workbook.Sheets[sheetName];
       const json = XLSX.utils.sheet_to_json(worksheet) as any[];
       
-      const mappedData = json.map(row => ({
-        operationalNumber: String(row['رقم التشغيل'] || row['Operational Number'] || row['رقم التشغيل'] || ''),
-        plateNumber: String(row['رقم اللوحة'] || row['Plate Number'] || ''),
-        category: String(row['فئة الحافلة'] || row['Category'] || ''),
-        model: String(row['الموديل'] || row['Model'] || ''),
-        manufacturer: String(row['الشركة المصنعة'] || row['Manufacturer'] || ''),
-        color: String(row['اللون'] || row['Color'] || ''),
-        technicalStatus: String(row['حالة الباص الفنية'] || row['Technical Status'] || ''),
-        location: String(row['موقع عمل الباص'] || row['Location'] || ''),
-        notes: String(row['ملاحظات'] || row['Notes'] || ''),
-      })).filter(b => b.operationalNumber && b.plateNumber);
+      const mappedData = json.map(row => {
+        const rawSeats = row['عدد المقاعد'] || row['Seats Count'] || row['Seats'] || row['سعة المقاعد'] || row['عدد مقاعد الحافلة'] || '';
+        const parsedSeats = rawSeats ? Number(rawSeats) : undefined;
+        return {
+          operationalNumber: String(row['رقم التشغيل'] || row['Operational Number'] || row['رقم التشغيل'] || ''),
+          plateNumber: String(row['رقم اللوحة'] || row['Plate Number'] || ''),
+          category: String(row['فئة الحافلة'] || row['Category'] || ''),
+          model: String(row['الموديل'] || row['Model'] || ''),
+          manufacturer: String(row['الشركة المصنعة'] || row['Manufacturer'] || ''),
+          color: String(row['اللون'] || row['Color'] || ''),
+          technicalStatus: String(row['حالة الباص الفنية'] || row['Technical Status'] || ''),
+          location: String(row['موقع عمل الباص'] || row['Location'] || ''),
+          notes: String(row['ملاحظات'] || row['Notes'] || ''),
+          seatsCount: isNaN(parsedSeats as any) ? undefined : parsedSeats,
+        };
+      }).filter(b => b.operationalNumber && b.plateNumber);
       
       resolve(mappedData);
     };

@@ -425,12 +425,20 @@ export const FleetList: React.FC<FleetListProps> = ({
                     </div>
                   </div>
 
-                  {bus.color && (
-                    <div className="pt-2 border-t border-border/40">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
-                        <span className="text-[11px] font-bold text-text-main bg-slate-100 px-2 py-0.5 rounded-md">{bus.color}</span>
-                      </div>
+                  {(bus.color || (bus.seatsCount !== undefined && bus.seatsCount !== null)) && (
+                    <div className="pt-2 border-t border-border/40 space-y-2">
+                      {bus.color && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
+                          <span className="text-[11px] font-bold text-text-main bg-slate-100 px-2 py-0.5 rounded-md">{bus.color}</span>
+                        </div>
+                      )}
+                      {bus.seatsCount !== undefined && bus.seatsCount !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-text-muted uppercase opacity-60">عدد المقاعد</span>
+                          <span className="text-[11px] font-black text-primary bg-primary/10 px-2.5 py-0.5 rounded-md">{bus.seatsCount} مقعد</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

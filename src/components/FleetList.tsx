@@ -17,7 +17,8 @@ import {
   AlertCircle,
   Wrench,
   XCircle,
-  MinusCircle
+  MinusCircle,
+  Users
 } from 'lucide-react';
 import type { Bus } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -57,7 +58,8 @@ export const FleetList: React.FC<FleetListProps> = ({
     model: '',
     category: '',
     technicalStatus: '',
-    color: ''
+    color: '',
+    seatsCount: ''
   });
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,6 +71,7 @@ export const FleetList: React.FC<FleetListProps> = ({
   const models = useMemo(() => Array.from(new Set(buses.map(b => b.model))).filter(Boolean).sort(), [buses]);
   const technicalStatuses = useMemo(() => Array.from(new Set(buses.map(b => b.technicalStatus))).filter(Boolean).sort(), [buses]);
   const busColors = useMemo(() => Array.from(new Set(buses.map(b => b.color))).filter(Boolean).sort(), [buses]);
+  const seatsCounts = useMemo(() => Array.from(new Set(buses.map(b => b.seatsCount))).filter((s): s is number => s !== undefined && s !== null).sort((a, b) => a - b), [buses]);
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -95,8 +98,9 @@ export const FleetList: React.FC<FleetListProps> = ({
       const matchesCategory = !filters.category || bus.category === filters.category;
       const matchesStatus = !filters.technicalStatus || bus.technicalStatus === filters.technicalStatus;
       const matchesColor = !filters.color || bus.color === filters.color;
+      const matchesSeats = !filters.seatsCount || String(bus.seatsCount) === filters.seatsCount;
 
-      return matchesSearch && matchesLocation && matchesModel && matchesCategory && matchesStatus && matchesColor;
+      return matchesSearch && matchesLocation && matchesModel && matchesCategory && matchesStatus && matchesColor && matchesSeats;
     });
   }, [buses, searchTerm, filters]);
 
@@ -278,7 +282,7 @@ export const FleetList: React.FC<FleetListProps> = ({
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden border-t border-border pt-4"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-text-muted mr-1">موقع العمل</label>
                   <select 
@@ -334,10 +338,21 @@ export const FleetList: React.FC<FleetListProps> = ({
                     {busColors.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-text-muted mr-1">عدد المقاعد</label>
+                  <select 
+                    value={filters.seatsCount}
+                    onChange={(e) => setFilters(f => ({ ...f, seatsCount: e.target.value }))}
+                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
+                  >
+                    <option value="">الكل</option>
+                    {seatsCounts.map(count => <option key={count} value={String(count)}>{count} مقعد</option>)}
+                  </select>
+                </div>
               </div>
               <div className="flex justify-end mt-4">
                 <button 
-                  onClick={() => setFilters({ location: '', model: '', category: '', technicalStatus: '', color: '' })}
+                  onClick={() => setFilters({ location: '', model: '', category: '', technicalStatus: '', color: '', seatsCount: '' })}
                   className="text-[11px] font-bold text-primary hover:underline"
                 >
                   إعادة ضبط الفلاتر
@@ -429,14 +444,21 @@ export const FleetList: React.FC<FleetListProps> = ({
                     <div className="pt-2 border-t border-border/40 space-y-2">
                       {bus.color && (
                         <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
+                          </div>
                           <span className="text-[11px] font-bold text-text-main bg-slate-100 px-2 py-0.5 rounded-md">{bus.color}</span>
                         </div>
                       )}
                       {bus.seatsCount !== undefined && bus.seatsCount !== null && (
                         <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-black text-text-muted uppercase opacity-60">عدد المقاعد</span>
-                          <span className="text-[11px] font-black text-primary bg-primary/10 px-2.5 py-0.5 rounded-md">{bus.seatsCount} مقعد</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] font-black text-text-muted uppercase opacity-60">عدد المقاعد</span>
+                          </div>
+                          <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 px-2.5 py-1 rounded-lg shadow-xs flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{bus.seatsCount} مقعد</span>
+                          </span>
                         </div>
                       )}
                     </div>

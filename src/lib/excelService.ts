@@ -124,10 +124,11 @@ export const parseWorkersExcel = (file: File): Promise<any[]> => {
         const parsedSalary = rawSalary !== '' && rawSalary !== undefined && rawSalary !== null ? Number(rawSalary) : undefined;
 
         return {
-          workerNumber: String(row['رقم العامل'] || row['Worker Number'] || ''),
-          name: String(row['اسم العامل'] || row['Name'] || ''),
-          iqamaNumber: String(row['رقم الإقامة'] || row['Iqama Number'] || ''),
-          mobileNumber: String(row['رقم الجوال'] || row['Mobile'] || ''),
+          workerNumber: String(row['رقم العامل'] || row['Worker Number'] || '').trim(),
+          name: String(row['اسم العامل'] || row['Name'] || '').trim(),
+          iqamaNumber: String(row['رقم الإقامة'] || row['رقم الإقامة/الهوية'] || row['Iqama Number'] || '').trim(),
+          nationalId: String(row['رقم الهوية'] || row['الهوية الوطنية'] || row['National ID'] || '').trim(),
+          mobileNumber: String(row['رقم الجوال'] || row['Mobile'] || '').trim(),
           recruitmentCompany: String(row['شركة الاستقدام'] || row['Company'] || ''),
           workplace: String(row['مكان العمل'] || row['Workplace'] || ''),
           basicSalary: isNaN(parsedSalary as any) ? undefined : parsedSalary,
@@ -139,7 +140,7 @@ export const parseWorkersExcel = (file: File): Promise<any[]> => {
           clientName: String(row['اسم العميل'] || row['العميل'] || row['Client Name'] || ''),
           notes: String(row['ملاحظات'] || row['Notes'] || ''),
         };
-      }).filter(w => w.name && w.iqamaNumber);
+      }).filter(w => w.name && (w.iqamaNumber || w.nationalId));
       
       resolve(mappedData);
     };

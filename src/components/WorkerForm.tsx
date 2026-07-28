@@ -69,8 +69,37 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     }
   }, [worker, allWorkers]);
 
+  // Real-time check to prevent adding duplicate workers based on Iqama or National ID
+  const duplicateWorker = React.useMemo(() => {
+    const cleanIqama = formData.iqamaNumber ? formData.iqamaNumber.trim() : '';
+    const cleanNationalId = formData.nationalId ? formData.nationalId.trim() : '';
+
+    if (!cleanIqama && !cleanNationalId) return null;
+
+    return allWorkers.find(w => {
+      // Exclude current worker if editing
+      if (worker && w.id === worker.id) return false;
+
+      const wIqama = w.iqamaNumber ? w.iqamaNumber.trim() : '';
+      const wNational = w.nationalId ? w.nationalId.trim() : '';
+
+      if (cleanIqama && ((wIqama && wIqama === cleanIqama) || (wNational && wNational === cleanIqama))) {
+        return true;
+      }
+      if (cleanNationalId && ((wIqama && wIqama === cleanNationalId) || (wNational && wNational === cleanNationalId))) {
+        return true;
+      }
+      return false;
+    }) || null;
+  }, [formData.iqamaNumber, formData.nationalId, allWorkers, worker]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (duplicateWorker) {
+      alert(`عذراً، لا يمكن حفظ البيانات! رقم الإقامة/الهوية مسجل بالفعل للعامل "${duplicateWorker.name}" (رقم العامل: ${duplicateWorker.workerNumber}).`);
+      return;
+    }
     
     let finalNotes = formData.notes;
     let finalPreviousBuses = formData.previousBuses || '';
@@ -209,7 +238,9 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                     required={!formData.nationalId}
                     value={formData.iqamaNumber}
                     onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    className={`w-full bg-background border rounded-xl px-4 py-3 text-sm font-mono outline-none transition-all ${
+                      duplicateWorker ? 'border-red-400 focus:ring-2 focus:ring-red-400/20 bg-red-50/30' : 'border-border focus:ring-2 focus:ring-primary/20'
+                    }`}
                   />
                </div>
                <div>
@@ -220,9 +251,23 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                     name="nationalId"
                     value={formData.nationalId}
                     onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    className={`w-full bg-background border rounded-xl px-4 py-3 text-sm font-mono outline-none transition-all ${
+                      duplicateWorker ? 'border-red-400 focus:ring-2 focus:ring-red-400/20 bg-red-50/30' : 'border-border focus:ring-2 focus:ring-primary/20'
+                    }`}
                   />
                </div>
+
+               {duplicateWorker && (
+                  <div className="col-span-1 md:col-span-2 p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-800 text-xs shadow-2xs">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-red-600 mt-0.5 animate-bounce" />
+                    <div>
+                      <span className="font-black block text-sm">تنبيه: هذا العامل مسجل بالفعل في النظام (تكرار إقامة/هوية)!</span>
+                      <span className="mt-0.5 block leading-relaxed">
+                        رقم الإقامة أو الهوية المدخل مسجل سابقاً للعامل: <strong className="underline font-black">{duplicateWorker.name}</strong> (رقم العامل المسلسل: <strong className="font-mono font-black">{duplicateWorker.workerNumber}</strong>). لا يمكن إضافة العامل مرتين بالنظام.
+                      </span>
+                    </div>
+                  </div>
+               )}
                <div>
                   <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
                     <Phone className="w-3 h-3" /> رقم الجوال
@@ -404,10 +449,16 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
           <div className="mt-8 flex gap-3">
              <button 
               type="submit"
-              className="flex-1 bg-primary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-secondary transition-all shadow-lg shadow-primary/20"
+              disabled={!!duplicateWorker}
+              title={duplicateWorker ? 'رقم الإقامة/الهوية مكرر مسجل لعامل آخر' : 'حفظ البيانات'}
+              className={`flex-1 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                duplicateWorker
+                  ? 'bg-red-300 text-white cursor-not-allowed opacity-80'
+                  : 'bg-primary text-white hover:bg-secondary shadow-lg shadow-primary/20 cursor-pointer'
+              }`}
             >
               <Save className="w-5 h-5" />
-              حفظ البيانات
+              {duplicateWorker ? 'لا يمكن الحفظ (عامل مكرر)' : 'حفظ البيانات'}
             </button>
             <button 
               type="button" 

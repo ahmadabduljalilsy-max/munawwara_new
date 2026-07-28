@@ -119,6 +119,25 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     return false;
   }, [workers]);
 
+  const duplicateIqamasList = useMemo(() => {
+    const map = new Map<string, string[]>();
+    workers.forEach(w => {
+      const iqama = w.iqamaNumber ? w.iqamaNumber.trim() : '';
+      const nat = w.nationalId ? w.nationalId.trim() : '';
+      const key = iqama || nat;
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(w.name);
+    });
+    const dupes: { id: string; count: number; names: string[] }[] = [];
+    map.forEach((names, id) => {
+      if (names.length > 1) {
+        dupes.push({ id, count: names.length, names });
+      }
+    });
+    return dupes;
+  }, [workers]);
+
   // Expired and expiring counts
   const expiredWorkers = useMemo(() => {
     return workers.filter(w => {
@@ -330,6 +349,20 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               <span>إعادة ترقيم تسلسلي فوراً</span>
             </button>
           )}
+        </div>
+      )}
+
+      {duplicateIqamasList.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border-r-4 border-amber-500 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm text-amber-900 dark:text-amber-200 border border-amber-200">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">تنبيه: تم كشف أرقام إقامة/هوية مكررة لبعض العمال في النظام ({duplicateIqamasList.length} حالة تكرار)</p>
+              <p className="text-xs opacity-90 mt-0.5">
+                توجد سجلات تحمل نفس رقم الإقامة أو الهوية (مثال: {duplicateIqamasList.map(d => `${d.id} ← ${d.names.join(' / ')}`).slice(0, 2).join(' | ')}). يرجى مراجعة وتعديل بياناتهم لمنع التكرار.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

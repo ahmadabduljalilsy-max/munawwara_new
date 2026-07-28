@@ -189,6 +189,32 @@ function AppContent() {
         }
       }
 
+      // Enforce no duplicate worker based on iqamaNumber or nationalId
+      const cleanIqama = cleaned.iqamaNumber ? String(cleaned.iqamaNumber).trim() : '';
+      const cleanNationalId = cleaned.nationalId ? String(cleaned.nationalId).trim() : '';
+
+      if (cleanIqama) {
+        const existingIqamaWorker = workers.find(w => 
+          w.id !== (editingWorker?.id || '') && 
+          ((w.iqamaNumber && String(w.iqamaNumber).trim() === cleanIqama) || (w.nationalId && String(w.nationalId).trim() === cleanIqama))
+        );
+        if (existingIqamaWorker) {
+          alert(`خطأ: رقم الإقامة (${cleanIqama}) مسجل بالفعل للعامل "${existingIqamaWorker.name}" (رقم العامل: ${existingIqamaWorker.workerNumber}). لا يمكن إضافة العامل مرتين.`);
+          return;
+        }
+      }
+
+      if (cleanNationalId) {
+        const existingNationalWorker = workers.find(w => 
+          w.id !== (editingWorker?.id || '') && 
+          ((w.iqamaNumber && String(w.iqamaNumber).trim() === cleanNationalId) || (w.nationalId && String(w.nationalId).trim() === cleanNationalId))
+        );
+        if (existingNationalWorker) {
+          alert(`خطأ: رقم الهوية (${cleanNationalId}) مسجل بالفعل للعامل "${existingNationalWorker.name}" (رقم العامل: ${existingNationalWorker.workerNumber}). لا يمكن إضافة العامل مرتين.`);
+          return;
+        }
+      }
+
       // 3. Save the worker
       if (editingWorker) {
         // Enforce no duplicates for workerNumber
@@ -496,11 +522,22 @@ function AppContent() {
             }
           }
 
-          // Match by iqamaNumber OR workerNumber in our dynamic tracker
-          const existingWorkerIndex = importedWorkersTracker.findIndex(w => 
-            (cleaned.iqamaNumber && w.iqamaNumber === cleaned.iqamaNumber) || 
-            (cleaned.workerNumber && w.workerNumber === cleaned.workerNumber)
-          );
+          const cleanIqama = cleaned.iqamaNumber ? String(cleaned.iqamaNumber).trim() : '';
+          const cleanNationalId = cleaned.nationalId ? String(cleaned.nationalId).trim() : '';
+          const cleanWorkerNum = cleaned.workerNumber ? String(cleaned.workerNumber).trim() : '';
+
+          // Match by iqamaNumber OR nationalId OR workerNumber in our dynamic tracker
+          const existingWorkerIndex = importedWorkersTracker.findIndex(w => {
+            const wIqama = w.iqamaNumber ? String(w.iqamaNumber).trim() : '';
+            const wNational = w.nationalId ? String(w.nationalId).trim() : '';
+            const wNum = w.workerNumber ? String(w.workerNumber).trim() : '';
+
+            if (cleanIqama && (wIqama === cleanIqama || wNational === cleanIqama)) return true;
+            if (cleanNationalId && (wIqama === cleanNationalId || wNational === cleanNationalId)) return true;
+            if (cleanWorkerNum && wNum === cleanWorkerNum) return true;
+
+            return false;
+          });
 
           if (existingWorkerIndex !== -1) {
             const existingWorker = importedWorkersTracker[existingWorkerIndex];

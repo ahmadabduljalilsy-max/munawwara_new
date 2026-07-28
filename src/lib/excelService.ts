@@ -27,6 +27,7 @@ export const exportWorkersToExcel = (data: Worker[]) => {
     'رقم الجوال': worker.mobileNumber,
     'شركة الاستقدام': worker.recruitmentCompany,
     'مكان العمل': worker.workplace,
+    'الراتب الأساسي': worker.basicSalary || '',
     'الحافلة المرتبطة': worker.assignedBusOperationalNumber || 'غير مرتبط',
     'الحافلات السابقة': worker.previousBuses || '',
     'بداية العمل': worker.startDate,
@@ -118,21 +119,27 @@ export const parseWorkersExcel = (file: File): Promise<any[]> => {
       const worksheet = workbook.Sheets[sheetName];
       const json = XLSX.utils.sheet_to_json(worksheet) as any[];
       
-      const mappedData = json.map(row => ({
-        workerNumber: String(row['رقم العامل'] || row['Worker Number'] || ''),
-        name: String(row['اسم العامل'] || row['Name'] || ''),
-        iqamaNumber: String(row['رقم الإقامة'] || row['Iqama Number'] || ''),
-        mobileNumber: String(row['رقم الجوال'] || row['Mobile'] || ''),
-        recruitmentCompany: String(row['شركة الاستقدام'] || row['Company'] || ''),
-        workplace: String(row['مكان العمل'] || row['Workplace'] || ''),
-        assignedBusOperationalNumber: String(row['الحافلة المرتبطة'] || row['Bus Number'] || ''),
-        assignedBusId: '',
-        previousBuses: String(row['الحافلات السابقة'] || row['Previous Buses'] || ''),
-        startDate: formatExcelDate(row['بداية العمل'] || row['Start Date']),
-        endDate: formatExcelDate(row['نهاية العمل'] || row['End Date']),
-        clientName: String(row['اسم العميل'] || row['العميل'] || row['Client Name'] || ''),
-        notes: String(row['ملاحظات'] || row['Notes'] || ''),
-      })).filter(w => w.name && w.iqamaNumber);
+      const mappedData = json.map(row => {
+        const rawSalary = row['الراتب الأساسي'] || row['الراتب'] || row['Basic Salary'] || '';
+        const parsedSalary = rawSalary !== '' && rawSalary !== undefined && rawSalary !== null ? Number(rawSalary) : undefined;
+
+        return {
+          workerNumber: String(row['رقم العامل'] || row['Worker Number'] || ''),
+          name: String(row['اسم العامل'] || row['Name'] || ''),
+          iqamaNumber: String(row['رقم الإقامة'] || row['Iqama Number'] || ''),
+          mobileNumber: String(row['رقم الجوال'] || row['Mobile'] || ''),
+          recruitmentCompany: String(row['شركة الاستقدام'] || row['Company'] || ''),
+          workplace: String(row['مكان العمل'] || row['Workplace'] || ''),
+          basicSalary: isNaN(parsedSalary as any) ? undefined : parsedSalary,
+          assignedBusOperationalNumber: String(row['الحافلة المرتبطة'] || row['Bus Number'] || ''),
+          assignedBusId: '',
+          previousBuses: String(row['الحافلات السابقة'] || row['Previous Buses'] || ''),
+          startDate: formatExcelDate(row['بداية العمل'] || row['Start Date']),
+          endDate: formatExcelDate(row['نهاية العمل'] || row['End Date']),
+          clientName: String(row['اسم العميل'] || row['العميل'] || row['Client Name'] || ''),
+          notes: String(row['ملاحظات'] || row['Notes'] || ''),
+        };
+      }).filter(w => w.name && w.iqamaNumber);
       
       resolve(mappedData);
     };

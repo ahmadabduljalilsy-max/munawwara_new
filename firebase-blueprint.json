@@ -30,6 +30,7 @@
         "mobileNumber": { "type": "string" },
         "recruitmentCompany": { "type": "string" },
         "workplace": { "type": "string" },
+        "basicSalary": { "type": "number" },
         "startDate": { "type": "string" },
         "endDate": { "type": "string" },
         "clientName": { "type": "string" },

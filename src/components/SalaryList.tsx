@@ -14,7 +14,10 @@ import {
   Download,
   Building,
   Filter,
-  MapPin
+  MapPin,
+  CheckCircle2,
+  Briefcase,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Worker, SalaryRecord } from '../types';
@@ -80,6 +83,7 @@ export const SalaryList: React.FC<SalaryListProps> = ({
 
   const [companyFilter, setCompanyFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
 
   const [localSalaries, setLocalSalaries] = useState<Record<string, Partial<SalaryRecord>>>({});
 
@@ -118,21 +122,33 @@ export const SalaryList: React.FC<SalaryListProps> = ({
       const matchesSearch = w.name.toLowerCase().includes(search.toLowerCase()) || 
                            w.workerNumber.includes(search);
       const matchesCompany = companyFilter === 'all' || w.recruitmentCompany === companyFilter;
-      const matchesLocation = locationFilter === 'all' || w.workplace === locationFilter;
-      return matchesSearch && matchesCompany && matchesLocation;
+      
+      const currentSalary = localSalaries[w.id] || monthSalariesMap[w.id];
+      const activeLocation = currentSalary?.workLocation || w.workplace;
+      const matchesLocation = locationFilter === 'all' || activeLocation === locationFilter;
+
+      const currentStatus = currentSalary?.status || 'pending';
+      const matchesStatus = statusFilter === 'all' || currentStatus === statusFilter;
+
+      return matchesSearch && matchesCompany && matchesLocation && matchesStatus;
     });
-  }, [workers, search, companyFilter, locationFilter, selectedMonth, monthSalariesMap]);
+  }, [workers, search, companyFilter, locationFilter, statusFilter, selectedMonth, monthSalariesMap, localSalaries]);
 
   const handleInputChange = (workerId: string, field: keyof SalaryRecord, value: any) => {
     setLocalSalaries(prev => {
+      const worker = workers.find(w => w.id === workerId);
+      const defaultBase = worker?.basicSalary ?? 0;
+      const defaultWorkplace = worker?.workplace || '';
+
       const current = prev[workerId] || monthSalariesMap[workerId] || {
         workerId,
         month: selectedMonth,
-        baseSalary: 0,
+        baseSalary: defaultBase,
         extraHours: 0,
         extraHoursValue: 0,
         morabata: 0,
-        totalSalary: 0,
+        totalSalary: defaultBase,
+        workLocation: defaultWorkplace,
         status: 'pending',
         notes: ''
       };
@@ -153,31 +169,103 @@ export const SalaryList: React.FC<SalaryListProps> = ({
     const existing = monthSalariesMap[worker.id];
 
     if (existing) {
-      // Create a clean updates object without the id field
       const updates = { ...local };
       if ('id' in updates) delete (updates as any).id;
       
       onUpdateSalary(existing.id, updates);
+      setLocalSalaries(prev => {
+        const next = { ...prev };
+        delete next[worker.id];
+        return next;
+      });
     } else {
+      const defaultBase = worker.basicSalary ?? 0;
       const dataToSave = {
         workerId: worker.id,
         workerName: worker.name,
         workerNumber: worker.workerNumber,
         month: selectedMonth,
-        baseSalary: Number(local?.baseSalary || 0),
+        baseSalary: Number(local?.baseSalary ?? defaultBase),
         extraHours: Number(local?.extraHours || 0),
         extraHoursValue: Number(local?.extraHoursValue || 0),
         morabata: Number(local?.morabata || 0),
-        totalSalary: Number(local?.totalSalary || 0),
-        workLocation: worker.workplace || '',
+        totalSalary: Number(local?.totalSalary ?? ((local?.baseSalary ?? defaultBase) + (local?.extraHoursValue || 0) + (local?.morabata || 0))),
+        workLocation: local?.workLocation || worker.workplace || '',
         status: (local?.status || 'pending') as 'pending' | 'paid',
         notes: local?.notes || '',
         createdAt: new Date(),
         updatedAt: new Date()
       };
       onSaveSalary(dataToSave);
+      setLocalSalaries(prev => {
+        const next = { ...prev };
+        delete next[worker.id];
+        return next;
+      });
     }
   };
+
+  const handleSaveAll = () => {
+    Object.keys(localSalaries).forEach(workerId => {
+      const worker = workers.find(w => w.id === workerId);
+      if (worker) {
+        handleSave(worker);
+      }
+    });
+  };
+
+  const handleMarkAllStatus = (newStatus: 'paid' | 'pending') => {
+    filteredWorkers.forEach(worker => {
+      const existing = monthSalariesMap[worker.id];
+      const local = localSalaries[worker.id];
+      const data = local || existing || {};
+
+      const baseSalary = Number(data.baseSalary ?? worker.basicSalary ?? 0);
+      const extraHours = Number(data.extraHours ?? 0);
+      const extraHoursValue = Number(data.extraHoursValue ?? 0);
+      const morabata = Number(data.morabata ?? 0);
+      const totalSalary = baseSalary + extraHoursValue + morabata;
+      const workLocation = data.workLocation || worker.workplace || '';
+      const notes = data.notes || '';
+
+      setLocalSalaries(prev => ({
+        ...prev,
+        [worker.id]: {
+          ...data,
+          workerId: worker.id,
+          month: selectedMonth,
+          baseSalary,
+          extraHours,
+          extraHoursValue,
+          morabata,
+          totalSalary,
+          workLocation,
+          status: newStatus,
+          notes
+        }
+      }));
+    });
+  };
+
+  const workplaceStats = useMemo(() => {
+    const map: Record<string, { count: number; total: number }> = {};
+    filteredWorkers.forEach(w => {
+      const saved = monthSalariesMap[w.id];
+      const local = localSalaries[w.id];
+      const loc = local?.workLocation || saved?.workLocation || w.workplace || 'غير محدد';
+      const baseSalary = Number(local?.baseSalary ?? saved?.baseSalary ?? w.basicSalary ?? 0);
+      const extraValue = Number(local?.extraHoursValue ?? saved?.extraHoursValue ?? 0);
+      const morabata = Number(local?.morabata ?? saved?.morabata ?? 0);
+      const total = baseSalary + extraValue + morabata;
+
+      if (!map[loc]) {
+        map[loc] = { count: 0, total: 0 };
+      }
+      map[loc].count += 1;
+      map[loc].total += total;
+    });
+    return Object.entries(map).map(([location, data]) => ({ location, ...data }));
+  }, [filteredWorkers, monthSalariesMap, localSalaries]);
 
   const stats = useMemo(() => {
     const monthSalaries = salaries.filter(s => s.month === selectedMonth);
@@ -398,7 +486,7 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                  </select>
               </div>
 
-              <div className="relative w-full md:w-64">
+              <div className="relative w-full md:w-56">
                  <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
                  <select
                    value={locationFilter}
@@ -411,11 +499,76 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                    ))}
                  </select>
               </div>
+
+              <div className="relative w-full md:w-48">
+                 <Filter className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
+                 <select
+                   value={statusFilter}
+                   onChange={(e) => setStatusFilter(e.target.value as any)}
+                   className="w-full pr-10 pl-4 py-2 text-sm bg-background border border-border rounded-xl outline-none focus:border-primary appearance-none cursor-pointer font-black text-text-main"
+                 >
+                   <option value="all">جميع الحالات</option>
+                   <option value="paid">تم الدفع (تم الصرف)</option>
+                   <option value="pending">قيد الانتظار</option>
+                 </select>
+              </div>
            </div>
            
-           <div className="text-[11px] font-black text-text-muted px-2 py-1 bg-background rounded-lg border border-border">
-              عرض {filteredWorkers.length} عامل
+           <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black text-text-muted px-2.5 py-1 bg-background rounded-lg border border-border">
+                عرض {filteredWorkers.length} عامل
+              </span>
            </div>
+        </div>
+
+        {/* Workplace Breakdown Badges */}
+        {workplaceStats.length > 0 && (
+          <div className="p-3 bg-slate-100/60 border-b border-border flex items-center gap-2 overflow-x-auto">
+             <span className="text-[10px] font-black text-text-muted uppercase flex items-center gap-1 shrink-0">
+               <Briefcase className="w-3.5 h-3.5 text-primary" /> توزيع الرواتب حسب موقع العمل:
+             </span>
+             <div className="flex items-center gap-2">
+               {workplaceStats.map(stat => (
+                 <div key={stat.location} className="flex items-center gap-1.5 px-2.5 py-1 bg-surface border border-border/80 rounded-xl text-xs shadow-2xs shrink-0">
+                   <MapPin className="w-3 h-3 text-amber-600" />
+                   <span className="font-black text-text-main">{stat.location}:</span>
+                   <span className="font-mono font-bold text-primary">{stat.total.toLocaleString()} ريال</span>
+                   <span className="text-[10px] text-text-muted">({stat.count} عامل)</span>
+                 </div>
+               ))}
+             </div>
+          </div>
+        )}
+
+        {/* Bulk Action Controls */}
+        <div className="px-4 py-2 bg-slate-50 border-b border-border flex flex-wrap items-center justify-between gap-3 text-xs">
+           <div className="flex items-center gap-2">
+              <span className="font-bold text-text-muted text-[11px]">إجراءات سريعة:</span>
+              <button
+                onClick={() => handleMarkAllStatus('paid')}
+                className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 font-black transition-all flex items-center gap-1 text-[11px]"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                تحديد المعروضين كـ تم الدفع
+              </button>
+              <button
+                onClick={() => handleMarkAllStatus('pending')}
+                className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 font-black transition-all flex items-center gap-1 text-[11px]"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                تحديد المعروضين كـ قيد الانتظار
+              </button>
+           </div>
+
+           {Object.keys(localSalaries).length > 0 && (
+              <button
+                onClick={handleSaveAll}
+                className="px-4 py-1.5 bg-primary text-white font-black rounded-xl shadow-md hover:bg-secondary transition-all flex items-center gap-1.5 animate-pulse"
+              >
+                <Save className="w-4 h-4" />
+                حفظ كافة التغييرات ({Object.keys(localSalaries).length})
+              </button>
+           )}
         </div>
 
         <div className="overflow-x-auto">
@@ -423,30 +576,32 @@ export const SalaryList: React.FC<SalaryListProps> = ({
              <thead>
                 <tr className="bg-background border-b border-border">
                    <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase">العامل</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">الراتب الأساسي</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">ساعات إضافي</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">قيمة الإضافي</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">المرابطة</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center text-primary">المجموع</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">الحالة</th>
-                   <th className="px-6 py-4 text-[11px] font-black text-text-muted uppercase text-center">الإجراء</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">مكان العمل</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">الراتب الأساسي</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">ساعات إضافي</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">قيمة الإضافي</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">المرابطة</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center text-primary">المجموع</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">الحالة</th>
+                   <th className="px-4 py-4 text-[11px] font-black text-text-muted uppercase text-center">الإجراء</th>
                 </tr>
              </thead>
              <tbody className="divide-y divide-border/50">
                 {filteredWorkers.map(worker => {
                   const saved = monthSalariesMap[worker.id];
                   const local = localSalaries[worker.id];
-                  const data = local || saved || {
-                    baseSalary: 0,
-                    extraHours: 0,
-                    extraHoursValue: 0,
-                    morabata: 0,
-                    totalSalary: 0,
-                    status: 'pending'
-                  };
+
+                  const baseSalary = Number(local?.baseSalary ?? saved?.baseSalary ?? worker.basicSalary ?? 0);
+                  const extraHours = Number(local?.extraHours ?? saved?.extraHours ?? 0);
+                  const extraHoursValue = Number(local?.extraHoursValue ?? saved?.extraHoursValue ?? 0);
+                  const morabata = Number(local?.morabata ?? saved?.morabata ?? 0);
+                  const totalSalary = Number(local?.totalSalary ?? saved?.totalSalary ?? (baseSalary + extraHoursValue + morabata));
+                  const status = (local?.status ?? saved?.status ?? 'pending') as 'pending' | 'paid';
+                  const workLocation = local?.workLocation ?? saved?.workLocation ?? worker.workplace ?? '';
+                  const isModified = !!local;
 
                   return (
-                    <tr key={worker.id} className="hover:bg-primary/[0.01] transition-colors">
+                    <tr key={worker.id} className={`hover:bg-primary/[0.01] transition-colors ${isModified ? 'bg-amber-50/20' : ''}`}>
                        <td className="px-6 py-4">
                           <div className="flex flex-col">
                              <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -459,76 +614,83 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                                )}
                              </div>
                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-text-muted">{worker.workerNumber}</span>
-                                {worker.workplace && (
+                                <span className="text-[10px] font-bold text-text-muted">الرقم: {worker.workerNumber}</span>
+                                {worker.recruitmentCompany && (
                                   <>
                                     <span className="w-1 h-1 bg-border rounded-full" />
-                                    <span className="text-[10px] font-bold text-primary flex items-center gap-0.5">
-                                      <MapPin className="w-2.5 h-2.5" />
-                                      {worker.workplace}
-                                    </span>
+                                    <span className="text-[10px] font-bold text-text-muted">{worker.recruitmentCompany}</span>
                                   </>
                                 )}
                              </div>
                           </div>
                        </td>
-                       <td className="px-4 py-4">
+                       <td className="px-3 py-4">
+                          <input 
+                            type="text" 
+                            value={workLocation}
+                            onChange={(e) => handleInputChange(worker.id, 'workLocation', e.target.value)}
+                            placeholder="مكان العمل..."
+                            className="w-32 mx-auto block p-2 text-center text-xs font-bold bg-background border border-border rounded-lg outline-none focus:border-primary text-text-main shadow-2xs"
+                          />
+                       </td>
+                       <td className="px-3 py-4">
                           <input 
                             type="number" 
-                            value={data.baseSalary}
+                            value={baseSalary}
                             onChange={(e) => handleInputChange(worker.id, 'baseSalary', Number(e.target.value))}
-                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary"
+                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary shadow-2xs"
                           />
                        </td>
-                       <td className="px-4 py-4">
+                       <td className="px-3 py-4">
                           <input 
                             type="number" 
-                            value={data.extraHours}
+                            value={extraHours}
                             onChange={(e) => handleInputChange(worker.id, 'extraHours', Number(e.target.value))}
-                            className="w-16 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary"
+                            className="w-16 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary shadow-2xs"
                           />
                        </td>
-                       <td className="px-4 py-4">
+                       <td className="px-3 py-4">
                           <input 
                             type="number" 
-                            value={data.extraHoursValue}
+                            value={extraHoursValue}
                             onChange={(e) => handleInputChange(worker.id, 'extraHoursValue', Number(e.target.value))}
-                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary"
+                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary shadow-2xs"
                           />
                        </td>
-                       <td className="px-4 py-4">
+                       <td className="px-3 py-4">
                           <input 
                             type="number" 
-                            value={data.morabata}
+                            value={morabata}
                             onChange={(e) => handleInputChange(worker.id, 'morabata', Number(e.target.value))}
-                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary"
+                            className="w-24 mx-auto block p-2 text-center text-xs font-black bg-background border border-border rounded-lg outline-none focus:border-primary shadow-2xs"
                           />
                        </td>
-                       <td className="px-6 py-4 text-center font-black text-primary text-sm">
-                          {data.totalSalary?.toLocaleString()}
+                       <td className="px-4 py-4 text-center font-black text-primary text-sm">
+                          {totalSalary.toLocaleString()} <span className="text-[10px]">ريال</span>
                        </td>
-                       <td className="px-4 py-4">
+                       <td className="px-3 py-4">
                           <select 
-                            value={data.status}
+                            value={status}
                             onChange={(e) => handleInputChange(worker.id, 'status', e.target.value)}
                             className={`
-                              w-full p-2 text-center text-[10px] font-black rounded-lg outline-none border transition-colors cursor-pointer
-                              ${data.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
+                              w-28 mx-auto block p-2 text-center text-[10px] font-black rounded-lg outline-none border transition-colors cursor-pointer shadow-2xs
+                              ${status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}
                             `}
                           >
                              <option value="pending">قيد الانتظار</option>
                              <option value="paid">تم الدفع</option>
                           </select>
                        </td>
-                       <td className="px-6 py-4 text-center">
+                       <td className="px-4 py-4 text-center">
                           <button 
                             onClick={() => handleSave(worker)}
-                            disabled={!local}
+                            disabled={!isModified}
+                            title={isModified ? 'حفظ التغييرات' : 'لا توجد تغييرات معلقة'}
                             className={`
-                              p-2 rounded-xl transition-all
-                              ${local 
-                                ? 'bg-primary text-white shadow-md hover:bg-secondary' 
-                                : 'bg-background text-text-muted cursor-not-allowed'}
+                              p-2 rounded-xl transition-all flex items-center justify-center mx-auto
+                              ${isModified 
+                                ? 'bg-primary text-white shadow-md hover:bg-secondary cursor-pointer' 
+                                : 'bg-background text-text-muted opacity-40 cursor-not-allowed'}
                             `}
                           >
                              <Save className="w-4 h-4" />

@@ -10,6 +10,7 @@ import {
   Bus as BusIcon, 
   Briefcase,
   Clock,
+  CircleDollarSign,
   ExternalLink,
   ClipboardList
 } from 'lucide-react';
@@ -145,9 +146,21 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-text-muted uppercase">مكان العمل</p>
-                      <p className="text-sm font-black text-text-main">{worker.workplace}</p>
+                      <p className="text-sm font-black text-text-main">{worker.workplace || 'غير محدد'}</p>
                     </div>
                   </div>
+
+                  {worker.basicSalary !== undefined && worker.basicSalary > 0 && (
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50/50 rounded-2xl border border-emerald-200">
+                      <div className="p-2 bg-white rounded-lg border border-emerald-200 text-emerald-600">
+                        <CircleDollarSign className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-emerald-800 uppercase">الراتب الأساسي الافتراضي</p>
+                        <p className="text-sm font-black text-emerald-900">{worker.basicSalary.toLocaleString()} ريال</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

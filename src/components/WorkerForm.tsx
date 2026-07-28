@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, User, IdCard, Phone, Building, Briefcase, Calendar, FileText, Bus as BusIcon, AlertTriangle } from 'lucide-react';
+import { X, Save, User, IdCard, Phone, Building, Briefcase, Calendar, FileText, Bus as BusIcon, AlertTriangle, CircleDollarSign } from 'lucide-react';
 import { Worker, Bus } from '../types';
 
 interface WorkerFormProps {
@@ -20,6 +20,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     mobileNumber: '',
     recruitmentCompany: '',
     workplace: '',
+    basicSalary: undefined,
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
     clientName: '',
@@ -43,6 +44,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
         mobileNumber: worker.mobileNumber,
         recruitmentCompany: worker.recruitmentCompany,
         workplace: worker.workplace,
+        basicSalary: worker.basicSalary,
         startDate: worker.startDate,
         endDate: worker.endDate || '',
         clientName: worker.clientName,
@@ -247,16 +249,35 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
                     className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                   />
                </div>
-               <div>
-                  <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
-                    <Briefcase className="w-3 h-3" /> مكان العمل
-                  </label>
-                  <input 
-                    name="workplace"
-                    value={formData.workplace}
-                    onChange={handleChange}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                  />
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div>
+                    <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
+                      <Briefcase className="w-3 h-3 text-amber-600" /> مكان العمل
+                    </label>
+                    <input 
+                      name="workplace"
+                      placeholder="مثل: المدينة المنورة / الفرع الرئيسي..."
+                      value={formData.workplace}
+                      onChange={handleChange}
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all font-bold"
+                    />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-text-muted mb-1.5 block flex items-center gap-2">
+                      <CircleDollarSign className="w-3 h-3 text-emerald-600" /> الراتب الأساسي الشهري (ريال)
+                    </label>
+                    <input 
+                      type="number"
+                      name="basicSalary"
+                      placeholder="الراتب الأساسي الافتراضي..."
+                      value={formData.basicSalary ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? undefined : Number(e.target.value);
+                        setFormData(prev => ({ ...prev, basicSalary: val }));
+                      }}
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all font-mono font-bold"
+                    />
+                 </div>
                </div>
                <div className="grid grid-cols-2 gap-4">
                   <div>

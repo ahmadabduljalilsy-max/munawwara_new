@@ -24,6 +24,7 @@ export interface Worker {
   mobileNumber: string;
   recruitmentCompany: string;
   workplace: string;
+  basicSalary?: number;
   startDate: string;
   endDate: string;
   clientName: string;

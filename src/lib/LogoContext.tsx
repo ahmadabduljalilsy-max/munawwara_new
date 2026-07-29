@@ -10,7 +10,37 @@ interface LogoContextType {
 
 const LogoContext = createContext<LogoContextType | undefined>(undefined);
 
-const DEFAULT_LOGO = "/artifact/5567c9fe-a90f-48d6-96df-71a74d533423";
+export const getDefaultLogo = (): string => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return '';
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#1e4d2b';
+      ctx.beginPath();
+      ctx.arc(80, 80, 75, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('درة المنورة', 80, 80);
+      return canvas.toDataURL('image/png');
+    }
+  } catch (e) {
+    console.error("Error generating default PNG logo:", e);
+  }
+  return '';
+};
+
+export const DEFAULT_LOGO = getDefaultLogo();
 
 export const LogoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [logoURL, setLogoURL] = useState(DEFAULT_LOGO);

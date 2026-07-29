@@ -14,7 +14,11 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -31,6 +35,7 @@ import {
   LabelList
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType } from '../types';
+import { exportDashboardStatsToExcel } from '../lib/excelService';
 
 interface DashboardProps {
   buses: BusType[];
@@ -48,6 +53,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   const [modalSearch, setModalSearch] = useState('');
   const [modalCategoryFilter, setModalCategoryFilter] = useState('');
   const [modalStatusFilter, setModalStatusFilter] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportExcel = () => {
+    exportDashboardStatsToExcel(buses, workers);
+    setIsExportModalOpen(false);
+  };
 
   // Stats by Operational Status (متاحة، صيانة، في الخدمة)
   const assignedBusIds = React.useMemo(() => {
@@ -276,6 +287,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
 
   return (
     <div className="space-y-8 pb-12 text-right" dir="rtl">
+      {/* Header & Export Action Bar */}
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-surface p-6 rounded-3xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shrink-0 shadow-inner">
+            <Activity className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-text-main flex items-center gap-2">
+              <span>لوحة الإحصائيات العامة والرقابة الميدانية</span>
+            </h2>
+            <p className="text-xs text-text-muted font-bold mt-0.5">
+              متابعة لحظية لإشغال الحافلات، توزيع مواقع العمل، الحالات الفنية، والكوادر البشرية
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 self-end md:self-auto">
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="bg-primary hover:bg-secondary text-white px-5 py-3 rounded-2xl font-black text-xs flex items-center gap-2.5 transition-all shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Download className="w-4.5 h-4.5" />
+            <span>استخراج تقرير الإحصائيات (Excel)</span>
+          </button>
+        </div>
+      </motion.div>
+
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsCards.map((card, idx) => (
@@ -1085,6 +1127,72 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
               <div className="bg-slate-50 border-t border-border/40 p-4 shrink-0 flex items-center justify-between text-[11px] font-bold text-text-muted">
                 <span>يتم تحديث هذه البيانات ديناميكياً بناءً على إدخالات قسم التشغيل</span>
                 <span>الحافلات المعروضة: {filteredBusesInSelectedLocation.length} من أصل {busesInSelectedLocation.length}</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Export Options Modal */}
+      <AnimatePresence>
+        {isExportModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-md flex items-center justify-center p-4"
+            onClick={() => setIsExportModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              className="bg-surface w-full max-w-lg rounded-3xl border border-border/80 shadow-2xl p-6 text-right space-y-6"
+              dir="rtl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center border-b border-border/60 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center text-primary shadow-inner">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-text-main">استخراج تقرير الإحصائيات الكاملة</h3>
+                    <p className="text-[11px] text-text-muted font-bold">اختر صيغة الملف لاستخراج كافة إحصائيات الحافلات ومواقع العمل</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {/* Export Excel Option */}
+                <button
+                  onClick={handleExportExcel}
+                  className="p-4 bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-200/80 rounded-2xl flex items-center justify-between transition-all group cursor-pointer text-right hover:shadow-md"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="font-black text-sm text-emerald-950 block">تصدير إلى ملف إكسل (Excel .xlsx)</span>
+                      <span className="text-[11px] font-bold text-emerald-800/80 block mt-1 leading-relaxed">
+                        يتضمن 3 صفحات تفصيلية (الملخص الإحصائي العام، إحصائيات مواقع العمل، وتفاصيل الأسطول والكوادر)
+                      </span>
+                    </div>
+                  </div>
+                  <Download className="w-5 h-5 text-emerald-600 shrink-0 group-hover:translate-x-[-2px] transition-transform" />
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-border/40 flex justify-between items-center text-[10px] text-text-muted font-bold">
+                <span>تحديث البيانات: {new Date().toLocaleDateString('ar-SA')}</span>
+                <span>درة المنورة لنقل الحجاج والمعتمرين</span>
               </div>
             </motion.div>
           </motion.div>

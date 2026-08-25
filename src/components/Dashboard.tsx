@@ -358,41 +358,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
       label: 'إجمالي الحافلات', 
       value: totalBuses, 
       icon: Bus, 
-      color: 'text-primary', 
-      bg: 'bg-emerald-50', 
-      trend: 'الأسطول الكلي المسجل' 
+      color: 'text-emerald-700 dark:text-emerald-400', 
+      valueColor: 'text-emerald-800 dark:text-emerald-300',
+      bg: 'bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60', 
+      trend: 'الأسطول الكلي المسجل',
+      trendColor: 'text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
     },
     { 
       label: 'الحافلات النشطة', 
       value: activeBusesCount, 
       icon: CheckCircle2, 
-      color: 'text-emerald-600', 
-      bg: 'bg-emerald-50', 
-      trend: `جاهزة وتعمل (${totalBuses > 0 ? Math.round((activeBusesCount / totalBuses) * 100) : 0}%)` 
+      color: 'text-emerald-600 dark:text-emerald-400', 
+      valueColor: 'text-emerald-700 dark:text-emerald-400',
+      bg: 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/50', 
+      trend: `جاهزة وتعمل (${totalBuses > 0 ? Math.round((activeBusesCount / totalBuses) * 100) : 0}%)`,
+      trendColor: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
     },
     { 
       label: 'تحتاج صيانة / متوقفة', 
       value: maintenanceBusesCount, 
       icon: Wrench, 
-      color: 'text-red-600', 
-      bg: 'bg-red-50', 
-      trend: maintenanceBusesCount > 0 ? `تتطلب فحص ومتابعة (${maintenanceBusesCount})` : 'لا توجد أعطال حالياً' 
+      color: 'text-rose-600 dark:text-rose-400', 
+      valueColor: 'text-rose-600 dark:text-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50', 
+      trend: maintenanceBusesCount > 0 ? `تتطلب فحص ومتابعة (${maintenanceBusesCount})` : 'لا توجد أعطال حالياً',
+      trendColor: 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40'
     },
     { 
       label: 'المواقع النشطة', 
       value: Object.keys(locationCounts).length, 
       icon: MapPin, 
-      color: 'text-amber-600', 
-      bg: 'bg-amber-50', 
-      trend: `أبرزها: ${topLocation}` 
+      color: 'text-amber-600 dark:text-amber-400', 
+      valueColor: 'text-amber-700 dark:text-amber-400',
+      bg: 'bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/50', 
+      trend: `أبرزها: ${topLocation}`,
+      trendColor: 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40'
     },
     { 
       label: 'الكوادر والسائقين', 
       value: workersCount || workers.length, 
       icon: Users, 
-      color: 'text-blue-600', 
-      bg: 'bg-blue-50', 
-      trend: 'الكوادر الميدانية المسجلة' 
+      color: 'text-blue-600 dark:text-blue-400', 
+      valueColor: 'text-blue-700 dark:text-blue-400',
+      bg: 'bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/50', 
+      trend: 'الكوادر الميدانية المسجلة',
+      trendColor: 'text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
     },
   ];
 
@@ -402,18 +412,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-surface p-6 rounded-3xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+        className="bg-surface p-6 rounded-2xl border border-border shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
       >
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shrink-0 shadow-inner">
-            <Activity className="w-6 h-6" />
+          <div className="w-12 h-12 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center text-primary shrink-0 shadow-xs">
+            <Activity className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-text-main flex items-center gap-2">
-              <span>لوحة الإحصائيات العامة والرقابة الميدانية</span>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>لوحة</span>
+              <span className="text-primary font-bold">الإحصائيات العامة</span>
+              <span className="text-slate-400 font-normal">و</span>
+              <span className="text-accent font-bold">الرقابة الميدانية</span>
             </h2>
-            <p className="text-xs text-text-muted font-bold mt-0.5">
-              متابعة لحظية لإشغال الحافلات، توزيع مواقع العمل، الحالات الفنية، والكوادر البشرية
+            <p className="text-xs text-slate-700 dark:text-slate-300 font-medium mt-1">
+              متابعة لحظية لـ <span className="text-emerald-700 dark:text-emerald-400 font-bold">إشغال الحافلات</span>، و<span className="text-amber-700 dark:text-amber-400 font-bold">مواقع العمل</span>، و<span className="text-rose-600 dark:text-rose-400 font-bold">الحالات الفنية</span>، و<span className="text-blue-700 dark:text-blue-400 font-bold">الكوادر البشرية</span>
             </p>
           </div>
         </div>
@@ -421,9 +434,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
         <div className="flex items-center gap-3 self-end md:self-auto">
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="bg-primary hover:bg-secondary text-white px-5 py-3 rounded-2xl font-black text-xs flex items-center gap-2.5 transition-all shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2.5 transition-all shadow-sm shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
           >
-            <Download className="w-4.5 h-4.5" />
+            <Download className="w-4 h-4" />
             <span>استخراج تقرير الإحصائيات (Excel)</span>
           </button>
         </div>
@@ -437,20 +450,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
-            className="bg-surface p-4.5 rounded-2xl border border-border shadow-sm flex flex-col justify-between gap-3 relative overflow-hidden group hover:shadow-md transition-all hover:border-primary/30"
+            className="bg-surface p-4.5 rounded-2xl border border-border shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden group hover:shadow-md transition-all hover:border-primary/50"
           >
             <div className="flex justify-between items-start relative z-10">
               <div className="text-right">
-                <p className="text-[10px] font-black text-text-muted uppercase tracking-wider mb-1">{card.label}</p>
-                <h3 className="text-2xl lg:text-3xl font-black text-text-main leading-none">{card.value}</h3>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">{card.label}</p>
+                <h3 className={`text-3xl font-extrabold ${card.valueColor} leading-none tracking-tight`}>{card.value}</h3>
               </div>
-              <div className={`${card.bg} p-2.5 rounded-xl group-hover:scale-110 transition-transform shadow-inner`}>
+              <div className={`${card.bg} p-2.5 rounded-xl group-hover:scale-105 transition-transform shadow-xs`}>
                 <card.icon className={`${card.color} w-5 h-5`} />
               </div>
             </div>
-            <div className="text-[10px] font-bold text-text-muted mt-auto pt-2 border-t border-border/40 flex items-center gap-1.5">
-               <Activity className="w-3 h-3 text-primary opacity-50 shrink-0" />
-               <span className="truncate">{card.trend}</span>
+            <div className="text-[10px] font-semibold mt-auto pt-2 border-t border-border/40 flex items-center gap-1.5">
+               <span className={`px-2 py-0.5 rounded-md truncate font-bold ${card.trendColor}`}>
+                 {card.trend}
+               </span>
             </div>
             <div className="absolute top-0 left-0 w-28 h-28 bg-gradient-to-tr from-transparent to-black/[0.02] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl pointer-events-none" />
           </motion.div>
@@ -560,25 +574,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-sm min-h-[400px] h-auto flex flex-col justify-between"
+          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-xs min-h-[400px] h-auto flex flex-col justify-between"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-border pb-4">
              <div className="text-right">
-               <h3 className="text-base font-black flex items-center gap-2">
-                 <Activity className="w-5 h-5 text-indigo-600" />
-                 توزيع الحافلات حسب حالة التشغيل
+               <h3 className="text-sm font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                 <Activity className="w-4.5 h-4.5 text-emerald-700 dark:text-emerald-400" />
+                 <span>توزيع الحافلات حسب حالة التشغيل</span>
                </h3>
-               <p className="text-[10px] text-text-muted font-bold mt-0.5">انقر على أي حالة أدناه أو بالرسم البياني لتفصيل توزيع الحافلات في المواقع الميدانية</p>
+               <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-0.5">انقر على أي حالة أدناه أو بالرسم البياني لتفصيل توزيع الحافلات في المواقع الميدانية</p>
              </div>
              
              {/* Chart Type Toggle */}
              <div className="flex items-center gap-2">
-               <div className="flex bg-background p-1 rounded-xl border border-border/80">
+               <div className="flex bg-[#FAF9F6] dark:bg-background p-1 rounded-xl border border-border">
                  <button
                    onClick={() => setTechnicalStatusViewMode('donut')}
-                   className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                      technicalStatusViewMode === 'donut'
-                       ? 'bg-surface text-primary shadow-sm border border-border/40'
+                       ? 'bg-surface text-primary shadow-xs border border-border'
                        : 'text-text-muted hover:text-text-main'
                    }`}
                    title="عرض دائري مجوف (Donut Chart)"
@@ -588,9 +602,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                  </button>
                  <button
                    onClick={() => setTechnicalStatusViewMode('bar')}
-                   className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                      technicalStatusViewMode === 'bar'
-                       ? 'bg-surface text-primary shadow-sm border border-border/40'
+                       ? 'bg-surface text-primary shadow-xs border border-border'
                        : 'text-text-muted hover:text-text-main'
                    }`}
                    title="عرض بياني شريطي (Bar Chart)"
@@ -637,21 +651,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                         </Pie>
                         <Tooltip 
                           contentStyle={{ 
-                            borderRadius: '16px', 
-                            border: '1px solid #E2E8F0', 
-                            boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                            borderRadius: '12px', 
+                            border: '1px solid #E8E5DF', 
+                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
                             textAlign: 'right',
-                            direction: 'rtl'
+                            direction: 'rtl',
+                            fontFamily: 'Tajawal, sans-serif'
                           }}
-                          itemStyle={{ fontWeight: 800 }}
+                          itemStyle={{ fontWeight: 700 }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                   {/* Central text displaying total number of buses */}
                   <div className="absolute pointer-events-none text-center">
-                    <span className="text-4xl font-black text-text-main leading-none block">{totalBuses}</span>
-                    <span className="text-[10px] font-extrabold text-text-muted mt-1 block">إجمالي الحافلات</span>
+                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white leading-none block">{totalBuses}</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1 block">إجمالي الحافلات</span>
                   </div>
                 </>
               ) : (
@@ -668,27 +683,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                         }
                       }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.5} />
-                      <XAxis type="number" fontSize={11} fontWeight={800} tickLine={false} axisLine={false} stroke="#475569" />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E8E5DF" opacity={0.6} />
+                      <XAxis type="number" fontSize={11} fontWeight={700} tickLine={false} axisLine={false} stroke="#334155" />
                       <YAxis 
                         dataKey="shortName" 
                         type="category" 
                         fontSize={11} 
-                        fontWeight={800} 
+                        fontWeight={700} 
                         tickLine={false} 
                         axisLine={false} 
-                        stroke="#475569"
+                        stroke="#334155"
                         width={65}
                       />
                       <Tooltip 
                         contentStyle={{ 
-                          borderRadius: '16px', 
-                          border: '1px solid #E2E8F0', 
-                          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                          borderRadius: '12px', 
+                          border: '1px solid #E8E5DF', 
+                          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
                           textAlign: 'right',
-                          direction: 'rtl'
+                          direction: 'rtl',
+                          fontFamily: 'Tajawal, sans-serif'
                         }}
-                        itemStyle={{ fontWeight: 800 }}
+                        itemStyle={{ fontWeight: 700 }}
                       />
                       <Bar 
                         dataKey="value" 
@@ -710,7 +726,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                           dataKey="value" 
                           position="right" 
                           offset={10}
-                          style={{ fontSize: 11, fontWeight: 900, fill: '#1e293b' }}
+                          style={{ fontSize: 12, fontWeight: 800, fill: '#090D16' }}
                         />
                       </Bar>
                     </BarChart>
@@ -720,7 +736,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
             </div>
 
             {/* Explanatory Legend / Details Cards */}
-            <div className="w-full md:w-1/2 flex flex-col gap-3">
+            <div className="w-full md:w-1/2 flex flex-col gap-2.5">
               {opStatusChartData.map((item) => {
                 const percentage = totalBuses > 0 ? (item.value / totalBuses) * 100 : 0;
                 const isSelected = activeStatusKey === item.id;
@@ -730,21 +746,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                   <div 
                     key={item.name} 
                     onClick={() => setActiveStatusKey(isSelected ? null : item.id)}
-                    className={`p-3.5 bg-background rounded-xl border transition-all cursor-pointer flex flex-col group ${
+                    className={`p-3 bg-[#FAF9F6] dark:bg-background rounded-xl border transition-all cursor-pointer flex flex-col group ${
                       isSelected 
-                        ? 'border-indigo-600 ring-2 ring-indigo-600/10 shadow-sm'
+                        ? 'border-emerald-700 ring-2 ring-emerald-700/10 shadow-xs'
                         : activeStatusKey 
-                          ? 'border-border/30 opacity-60 hover:opacity-100 hover:border-border'
-                          : 'border-border/60 hover:border-primary/40 hover:shadow-sm'
+                          ? 'border-border/40 opacity-60 hover:opacity-100 hover:border-border'
+                          : 'border-border hover:border-primary/40 hover:shadow-xs'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-3">
-                        <div className="w-3.5 h-3.5 rounded-full shrink-0 flex items-center justify-center relative" style={{ backgroundColor: item.color }}>
+                        <div className="w-3 h-3 rounded-full shrink-0 flex items-center justify-center relative" style={{ backgroundColor: item.color }}>
                           {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
                         </div>
                         <div className="text-right">
-                          <p className="text-xs font-black text-text-main flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                             {item.name}
                             {isSelected ? (
                               <ChevronUp className="w-3.5 h-3.5 text-text-muted shrink-0" />
@@ -752,12 +768,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                               <ChevronDown className="w-3.5 h-3.5 text-text-muted shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
                             )}
                           </p>
-                          <p className="text-[10px] text-text-muted font-bold mt-0.5">{percentage.toFixed(1)}% من إجمالي الأسطول</p>
+                          <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-0.5">{percentage.toFixed(1)}% من إجمالي الأسطول</p>
                         </div>
                       </div>
                       <div className="text-left shrink-0">
-                        <span className="text-lg font-black text-text-main block leading-none">{item.value}</span>
-                        <span className="text-[9px] font-bold text-text-muted block mt-1">حافلة</span>
+                        <span className="text-base font-extrabold text-slate-900 dark:text-white block leading-none">{item.value}</span>
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block mt-1">حافلة</span>
                       </div>
                     </div>
 

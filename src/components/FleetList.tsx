@@ -178,11 +178,16 @@ export const FleetList: React.FC<FleetListProps> = ({
       {/* Action Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-col">
-          <h2 className="text-xl font-bold text-text-main">قائمة أسطول الحافلات</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>سجل وإدارة</span>
+            <span className="text-primary font-bold">أسطول الحافلات</span>
+          </h2>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-sm text-text-muted font-medium">إجمالي {filteredBuses.length} حافلة</p>
+            <p className="text-xs text-slate-700 dark:text-slate-300 font-semibold">
+              إجمالي الأسطول: <span className="text-emerald-700 dark:text-emerald-400 font-bold">{filteredBuses.length}</span> حافلة مسجلة
+            </p>
             {totalPages > 1 && (
-              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
                 الصفحة {currentPage} من {totalPages}
               </span>
             )}
@@ -194,32 +199,32 @@ export const FleetList: React.FC<FleetListProps> = ({
             <>
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-lg text-sm font-semibold hover:bg-background transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
                >
                 <Upload className="w-4 h-4 text-blue-600" />
-                استيراد Excel
+                <span>استيراد Excel</span>
                 <input type="file" ref={fileInputRef} onChange={onImport} className="hidden" accept=".xlsx, .xls, .csv" />
               </button>
               <button 
                 onClick={() => onExport(filteredBuses)}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-lg text-sm font-semibold hover:bg-background transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
                >
                 <Download className="w-4 h-4 text-emerald-600" />
-                تصدير Excel
+                <span>تصدير Excel</span>
               </button>
               <button 
                 onClick={() => onGenerateFullPdf(filteredBuses)}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-lg text-sm font-semibold hover:bg-background transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
                >
                 <FileDown className="w-4 h-4 text-red-600" />
-                تصدير PDF
+                <span>تصدير PDF</span>
               </button>
               <button 
                 onClick={onAdd}
-                className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-secondary transition-all"
+                className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 cursor-pointer"
                >
                 <Plus className="w-4 h-4" />
-                إضافة حافلة
+                <span>إضافة حافلة جديدة</span>
               </button>
             </>
           )}
@@ -394,28 +399,28 @@ export const FleetList: React.FC<FleetListProps> = ({
                 <div className="p-4 bg-gradient-to-br from-primary/[0.03] to-transparent border-b border-border/50">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex flex-col">
-                      <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest mb-1">رقم التشغيل</span>
-                      <h3 className="text-lg font-black text-text-main group-hover:text-primary transition-colors leading-none tracking-tight">
+                      <span className="text-[10px] font-bold text-primary dark:text-emerald-400 uppercase tracking-wider mb-1">رقم التشغيل</span>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors leading-none tracking-tight">
                         {bus.operationalNumber}
                       </h3>
                     </div>
                     <span className={`
-                      inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border tracking-tight shadow-sm
+                      inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border tracking-tight shadow-xs
                       ${badge.className}
                     `}>
                       {badge.icon}
-                      {badge.label}
+                      <span>{badge.label}</span>
                     </span>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-background border border-border rounded-lg shadow-sm">
-                      <FileText className="w-3 h-3 text-text-muted" />
-                      <span className="text-[11px] font-black text-text-main">{bus.plateNumber}</span>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#FAF9F6] dark:bg-background border border-border rounded-lg shadow-xs">
+                      <FileText className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-[11px] font-bold text-slate-900 dark:text-white font-mono">{bus.plateNumber}</span>
                     </div>
                     {bus.category && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-background border border-border rounded-lg shadow-sm">
-                        <span className="text-[10px] font-bold text-text-muted">{bus.category}</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg shadow-xs">
+                        <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300">{bus.category}</span>
                       </div>
                     )}
                   </div>
@@ -425,17 +430,17 @@ export const FleetList: React.FC<FleetListProps> = ({
                 <div className="p-4 flex-1 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <span className="text-[9px] font-black text-text-muted uppercase opacity-60">الموقع</span>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-text-main">
-                        <MapPin className="w-3.5 h-3.5 text-red-500" />
-                        {bus.location}
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">الموقع الميداني</span>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                        <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <span className="truncate">{bus.location}</span>
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[9px] font-black text-text-muted uppercase opacity-60">الموديل</span>
-                      <div className="flex items-center gap-1.5 text-xs font-black text-text-main">
-                        <span className="w-2 h-2 rounded-full bg-primary/40 animate-pulse" />
-                        {bus.model}
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">الموديل</span>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                        <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                        <span className="truncate">{bus.model}</span>
                       </div>
                     </div>
                   </div>
@@ -444,19 +449,15 @@ export const FleetList: React.FC<FleetListProps> = ({
                     <div className="pt-2 border-t border-border/40 space-y-2">
                       {bus.color && (
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-black text-text-muted uppercase opacity-60">اللون</span>
-                          </div>
-                          <span className="text-[11px] font-bold text-text-main bg-slate-100 px-2 py-0.5 rounded-md">{bus.color}</span>
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">اللون</span>
+                          <span className="text-[11px] font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">{bus.color}</span>
                         </div>
                       )}
                       {bus.seatsCount !== undefined && bus.seatsCount !== null && (
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-black text-text-muted uppercase opacity-60">عدد المقاعد</span>
-                          </div>
-                          <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 px-2.5 py-1 rounded-lg shadow-xs flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">عدد المقاعد</span>
+                          <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             <span>{bus.seatsCount} مقعد</span>
                           </span>
                         </div>

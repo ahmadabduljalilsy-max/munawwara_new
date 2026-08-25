@@ -1,20 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0d5c46; /* زمردي ملكي فاخر */
+  --color-primary: #0d5c46; /* زمردي ملكي راقي */
   --color-primary-hover: #084332;
   --color-primary-light: #ecfdf5;
-  --color-secondary: #1e293b; /* كحلي أنيق وداكن */
-  --color-accent: #d97706; /* ذهبي عنبري دافئ */
+  --color-secondary: #0f172a; /* كحلي أنيق */
+  --color-accent: #d97706; /* عنبري دافئ */
   --color-accent-light: #fef3c7;
-  --color-background: #f8fafc; /* خلفية لؤلؤية معاصرة ومريحة للعين */
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
-  --color-text-main: #0f172a;
-  --color-text-muted: #64748b;
+  --color-background: #fdfcfb; /* خلفية بيج لؤلؤية ناعمة ودافئة */
+  --color-surface: #ffffff; /* بطاقات بيضاء ناصعة */
+  --color-border: #e2ded7; /* حدود واضحة ومحددة بدقة */
+  --color-text-main: #090d16; /* أرقام ونصوص رئيسية غامقة جداً وعالية الوضوح */
+  --color-text-muted: #1e293b; /* نصوص وصفية وتسميات غامقة وواضحة جداً */
 
-  --font-sans: "Alexandria", "Cairo", "Tajawal", "Segoe UI", Tahoma, Arial, sans-serif;
+  --font-sans: "Tajawal", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 @variant dark (&:where(.dark, .dark *));
@@ -23,16 +23,23 @@
   --color-primary: #10b981; 
   --color-primary-hover: #34d399;
   --color-primary-light: #064e3b;
-  --color-background: #091310; /* ليلي داكن ممزوج بلمسة زمردية فاخرة */
-  --color-surface: #10221c; /* بطاقات ناعمة مريحة */
-  --color-border: #1e3a30;
-  --color-text-main: #f8fafc;
-  --color-text-muted: #94a3b8;
+  --color-background: #0b1411; /* ليلي داكن فاخر */
+  --color-surface: #12201b; /* بطاقات داكنة مريحة */
+  --color-border: #1e332c;
+  --color-text-main: #ffffff;
+  --color-text-muted: #e2e8f0;
 }
 
 @layer base {
   body {
-    @apply bg-background text-text-main font-sans antialiased selection:bg-emerald-500/20 selection:text-emerald-900;
+    @apply bg-background text-text-main font-sans antialiased selection:bg-emerald-500/20 selection:text-emerald-900 font-semibold;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  p, span, label, input, select, textarea, button, td, th {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 

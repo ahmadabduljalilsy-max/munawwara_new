@@ -368,25 +368,30 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-text-main">الرقابة والمتابعة</h2>
-          <p className="text-text-muted text-sm mt-1">إدارة بيانات العمال والمقاولين ومتابعة فترات الدوام</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>إدارة</span>
+            <span className="text-primary font-bold">الرقابة والمتابعة</span>
+          </h2>
+          <p className="text-slate-700 dark:text-slate-300 text-xs font-semibold mt-1">
+            إدارة بيانات <span className="text-emerald-700 dark:text-emerald-400 font-bold">العمال والمقاولين</span> ومتابعة فترات الدوام والربط الميداني
+          </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <button 
               onClick={onAdd}
-              className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-secondary transition-all shadow-sm shadow-primary/20 active:scale-95"
+              className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              إضافة عامل جديد
+              <span>إضافة عامل جديد</span>
             </button>
           )}
           
           <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
           {isAdmin && (
-            <label className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all cursor-pointer shadow-sm">
+            <label className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all cursor-pointer shadow-xs">
               <Upload className="w-4 h-4 text-emerald-600" />
               <span>استيراد Excel</span>
               <input 
@@ -400,7 +405,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
           <button 
             onClick={() => onExportExcel(filteredWorkers)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all shadow-xs cursor-pointer"
           >
             <Download className="w-4 h-4 text-emerald-600" />
             <span>تصدير Excel</span>
@@ -408,7 +413,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
           <button 
             onClick={() => onExportPdf(filteredWorkers)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-text-main rounded-xl text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-all shadow-xs cursor-pointer"
           >
             <FileDown className="w-4 h-4 text-red-600" />
             <span>تصدير PDF</span>
@@ -417,7 +422,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           {isAdmin && onRenumberWorkers && (
             <button 
               onClick={onRenumberWorkers}
-              className="flex items-center gap-2 px-4 py-2 bg-surface border border-indigo-200 text-indigo-700 dark:border-indigo-900/50 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-surface border border-indigo-200 text-indigo-700 dark:border-indigo-900/50 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all shadow-xs cursor-pointer"
               title="إعادة ترقيم جميع العمال الحاليين بشكل متسلسل"
             >
               <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -427,49 +432,49 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
           <button 
             onClick={() => setShowAnalytics(!showAnalytics)}
-            className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition-all shadow-sm ${showAnalytics ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-main hover:bg-slate-50'}`}
+            className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${showAnalytics ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-slate-900 dark:text-white hover:bg-slate-50'}`}
           >
-            <BarChart3 className={`w-4 h-4 ${showAnalytics ? 'text-white' : 'text-accent'}`} />
+            <BarChart3 className={`w-4 h-4 ${showAnalytics ? 'text-white' : 'text-primary'}`} />
             <span>{showAnalytics ? 'إخفاء الإحصائيات' : 'مؤشرات الرقابة والتحليلات'}</span>
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+        <div className="bg-surface p-4 rounded-2xl border border-emerald-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
             <ClipboardList className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-text-muted uppercase">إجمالي العمال (النشطين)</p>
-            <p className="text-xl font-black text-text-main">{activeWorkers.length}</p>
+            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">إجمالي العمال النشطين</p>
+            <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-300">{activeWorkers.length}</p>
           </div>
         </div>
-        <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+        <div className="bg-surface p-4 rounded-2xl border border-sky-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
+          <div className="w-12 h-12 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/40 flex items-center justify-center text-sky-700 dark:text-sky-400">
             <BusIcon className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-text-muted uppercase">سائقين مرتبطين</p>
-            <p className="text-xl font-black text-text-main">{activeWorkers.filter(w => w.assignedBusId).length}</p>
+            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">سائقين بحافلات مرتبطة</p>
+            <p className="text-2xl font-bold text-sky-900 dark:text-sky-300">{activeWorkers.filter(w => w.assignedBusId).length}</p>
           </div>
         </div>
-        <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+        <div className="bg-surface p-4 rounded-2xl border border-amber-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
+          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 flex items-center justify-center text-amber-700 dark:text-amber-400">
             <User className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-text-muted uppercase">عمال بدون حافلة</p>
-            <p className="text-xl font-black text-text-main">{activeWorkers.filter(w => !w.assignedBusId).length}</p>
+            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">عمال بدون حافلة</p>
+            <p className="text-2xl font-bold text-amber-900 dark:text-amber-300">{activeWorkers.filter(w => !w.assignedBusId).length}</p>
           </div>
         </div>
-        <div className="bg-surface p-4 rounded-2xl border border-border flex items-center gap-4 shadow-sm">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+        <div className="bg-surface p-4 rounded-2xl border border-purple-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
+          <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 flex items-center justify-center text-purple-700 dark:text-purple-400">
             <Building2 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-text-muted uppercase">عدد الشركات</p>
-            <p className="text-xl font-black text-text-main">{Array.from(new Set(activeWorkers.map(w => w.recruitmentCompany))).length}</p>
+            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">شركات الاستقدام</p>
+            <p className="text-2xl font-bold text-purple-900 dark:text-purple-300">{Array.from(new Set(activeWorkers.map(w => w.recruitmentCompany))).length}</p>
           </div>
         </div>
       </div>

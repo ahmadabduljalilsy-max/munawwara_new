@@ -51,14 +51,14 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
   const menuItems = [
-    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات والتحليلات' },
-    { id: 'fleet', label: 'أسطول الشركة', icon: Bus, desc: 'سجل الحافلات والجاهزية' },
-    { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع العمال والمواقع' },
-    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات' },
+    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات والتحليلات', iconColor: 'text-emerald-400', activeBg: 'bg-emerald-600' },
+    { id: 'fleet', label: 'أسطول الشركة', icon: Bus, desc: 'سجل الحافلات والجاهزية', iconColor: 'text-sky-400', activeBg: 'bg-sky-600' },
+    { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع العمال والمواقع', iconColor: 'text-amber-400', activeBg: 'bg-amber-600' },
+    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات', iconColor: 'text-purple-400', activeBg: 'bg-purple-600' },
   ];
 
   if (profile?.role === 'admin') {
-    menuItems.push({ id: 'admin', label: 'الإدارة', icon: Settings, desc: 'الصلاحيات وإعدادات النظام' });
+    menuItems.push({ id: 'admin', label: 'الإدارة', icon: Settings, desc: 'الصلاحيات وإعدادات النظام', iconColor: 'text-rose-400', activeBg: 'bg-rose-600' });
   }
 
   const handleLogout = () => {
@@ -66,32 +66,32 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   };
 
   return (
-    <div className="min-h-screen bg-background text-text-main font-sans flex flex-col md:flex-row rtl selection:bg-primary/20 selection:text-primary" dir="rtl">
+    <div className="min-h-screen bg-background text-text-main font-sans flex flex-col md:flex-row rtl selection:bg-emerald-500/20 selection:text-emerald-900" dir="rtl">
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-3.5 bg-surface/90 backdrop-blur-md border-b border-border sticky top-0 z-50 shadow-sm">
+      <header className="md:hidden flex items-center justify-between p-3.5 bg-[#0F172A] text-white border-b border-slate-800 sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center p-1 border border-border/80 shadow-sm">
+          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1 border border-white/20 shadow-sm">
             <img src={logoURL} alt="Logo" className="w-full h-full object-contain" />
           </div>
           <div className="flex flex-col">
-            <span className="font-black text-sm text-text-main leading-tight flex items-center gap-1.5">
+            <span className="font-semibold text-sm text-white leading-tight flex items-center gap-1.5">
               <span>درة المنورة</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             </span>
-            <span className="text-[10px] text-text-muted font-bold">مكتب نقل العمال</span>
+            <span className="text-[10px] text-slate-400 font-normal">مكتب نقل العمال</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
           <button 
             onClick={toggleTheme}
-            className="p-2 hover:bg-background rounded-xl transition-colors text-text-muted active:scale-95 cursor-pointer"
+            className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-300 active:scale-95 cursor-pointer"
             aria-label="تبديل المظهر"
           >
             {theme === 'light' ? <Moon className="w-4.5 h-4.5" /> : <Sun className="w-4.5 h-4.5 text-amber-400" />}
           </button>
           <button 
             onClick={() => setIsSidebarOpen(true)} 
-            className="p-2 hover:bg-background rounded-xl transition-colors text-text-main cursor-pointer"
+            className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-white cursor-pointer"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -106,21 +106,21 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] md:hidden"
           />
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* Dark Sidebar */}
       <aside className={`
-        fixed md:sticky top-0 right-0 h-screen w-64 bg-surface border-l border-border z-[70] transition-all duration-300 ease-in-out
+        fixed md:sticky top-0 right-0 h-screen w-64 bg-[#0F172A] text-slate-200 border-l border-slate-800/80 z-[70] transition-all duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-[100%]'} md:translate-x-0
         flex flex-col justify-between
       `}>
         {/* Brand Header */}
-        <div className="p-4 pb-4 border-b border-border/80 flex flex-col items-center relative">
-          <div className="relative group mb-2.5">
-            <div className="w-16 h-16 bg-surface p-2 rounded-2xl flex items-center justify-center shadow-md border border-border/80 group-hover:scale-105 transition-transform duration-300">
+        <div className="p-4 pb-5 border-b border-slate-800/80 flex flex-col items-center relative">
+          <div className="relative group mb-3">
+            <div className="w-16 h-16 bg-white p-2 rounded-2xl flex items-center justify-center shadow-lg border border-white/20 group-hover:scale-105 transition-transform duration-300">
               <img 
                 src={logoURL} 
                 alt="Logo" 
@@ -129,29 +129,30 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
             </div>
             <span className="absolute -bottom-1 -left-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
             </span>
           </div>
 
-          <h1 className="font-black text-base text-primary leading-tight text-center tracking-tight">شركة درة المنورة</h1>
-          <p className="text-[10px] text-text-muted font-bold mt-0.5 text-center">لنقل الحجاج والمعتمرين</p>
-          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-black text-primary">
-            <Sparkles className="w-3 h-3 text-accent" />
+          <h1 className="font-bold text-base text-white leading-tight text-center tracking-tight">شركة درة المنورة</h1>
+          <p className="text-[11px] text-slate-400 font-normal mt-0.5 text-center">لنقل الحجاج والمعتمرين</p>
+          
+          <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-800/60 text-[10px] font-semibold text-emerald-400">
+            <Sparkles className="w-3 h-3 text-amber-400" />
             <span>مكتب نقل العمال والتشغيل</span>
           </div>
 
           <button 
             onClick={() => setIsSidebarOpen(false)} 
-            className="md:hidden absolute top-3.5 left-3.5 p-1.5 hover:bg-background rounded-xl text-text-muted hover:text-text-main transition-colors cursor-pointer"
+            className="md:hidden absolute top-3.5 left-3.5 p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-4.5 h-4.5" />
           </button>
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 py-4 flex flex-col gap-1.5 overflow-y-auto custom-scrollbar">
           <div className="px-3 pb-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted/70">القائمة الرئيسية</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">القائمة الرئيسية</span>
           </div>
           {menuItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -165,29 +166,29 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                 className={`
                   relative flex items-center justify-between px-3.5 py-3 rounded-xl transition-all duration-200 group cursor-pointer
                   ${isActive 
-                    ? 'bg-primary text-white shadow-md shadow-primary/20 font-black' 
-                    : 'text-text-main hover:bg-background hover:text-primary font-bold'}
+                    ? `${item.activeBg || 'bg-emerald-600'} text-white shadow-lg shadow-black/20 font-bold` 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white font-medium'}
                 `}
               >
                 <div className="flex items-center gap-3">
                   <div className={`p-1.5 rounded-lg transition-colors ${
                     isActive 
                       ? 'bg-white/20 text-white' 
-                      : 'bg-primary/5 text-primary group-hover:bg-primary/10'
+                      : `bg-slate-800/90 ${item.iconColor} group-hover:bg-slate-700`
                   }`}>
                     <item.icon className="w-4.5 h-4.5" />
                   </div>
                   <div className="text-right">
                     <span className="text-xs block leading-tight">{item.label}</span>
-                    <span className={`text-[9px] block font-medium transition-opacity ${
-                      isActive ? 'text-white/80' : 'text-text-muted group-hover:text-text-muted'
+                    <span className={`text-[10px] block transition-opacity ${
+                      isActive ? 'text-white/90 font-normal' : 'text-slate-400 group-hover:text-slate-300 font-normal'
                     }`}>
                       {item.desc}
                     </span>
                   </div>
                 </div>
                 {isActive && (
-                  <ChevronLeft className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                  <ChevronLeft className="w-3.5 h-3.5 text-white/90 shrink-0" />
                 )}
               </button>
             );
@@ -195,9 +196,9 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
         </nav>
 
         {/* User Card & Logout */}
-        <div className="p-3 border-t border-border/80 bg-background/50">
-          <div className="p-2.5 bg-surface rounded-xl border border-border shadow-sm flex items-center gap-2.5">
-             <div className="w-9 h-9 rounded-xl overflow-hidden bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0 text-primary font-black text-sm">
+        <div className="p-3 border-t border-slate-800/80 bg-slate-900/50">
+          <div className="p-2.5 bg-slate-800/70 rounded-xl border border-slate-700/60 flex items-center gap-2.5">
+             <div className="w-9 h-9 rounded-xl overflow-hidden bg-emerald-950 flex items-center justify-center border border-emerald-700/40 shrink-0 text-emerald-400 font-bold text-sm">
                 {profile?.photoURL ? (
                   <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
                 ) : (
@@ -205,16 +206,16 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                 )}
              </div>
              <div className="flex flex-col min-w-0 flex-1 text-right">
-                <span className="font-black text-xs text-text-main truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
-                <span className="text-[9px] text-text-muted font-bold tracking-tight flex items-center gap-1 mt-0.5">
+                <span className="font-semibold text-xs text-white truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
+                <span className="text-[10px] text-slate-400 font-normal tracking-tight flex items-center gap-1 mt-0.5">
                   {profile?.role === 'admin' ? (
-                    <span className="text-primary font-black flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-primary rounded-full" />
+                    <span className="text-emerald-400 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
                       مدير النظام
                     </span>
                   ) : (
-                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-black">
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                    <span className="text-amber-400 flex items-center gap-1 font-medium">
+                      <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
                       وضع قراءة فقط
                     </span>
                   )}
@@ -222,7 +223,7 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
              </div>
              <button 
                 onClick={handleLogout}
-                className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all shrink-0 cursor-pointer"
+                className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-lg transition-all shrink-0 cursor-pointer"
                 title="تسجيل الخروج"
                 aria-label="تسجيل الخروج"
               >
@@ -232,22 +233,22 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 bg-background overflow-hidden h-screen">
+      {/* Main Content Area (Warm Subtle Pearl-Beige Panel) */}
+      <main className="flex-1 flex flex-col min-w-0 bg-[#FDFCFB] dark:bg-background overflow-hidden h-screen">
         {/* Top bar for desktop */}
-        <header className="hidden md:flex h-16 bg-surface/90 backdrop-blur-md border-b border-border items-center justify-between px-8 shrink-0 shadow-xs z-30">
+        <header className="hidden md:flex h-16 bg-white/90 dark:bg-surface/90 backdrop-blur-md border-b border-[#E8E5DF] dark:border-border items-center justify-between px-8 shrink-0 shadow-xs z-30">
           <div className="flex items-center gap-6 flex-1">
              <div className="flex flex-col text-right">
-                <h2 className="text-base font-black text-primary tracking-tight flex items-center gap-2">
-                  <span>{menuItems.find(i => i.id === activeTab)?.label || 'الرئيسية'}</span>
-                  <span className="text-xs font-bold text-text-muted">/</span>
-                  <span className="text-xs font-bold text-text-muted">{menuItems.find(i => i.id === activeTab)?.desc || ''}</span>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-text-main tracking-tight flex items-center gap-2">
+                  <span className="text-emerald-800 dark:text-emerald-400 font-bold">{menuItems.find(i => i.id === activeTab)?.label || 'الرئيسية'}</span>
+                  <span className="text-xs font-normal text-slate-400">/</span>
+                  <span className="text-xs font-normal text-slate-500 dark:text-text-muted">{menuItems.find(i => i.id === activeTab)?.desc || ''}</span>
                 </h2>
              </div>
              
              {/* Live Saudi Date display */}
-             <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-background rounded-xl border border-border/80 text-[11px] font-bold text-text-muted">
-                <Calendar className="w-3.5 h-3.5 text-primary" />
+             <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF9F6] dark:bg-background rounded-xl border border-[#E8E5DF] dark:border-border text-[11px] font-normal text-slate-600 dark:text-text-muted">
+                <Calendar className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                 <span>{todayFormatted}</span>
              </div>
           </div>
@@ -256,7 +257,7 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
              {/* Theme Switcher Button */}
              <button 
                 onClick={toggleTheme}
-                className="p-2.5 bg-background hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all text-text-muted hover:text-text-main border border-border/80 cursor-pointer shadow-xs active:scale-95"
+                className="p-2.5 bg-[#FAF9F6] dark:bg-background hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all text-slate-600 dark:text-text-muted hover:text-slate-900 border border-[#E8E5DF] dark:border-border cursor-pointer shadow-xs active:scale-95"
                 title={theme === 'light' ? 'التبديل إلى الوضع الليلي' : 'التبديل إلى الوضع النهاري'}
               >
                 {theme === 'light' ? (
@@ -267,25 +268,25 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
               </button>
 
              {/* Profile and Role Indicator */}
-             <div className="flex items-center gap-3 pr-3 border-r border-border/80">
+             <div className="flex items-center gap-3 pr-3 border-r border-[#E8E5DF] dark:border-border">
                {profile?.role !== 'admin' ? (
-                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-lg shadow-xs">
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-semibold rounded-lg shadow-xs">
                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
                    وضع القراءة فقط
                  </span>
                ) : (
-                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded-lg shadow-xs">
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold rounded-lg shadow-xs">
                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                    مدير النظام
                  </span>
                )}
 
                <div className="text-right flex flex-col">
-                  <span className="font-black text-xs leading-tight text-text-main">{profile?.displayName || 'المستخدم'}</span>
-                  <span className="text-[10px] text-text-muted font-bold">{profile?.email || 'مشرف العمليات'}</span>
+                  <span className="font-semibold text-xs leading-tight text-slate-900 dark:text-text-main">{profile?.displayName || 'المستخدم'}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-text-muted font-normal">{profile?.email || 'مشرف العمليات'}</span>
                </div>
                
-               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-black border border-primary/20 overflow-hidden shadow-xs">
+               <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-800 dark:text-emerald-400 font-bold border border-emerald-200 dark:border-emerald-800/40 overflow-hidden shadow-xs">
                   {profile?.photoURL ? (
                     <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
                   ) : (

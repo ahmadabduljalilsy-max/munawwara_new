@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
   Bus, 
-  FileText, 
   Settings, 
   LogOut, 
   Menu, 
   X, 
   ShieldCheck,
   CircleDollarSign,
-  Search,
   Sun,
   Moon,
+  Calendar,
+  Sparkles,
+  ChevronLeft
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { useLogo } from '../lib/LogoContext';
@@ -24,6 +25,19 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   const { logoURL } = useLogo();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  const todayFormatted = React.useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat('ar-SA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }).format(new Date());
+    } catch (e) {
+      return new Date().toLocaleDateString('ar-SA');
+    }
+  }, []);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -37,14 +51,14 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
   const menuItems = [
-    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
-    { id: 'fleet', label: 'أسطول الشركة', icon: Bus },
-    { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck },
-    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign },
+    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات والتحليلات' },
+    { id: 'fleet', label: 'أسطول الشركة', icon: Bus, desc: 'سجل الحافلات والجاهزية' },
+    { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع العمال والمواقع' },
+    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات' },
   ];
 
   if (profile?.role === 'admin') {
-    menuItems.push({ id: 'admin', label: 'الإدارة', icon: ShieldCheck });
+    menuItems.push({ id: 'admin', label: 'الإدارة', icon: Settings, desc: 'الصلاحيات وإعدادات النظام' });
   }
 
   const handleLogout = () => {
@@ -52,29 +66,34 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   };
 
   return (
-    <div className="min-h-screen bg-background text-text-main font-sans flex flex-col md:flex-row rtl" dir="rtl">
+    <div className="min-h-screen bg-background text-text-main font-sans flex flex-col md:flex-row rtl selection:bg-primary/20 selection:text-primary" dir="rtl">
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-4 bg-surface border-b border-border sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1 border border-border shadow-sm">
+      <header className="md:hidden flex items-center justify-between p-3.5 bg-surface/90 backdrop-blur-md border-b border-border sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center p-1 border border-border/80 shadow-sm">
             <img src={logoURL} alt="Logo" className="w-full h-full object-contain" />
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-base text-text-main leading-none">درة المنورة</span>
-            {profile?.role !== 'admin' && (
-              <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 mt-1">وضع القراءة فقط</span>
-            )}
+            <span className="font-black text-sm text-text-main leading-tight flex items-center gap-1.5">
+              <span>درة المنورة</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            </span>
+            <span className="text-[10px] text-text-muted font-bold">مكتب نقل العمال</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button 
             onClick={toggleTheme}
-            className="p-2 hover:bg-background rounded-md transition-colors text-text-muted"
+            className="p-2 hover:bg-background rounded-xl transition-colors text-text-muted active:scale-95 cursor-pointer"
+            aria-label="تبديل المظهر"
           >
-            {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            {theme === 'light' ? <Moon className="w-4.5 h-4.5" /> : <Sun className="w-4.5 h-4.5 text-amber-400" />}
           </button>
-          <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-background rounded-md transition-colors">
-            <Menu className="w-6 h-6" />
+          <button 
+            onClick={() => setIsSidebarOpen(true)} 
+            className="p-2 hover:bg-background rounded-xl transition-colors text-text-main cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -87,83 +106,113 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] md:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] md:hidden"
           />
         )}
       </AnimatePresence>
 
       {/* Sidebar */}
       <aside className={`
-        fixed md:sticky top-0 right-0 h-screen w-60 bg-surface border-l border-border z-[70] transition-transform duration-300 ease-in-out
-        ${isSidebarOpen ? 'translate-x-0' : 'translate-x-[100%]'} md:translate-x-0
-        flex flex-col shadow-xl md:shadow-none
+        fixed md:sticky top-0 right-0 h-screen w-64 bg-surface border-l border-border z-[70] transition-all duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-[100%]'} md:translate-x-0
+        flex flex-col justify-between
       `}>
-        <div className="p-4 pb-5 border-b border-border flex flex-col items-center">
-          <div className="w-16 h-16 bg-surface p-1 rounded-2xl flex items-center justify-center shadow-sm mb-2 border border-border">
-            <img 
-              src={logoURL} 
-              alt="Logo" 
-              className="w-full h-full object-contain"
-            />
+        {/* Brand Header */}
+        <div className="p-4 pb-4 border-b border-border/80 flex flex-col items-center relative">
+          <div className="relative group mb-2.5">
+            <div className="w-16 h-16 bg-surface p-2 rounded-2xl flex items-center justify-center shadow-md border border-border/80 group-hover:scale-105 transition-transform duration-300">
+              <img 
+                src={logoURL} 
+                alt="Logo" 
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <span className="absolute -bottom-1 -left-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
+            </span>
           </div>
-          <h1 className="font-bold text-base text-primary leading-tight text-center">درة المنورة</h1>
-          <p className="text-[9px] text-text-muted font-bold mt-0.5 text-center px-2">لنقل الحجاج والمعتمرين - مكتب التشغيل</p>
-          <p className="text-[9px] text-primary font-black mt-0.5 text-center px-2">مكتب نقل العمال</p>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute top-4 left-4 p-1 hover:bg-background rounded">
-            <X className="w-5 h-5" />
+
+          <h1 className="font-black text-base text-primary leading-tight text-center tracking-tight">شركة درة المنورة</h1>
+          <p className="text-[10px] text-text-muted font-bold mt-0.5 text-center">لنقل الحجاج والمعتمرين</p>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-black text-primary">
+            <Sparkles className="w-3 h-3 text-accent" />
+            <span>مكتب نقل العمال والتشغيل</span>
+          </div>
+
+          <button 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="md:hidden absolute top-3.5 left-3.5 p-1.5 hover:bg-background rounded-xl text-text-muted hover:text-text-main transition-colors cursor-pointer"
+          >
+            <X className="w-4.5 h-4.5" />
           </button>
         </div>
 
-        <nav className="flex-1 p-0 py-3 flex flex-col gap-0.5 overflow-y-auto">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setActiveTab(item.id);
-                setIsSidebarOpen(false);
-              }}
-              className={`
-                relative flex items-center gap-3 px-6 py-3.5 transition-all duration-200 group
-                ${activeTab === item.id 
-                  ? 'text-primary' 
-                  : 'text-text-main hover:bg-slate-50/50'}
-              `}
-            >
-              {activeTab === item.id && (
-                <>
-                  <motion.div
-                    layoutId="activeTabIndicator"
-                    className="absolute inset-y-0 right-0 w-1 bg-primary rounded-l-full"
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-                  />
-                  <motion.div
-                    layoutId="activeTabBackground"
-                    className="absolute inset-0 bg-primary/5 -z-10"
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-                  />
-                </>
-              )}
-              <item.icon className={`w-4.5 h-4.5 transition-transform duration-200 group-hover:scale-110 ${activeTab === item.id ? 'text-primary' : 'text-text-muted'}`} />
-              <span className={`font-bold text-xs transition-all duration-200 ${activeTab === item.id ? 'translate-x-1' : ''}`}>{item.label}</span>
-            </button>
-          ))}
+        {/* Navigation Items */}
+        <nav className="flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+          <div className="px-3 pb-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted/70">القائمة الرئيسية</span>
+          </div>
+          {menuItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setIsSidebarOpen(false);
+                }}
+                className={`
+                  relative flex items-center justify-between px-3.5 py-3 rounded-xl transition-all duration-200 group cursor-pointer
+                  ${isActive 
+                    ? 'bg-primary text-white shadow-md shadow-primary/20 font-black' 
+                    : 'text-text-main hover:bg-background hover:text-primary font-bold'}
+                `}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-1.5 rounded-lg transition-colors ${
+                    isActive 
+                      ? 'bg-white/20 text-white' 
+                      : 'bg-primary/5 text-primary group-hover:bg-primary/10'
+                  }`}>
+                    <item.icon className="w-4.5 h-4.5" />
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs block leading-tight">{item.label}</span>
+                    <span className={`text-[9px] block font-medium transition-opacity ${
+                      isActive ? 'text-white/80' : 'text-text-muted group-hover:text-text-muted'
+                    }`}>
+                      {item.desc}
+                    </span>
+                  </div>
+                </div>
+                {isActive && (
+                  <ChevronLeft className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                )}
+              </button>
+            );
+          })}
         </nav>
 
-        <div className="p-2 bg-slate-50 dark:bg-slate-900/50 mx-4 mb-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center gap-2 p-1">
-             <div className="w-8 h-8 rounded-lg shadow-sm overflow-hidden bg-white dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0">
+        {/* User Card & Logout */}
+        <div className="p-3 border-t border-border/80 bg-background/50">
+          <div className="p-2.5 bg-surface rounded-xl border border-border shadow-sm flex items-center gap-2.5">
+             <div className="w-9 h-9 rounded-xl overflow-hidden bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0 text-primary font-black text-sm">
                 {profile?.photoURL ? (
                   <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-primary font-bold text-sm">
-                    {profile?.displayName?.charAt(0) || 'U'}
-                  </span>
+                  profile?.displayName?.charAt(0) || 'U'
                 )}
              </div>
              <div className="flex flex-col min-w-0 flex-1 text-right">
-                <span className="font-bold text-[11px] text-text-main truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
-                <span className="text-[9px] text-text-muted font-bold tracking-tight flex items-center gap-1.5 mt-0.5">
-                  {profile?.role === 'admin' ? 'مدير النظام' : (
+                <span className="font-black text-xs text-text-main truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
+                <span className="text-[9px] text-text-muted font-bold tracking-tight flex items-center gap-1 mt-0.5">
+                  {profile?.role === 'admin' ? (
+                    <span className="text-primary font-black flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-primary rounded-full" />
+                      مدير النظام
+                    </span>
+                  ) : (
                     <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-black">
                       <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
                       وضع قراءة فقط
@@ -173,55 +222,70 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
              </div>
              <button 
                 onClick={handleLogout}
-                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all shrink-0"
+                className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all shrink-0 cursor-pointer"
                 title="تسجيل الخروج"
+                aria-label="تسجيل الخروج"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-4 h-4" />
               </button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-background overflow-hidden h-screen">
         {/* Top bar for desktop */}
-        <header className="hidden md:flex h-14 bg-surface border-b border-border items-center justify-between px-8 shrink-0">
-          <div className="flex items-center gap-8 flex-1">
-             <div className="flex flex-col">
-                <h2 className="text-base font-black text-primary tracking-tight">
-                  {menuItems.find(i => i.id === activeTab)?.label || 'الرئيسية'}
+        <header className="hidden md:flex h-16 bg-surface/90 backdrop-blur-md border-b border-border items-center justify-between px-8 shrink-0 shadow-xs z-30">
+          <div className="flex items-center gap-6 flex-1">
+             <div className="flex flex-col text-right">
+                <h2 className="text-base font-black text-primary tracking-tight flex items-center gap-2">
+                  <span>{menuItems.find(i => i.id === activeTab)?.label || 'الرئيسية'}</span>
+                  <span className="text-xs font-bold text-text-muted">/</span>
+                  <span className="text-xs font-bold text-text-muted">{menuItems.find(i => i.id === activeTab)?.desc || ''}</span>
                 </h2>
-                <div className="h-0.5 w-1/3 bg-accent rounded-full mt-0.5" />
              </div>
-             <div className="relative w-80">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-3.5 h-3.5" />
-                <input 
-                  type="text" 
-                  placeholder="بحث سريع..." 
-                  className="w-full pr-10 pl-4 py-1.5 text-xs bg-background border border-border rounded-lg outline-none focus:border-primary transition-all shadow-sm"
-                />
+             
+             {/* Live Saudi Date display */}
+             <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-background rounded-xl border border-border/80 text-[11px] font-bold text-text-muted">
+                <Calendar className="w-3.5 h-3.5 text-primary" />
+                <span>{todayFormatted}</span>
              </div>
           </div>
-          <div className="flex items-center gap-6">
+
+          <div className="flex items-center gap-4">
+             {/* Theme Switcher Button */}
              <button 
                 onClick={toggleTheme}
-                className="p-2 hover:bg-background rounded-full transition-colors text-text-muted"
-                title={theme === 'light' ? 'تبديل للوضع الليلي' : 'تبديل للوضع النهاري'}
+                className="p-2.5 bg-background hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all text-text-muted hover:text-text-main border border-border/80 cursor-pointer shadow-xs active:scale-95"
+                title={theme === 'light' ? 'التبديل إلى الوضع الليلي' : 'التبديل إلى الوضع النهاري'}
               >
-                {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                {theme === 'light' ? (
+                  <Moon className="w-4 h-4 text-slate-700" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-400" />
+                )}
               </button>
-             <div className="flex items-center gap-4">
-               {profile?.role !== 'admin' && (
-                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-full shadow-sm ml-2">
+
+             {/* Profile and Role Indicator */}
+             <div className="flex items-center gap-3 pr-3 border-r border-border/80">
+               {profile?.role !== 'admin' ? (
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-lg shadow-xs">
                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
                    وضع القراءة فقط
                  </span>
+               ) : (
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded-lg shadow-xs">
+                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                   مدير النظام
+                 </span>
                )}
+
                <div className="text-right flex flex-col">
-                  <span className="font-bold text-sm leading-tight">{profile?.displayName}</span>
-                  <span className="text-[11px] text-text-muted">{profile?.role === 'admin' ? 'مدير النظام' : 'مستخدم'}</span>
+                  <span className="font-black text-xs leading-tight text-text-main">{profile?.displayName || 'المستخدم'}</span>
+                  <span className="text-[10px] text-text-muted font-bold">{profile?.email || 'مشرف العمليات'}</span>
                </div>
-               <div className="w-9 h-9 rounded-full bg-background flex items-center justify-center text-text-muted font-bold border border-border overflow-hidden">
+               
+               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-black border border-primary/20 overflow-hidden shadow-xs">
                   {profile?.photoURL ? (
                     <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -232,8 +296,9 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
           </div>
         </header>
 
-        <div className="flex-1 p-6 lg:p-8 overflow-y-auto w-full">
-          <div className="max-w-7xl mx-auto h-full">
+        {/* Content Container */}
+        <div className="flex-1 p-5 md:p-7 lg:p-8 overflow-y-auto w-full custom-scrollbar">
+          <div className="max-w-7xl mx-auto h-full pb-10">
             {children}
           </div>
         </div>

@@ -25,7 +25,8 @@ import {
   PieChart as LucidePieChart,
   TrendingUp,
   AlertCircle,
-  Check
+  Check,
+  History
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -1009,9 +1010,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-800 font-extrabold">
-                        <span className="bg-slate-50 border border-slate-200/50 px-2.5 py-1.5 rounded-xl shadow-sm">
-                          {worker.clientName || '-'}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="bg-slate-50 border border-slate-200/50 px-2.5 py-1 rounded-xl shadow-xs">
+                            {worker.clientName || '-'}
+                          </span>
+                          {worker.workHistory && worker.workHistory.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200" title={worker.workHistory.map(h => `${h.clientOrProject} (${h.startDate || ''} إلى ${h.endDate || 'مستمر'})`).join(' | ')}>
+                              <History className="w-3 h-3 text-amber-600" />
+                              <span>{worker.workHistory.length} مشاريع سابقة</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {isAdmin && (
                         <td className="px-4 py-3.5 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
@@ -1179,10 +1188,20 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                 </div>
 
                                 {worker.previousBuses && (
-                                  <div className="mb-4 flex items-center gap-1.5 text-[9px] text-text-muted bg-indigo-50/50 p-1.5 rounded-xl border border-indigo-100/30">
+                                  <div className="mb-2 flex items-center gap-1.5 text-[9px] text-text-muted bg-indigo-50/50 p-1.5 rounded-xl border border-indigo-100/30">
                                     <BusIcon className="w-3 h-3 text-indigo-500 shrink-0" />
                                     <span className="font-semibold shrink-0">الحافلات السابقة:</span>
                                     <span className="font-black text-indigo-700 truncate">{worker.previousBuses}</span>
+                                  </div>
+                                )}
+
+                                {worker.workHistory && worker.workHistory.length > 0 && (
+                                  <div className="mb-4 flex items-center justify-between text-[9px] bg-amber-50/70 p-1.5 px-2.5 rounded-xl border border-amber-200/50 text-amber-900">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                      <History className="w-3 h-3 text-amber-600 shrink-0" />
+                                      <span>أرشيف الأعمال السابقة:</span>
+                                    </div>
+                                    <span className="font-black bg-amber-200/70 px-1.5 py-0.2 rounded text-[10px]">{worker.workHistory.length} مشاريع</span>
                                   </div>
                                 )}
 

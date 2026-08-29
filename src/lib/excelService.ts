@@ -147,20 +147,29 @@ export const exportToExcel = (data: Bus[]) => {
 };
 
 export const exportWorkersToExcel = (data: Worker[]) => {
-  const worksheet = XLSX.utils.json_to_sheet(data.map(worker => ({
-    'رقم العامل': worker.workerNumber,
-    'اسم العامل': worker.name,
-    'رقم الإقامة': worker.iqamaNumber,
-    'رقم الجوال': worker.mobileNumber,
-    'شركة الاستقدام': worker.recruitmentCompany,
-    'مكان العمل': worker.workplace,
-    'الراتب الأساسي': worker.basicSalary || '',
-    'الحافلة المرتبطة': worker.assignedBusOperationalNumber || 'غير مرتبط',
-    'الحافلات السابقة': worker.previousBuses || '',
-    'بداية العمل': worker.startDate,
-    'نهاية العمل': worker.endDate,
-    'العميل': worker.clientName,
-  })));
+  const worksheet = XLSX.utils.json_to_sheet(data.map(worker => {
+    const historySummary = worker.workHistory && worker.workHistory.length > 0
+      ? worker.workHistory.map(h => `${h.clientOrProject} (${h.startDate || ''} إلى ${h.endDate || 'مستمر'}${h.role ? ` - ${h.role}` : ''})`).join(' | ')
+      : '';
+
+    return {
+      'رقم العامل': worker.workerNumber,
+      'اسم العامل': worker.name,
+      'رقم الإقامة': worker.iqamaNumber,
+      'الهوية الوطنية': worker.nationalId || '',
+      'رقم الجوال': worker.mobileNumber,
+      'شركة الاستقدام': worker.recruitmentCompany,
+      'مكان العمل الحالي': worker.workplace,
+      'الراتب الأساسي': worker.basicSalary || '',
+      'الحافلة المرتبطة': worker.assignedBusOperationalNumber || 'غير مرتبط',
+      'الحافلات السابقة': worker.previousBuses || '',
+      'بداية العمل الحالي': worker.startDate,
+      'نهاية العمل': worker.endDate,
+      'العميل الحالي': worker.clientName,
+      'أرشيف الأعمال والمشاريع السابقة': historySummary,
+      'ملاحظات': worker.notes || ''
+    };
+  }));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'العمال');
   XLSX.writeFile(workbook, `عمال_درة_المنورة_${new Date().toLocaleDateString('ar-SA')}.xlsx`);

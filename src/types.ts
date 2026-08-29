@@ -15,6 +15,16 @@ export interface Bus {
   createdBy: string;
 }
 
+export interface WorkerPreviousWork {
+  id: string;
+  clientOrProject: string; // اسم العميل / المشروع / الشركة (مثل: أمكور، أرامكو...)
+  workplace?: string; // موقع العمل
+  startDate: string; // من تاريخ
+  endDate: string; // حتى تاريخ
+  role?: string; // المسمى الوظيفي / طبيعة العمل (سائق، فني، مشرف...)
+  notes?: string; // ملاحظات أو تقييم
+}
+
 export interface Worker {
   id: string;
   workerNumber: string;
@@ -32,6 +42,7 @@ export interface Worker {
   assignedBusOperationalNumber?: string;
   assignedBusPlateNumber?: string;
   previousBuses?: string;
+  workHistory?: WorkerPreviousWork[];
   notes: string;
   createdAt?: any;
 }

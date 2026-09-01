@@ -26,12 +26,13 @@ import { DeleteConfirmModal } from './DeleteConfirmModal';
 interface FleetListProps {
   buses: Bus[];
   isAdmin: boolean;
-  isSystemAdmin: boolean;
-  onAdd: () => void;
-  onEdit: (bus: Bus) => void;
-  onDelete: (id: string) => void;
-  onDeleteAll: () => void;
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  isSystemAdmin?: boolean;
+  canEdit?: boolean;
+  onAdd?: () => void;
+  onEdit?: (bus: Bus) => void;
+  onDelete?: (id: string) => void;
+  onDeleteAll?: () => void;
+  onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onExport: (data: Bus[]) => void;
   onGenerateFullPdf: (data: Bus[]) => void;
   onGenerateFilteredPdf: (buses: Bus[]) => void;
@@ -42,6 +43,7 @@ export const FleetList: React.FC<FleetListProps> = ({
   buses, 
   isAdmin, 
   isSystemAdmin,
+  canEdit = isAdmin,
   onAdd, 
   onEdit, 
   onDelete, 
@@ -195,38 +197,41 @@ export const FleetList: React.FC<FleetListProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
-            <>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-               >
-                <Upload className="w-4 h-4 text-blue-600" />
-                <span>استيراد Excel</span>
-                <input type="file" ref={fileInputRef} onChange={onImport} className="hidden" accept=".xlsx, .xls, .csv" />
-              </button>
-              <button 
-                onClick={() => onExport(filteredBuses)}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-               >
-                <Download className="w-4 h-4 text-emerald-600" />
-                <span>تصدير Excel</span>
-              </button>
-              <button 
-                onClick={() => onGenerateFullPdf(filteredBuses)}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-               >
-                <FileDown className="w-4 h-4 text-red-600" />
-                <span>تصدير PDF</span>
-              </button>
-              <button 
-                onClick={onAdd}
-                className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 cursor-pointer"
-               >
-                <Plus className="w-4 h-4" />
-                <span>إضافة حافلة جديدة</span>
-              </button>
-            </>
+          {canEdit && onImport && (
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+             >
+              <Upload className="w-4 h-4 text-blue-600" />
+              <span>استيراد Excel</span>
+              <input type="file" ref={fileInputRef} onChange={onImport} className="hidden" accept=".xlsx, .xls, .csv" />
+            </button>
+          )}
+
+          <button 
+            onClick={() => onExport(filteredBuses)}
+            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+           >
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>تصدير Excel</span>
+          </button>
+
+          <button 
+            onClick={() => onGenerateFullPdf(filteredBuses)}
+            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+           >
+            <FileDown className="w-4 h-4 text-red-600" />
+            <span>تصدير PDF</span>
+          </button>
+
+          {canEdit && onAdd && (
+            <button 
+              onClick={onAdd}
+              className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 cursor-pointer"
+             >
+              <Plus className="w-4 h-4" />
+              <span>إضافة حافلة جديدة</span>
+            </button>
           )}
         </div>
       </div>
@@ -476,22 +481,26 @@ export const FleetList: React.FC<FleetListProps> = ({
                     تقرير PDF
                   </button>
 
-                  {isAdmin && (
+                  {(canEdit && onEdit || isAdmin && onDelete) && (
                     <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => onEdit(bus)}
-                        className="p-2 text-text-muted hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all border border-transparent hover:border-emerald-200"
-                        title="تعديل"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => setDeleteModal({ isOpen: true, id: bus.id, name: bus.operationalNumber, isAll: false })}
-                        className="p-2 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
-                        title="حذف"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEdit && onEdit && (
+                        <button 
+                          onClick={() => onEdit(bus)}
+                          className="p-2 text-text-muted hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all border border-transparent hover:border-emerald-200"
+                          title="تعديل"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
+                      {isAdmin && onDelete && (
+                        <button 
+                          onClick={() => setDeleteModal({ isOpen: true, id: bus.id, name: bus.operationalNumber, isAll: false })}
+                          className="p-2 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-200"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

@@ -8,7 +8,7 @@ interface AppUser {
   email: string;
   displayName: string | null;
   photoURL: string | null;
-  role: 'admin' | 'supervisor' | 'user' | 'pending';
+  role: 'admin' | 'supervisor' | 'readonly' | 'user' | 'pending';
   approved: boolean;
 }
 
@@ -46,15 +46,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const userDoc = await getDoc(userDocRef);
 
           if (!userDoc.exists()) {
-            // Create a pending profile if it doesn't exist
-            const isFirstUser = ADMIN_EMAILS.includes(user.email || '');
+            // Create a pending profile for new users (or admin for designated super admin emails)
+            const isSuperAdmin = ADMIN_EMAILS.includes(user.email || '');
             const newProfile: AppUser = {
               uid: user.uid,
               email: user.email || '',
               displayName: user.displayName,
               photoURL: user.photoURL,
-              role: isFirstUser ? 'admin' : 'pending',
-              approved: isFirstUser,
+              role: isSuperAdmin ? 'admin' : 'pending',
+              approved: isSuperAdmin, // Approval required for normal users
             };
             await setDoc(userDocRef, newProfile);
             setProfile(newProfile);

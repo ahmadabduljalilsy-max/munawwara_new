@@ -72,13 +72,13 @@ const UserCard: React.FC<UserCardProps> = ({
       ) : (
         <span className={`
           inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm
-          ${user.role === 'admin' ? 'bg-indigo-500 text-white' : 
-            user.role === 'supervisor' ? 'bg-emerald-500 text-white' : 
-            'bg-blue-500 text-white'}
+          ${user.role === 'admin' ? 'bg-indigo-600 text-white' : 
+            user.role === 'supervisor' ? 'bg-sky-600 text-white' : 
+            'bg-amber-500 text-white'}
         `}>
-          {user.role === 'admin' ? 'مدير' : 
-           user.role === 'supervisor' ? 'مشرف' : 
-           'سائق/عامل'}
+          {user.role === 'admin' ? 'مدير النظام' : 
+           user.role === 'supervisor' ? 'موظف تشغيل' : 
+           'وضع قراءة فقط'}
         </span>
       )}
     </div>
@@ -137,17 +137,17 @@ const UserCard: React.FC<UserCardProps> = ({
             {user.role !== 'supervisor' && (
               <button 
                 onClick={() => onMakeSupervisor(user.uid)}
-                className="flex-1 px-3 py-2.5 bg-emerald-50 text-emerald-600 rounded-2xl text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100"
+                className="flex-1 px-3 py-2.5 bg-sky-50 text-sky-700 rounded-2xl text-[11px] font-black hover:bg-sky-100 transition-all active:scale-95 border border-sky-100"
               >
-                ترقية لمشرف
+                ترقية لموظف تشغيل
               </button>
             )}
-            {user.role !== 'user' && (
+            {user.role === 'supervisor' && (
               <button 
                 onClick={() => onMakeUser(user.uid)}
-                className="flex-1 px-3 py-2.5 bg-slate-100 text-slate-600 rounded-2xl text-[11px] font-black hover:bg-slate-200 transition-all active:scale-95 border border-slate-200"
+                className="flex-1 px-3 py-2.5 bg-amber-50 text-amber-700 rounded-2xl text-[11px] font-black hover:bg-amber-100 transition-all active:scale-95 border border-amber-100"
               >
-                تخفيض لمستخدم
+                تحويل لقراءة فقط
               </button>
             )}
           </div>
@@ -716,9 +716,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleApprove = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من تفعيل صلاحيات هذا المستخدم؟')) {
+    if (window.confirm('هل أنت متأكد من تفعيل هذا المستخدم (وضع القراءة فقط)؟')) {
       try {
-        await updateDoc(doc(db, 'users', uid), { approved: true, role: 'user' });
+        await updateDoc(doc(db, 'users', uid), { approved: true, role: 'readonly' });
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
       }
@@ -726,7 +726,7 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleMakeSupervisor = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من ترقية هذا المستخدم إلى مشرف؟')) {
+    if (window.confirm('هل أنت متأكد من ترقية هذا المستخدم إلى موظف تشغيل (صلاحيات تعديل وإدارة)؟')) {
       try {
         await updateDoc(doc(db, 'users', uid), { role: 'supervisor', approved: true });
       } catch (error) {
@@ -736,9 +736,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleMakeUser = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من تغيير صلاحيات هذا المستخدم إلى مستخدم عادي؟')) {
+    if (window.confirm('هل أنت متأكد من تحويل هذا المستخدم إلى وضع القراءة فقط؟')) {
       try {
-        await updateDoc(doc(db, 'users', uid), { role: 'user', approved: true });
+        await updateDoc(doc(db, 'users', uid), { role: 'readonly', approved: true });
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
       }

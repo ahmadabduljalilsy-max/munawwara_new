@@ -1,6 +1,6 @@
 {
   "name": "نقل العمال - قسم التشغيل",
-  "description": "تطبيق احترافي لإدارة أسطول الحافلات، يشمل استيراد البيانات، تقارير PDF، وإحصائيات متقدمة.",
+  "description": "تطبيق احترافي لإدارة أسطول الحافلات والكوادر والعمال، يشمل وضع القراءة فقط، أرشفة سجل الأعمال، استيراد البيانات، وتقارير PDF المتقدمة.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

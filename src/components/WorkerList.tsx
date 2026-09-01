@@ -49,19 +49,21 @@ import { WorkerDetailsModal } from './WorkerDetailsModal';
 interface WorkerListProps {
   workers: Worker[];
   isAdmin: boolean;
-  onAdd: () => void;
-  onEdit: (worker: Worker) => void;
-  onDelete: (id: string) => void;
-  onDeleteAll: () => void;
+  canEdit?: boolean;
+  onAdd?: () => void;
+  onEdit?: (worker: Worker) => void;
+  onDelete?: (id: string) => void;
+  onDeleteAll?: () => void;
   onExportExcel: (data: Worker[]) => void;
   onExportPdf: (data: Worker[]) => void;
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRenumberWorkers?: () => void;
 }
 
 export const WorkerList: React.FC<WorkerListProps> = ({ 
   workers, 
   isAdmin, 
+  canEdit = isAdmin,
   onAdd, 
   onEdit, 
   onDelete,
@@ -379,7 +381,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
+          {canEdit && onAdd && (
             <button 
               onClick={onAdd}
               className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 active:scale-95 cursor-pointer"
@@ -391,7 +393,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           
           <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
-          {isAdmin && (
+          {canEdit && onImport && (
             <label className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all cursor-pointer shadow-xs">
               <Upload className="w-4 h-4 text-emerald-600" />
               <span>استيراد Excel</span>
@@ -848,7 +850,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                   <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلة المرتبطة</th>
                   <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلات السابقة</th>
                   <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">العميل</th>
-                  {isAdmin && <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center rounded-tl-xl">الإجراءات</th>}
+                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center rounded-tl-xl">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1022,19 +1024,19 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                           )}
                         </div>
                       </td>
-                      {isAdmin && (
-                        <td className="px-4 py-3.5 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-1">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedWorkerForDetails(worker);
-                              }}
-                              className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
-                              title="عرض التفاصيل"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedWorkerForDetails(worker);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
+                            title="عرض التفاصيل"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          {canEdit && onEdit && (
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1045,6 +1047,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
+                          )}
+                          {isAdmin && onDelete && (
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1055,9 +1059,9 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </motion.tr>
                   );
                 }) : (
@@ -1234,20 +1238,24 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                   </div>
                                 )}
                                 
-                                {isAdmin && (
+                                {(canEdit && onEdit || isAdmin && onDelete) && (
                                   <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-lg border border-border shadow-sm">
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); onEdit(worker); }}
-                                      className="p-1 text-text-muted hover:text-primary transition-colors"
-                                    >
-                                      <Edit className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, id: worker.id, name: worker.name }); }}
-                                      className="p-1 text-text-muted hover:text-red-600 transition-colors"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    {canEdit && onEdit && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); onEdit(worker); }}
+                                        className="p-1 text-text-muted hover:text-primary transition-colors"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {isAdmin && onDelete && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, id: worker.id, name: worker.name }); }}
+                                        className="p-1 text-text-muted hover:text-red-600 transition-colors"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </motion.div>

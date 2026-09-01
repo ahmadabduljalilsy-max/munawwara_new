@@ -79,7 +79,7 @@ export interface SalaryRecord {
   updatedAt?: any;
 }
 
-export type UserRole = 'admin' | 'supervisor' | 'user' | 'pending';
+export type UserRole = 'admin' | 'supervisor' | 'readonly' | 'user' | 'pending';
 
 export interface AppUser {
   uid: string;

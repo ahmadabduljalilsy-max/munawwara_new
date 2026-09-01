@@ -57,12 +57,16 @@ function AppContent() {
         setWorkers(list);
       }, (error) => handleFirestoreError(error, OperationType.GET, pathWorkers));
 
-      const pathSalaries = 'salaries';
-      const qSalaries = query(collection(db, pathSalaries));
-      const unsubSalaries = onSnapshot(qSalaries, (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalaryRecord));
-        setSalaries(list);
-      }, (error) => handleFirestoreError(error, OperationType.GET, pathSalaries));
+      let unsubSalaries = () => {};
+      const isPrivileged = profile?.role === 'admin' || profile?.role === 'supervisor';
+      if (isPrivileged) {
+        const pathSalaries = 'salaries';
+        const qSalaries = query(collection(db, pathSalaries));
+        unsubSalaries = onSnapshot(qSalaries, (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalaryRecord));
+          setSalaries(list);
+        }, (error) => handleFirestoreError(error, OperationType.GET, pathSalaries));
+      }
 
       return () => {
         unsubBuses();
@@ -71,6 +75,20 @@ function AppContent() {
       };
     }
   }, [user, profile]);
+
+  const isSuperAdmin = profile?.role === 'admin';
+  const isOperator = profile?.role === 'supervisor';
+  const canEdit = isSuperAdmin || isOperator;
+  const isReadOnly = !canEdit;
+
+  // Protect tabs if role does not permit
+  useEffect(() => {
+    if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin')) {
+      setActiveTab('dashboard');
+    } else if (!isSuperAdmin && activeTab === 'admin') {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, isReadOnly, isSuperAdmin]);
 
   const activeWorkersCount = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -660,44 +678,46 @@ function AppContent() {
           {activeTab === 'fleet' && (
             <FleetList 
               buses={buses} 
-              isAdmin={profile?.role === 'admin'} 
-              isSystemAdmin={profile?.role === 'admin'}
-              onAdd={() => { setEditingBus(null); setIsFormOpen(true); }}
-              onEdit={(bus) => { setEditingBus(bus); setIsFormOpen(true); }}
-              onDelete={handleDeleteBus}
-              onDeleteAll={handleDeleteAllBuses}
-              onImport={handleImportExcel}
+              isAdmin={isSuperAdmin} 
+              isSystemAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              onAdd={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
+              onEdit={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
+              onDelete={isSuperAdmin ? handleDeleteBus : undefined}
+              onDeleteAll={isSuperAdmin ? handleDeleteAllBuses : undefined}
+              onImport={canEdit ? handleImportExcel : undefined}
               onExport={(data) => exportToExcel(data)}
               onGenerateFullPdf={(data) => handleGeneratePdf('تقرير أسطول الحافلات الشامل', data)}
               onGenerateFilteredPdf={(filtered) => handleGeneratePdf('تقرير أسطول الحافلات (بناءً على الفلترة)', filtered)}
               onGenerateBusPdf={(bus) => handleGeneratePdf(`تقرير تفصيلي للحافلة - ${bus.operationalNumber}`, [bus])}
             />
           )}
-          {activeTab === 'salaries' && (
+          {activeTab === 'salaries' && canEdit && (
             <SalaryList 
               workers={workers}
               salaries={salaries}
-              isAdmin={profile?.role === 'admin'}
+              isAdmin={isSuperAdmin}
               onSaveSalary={handleSaveSalary}
               onUpdateSalary={handleUpdateSalary}
               onExportExcel={(data) => exportSalariesToExcel(data)}
               onGeneratePDF={handleGenerateSalaryPdf}
             />
           )}
-          {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
+          {activeTab === 'admin' && isSuperAdmin && <AdminPanel />}
 
           {activeTab === 'monitoring' && (
             <WorkerList 
               workers={workers}
-              isAdmin={profile?.role === 'admin'}
-              onAdd={() => { setEditingWorker(null); setIsWorkerFormOpen(true); }}
-              onEdit={(w) => { setEditingWorker(w); setIsWorkerFormOpen(true); }}
-              onDelete={handleDeleteWorker}
-              onDeleteAll={handleDeleteAllWorkers}
-              onImport={handleImportWorkersExcel}
+              isAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              onAdd={canEdit ? () => { setEditingWorker(null); setIsWorkerFormOpen(true); } : undefined}
+              onEdit={canEdit ? (w) => { setEditingWorker(w); setIsWorkerFormOpen(true); } : undefined}
+              onDelete={isSuperAdmin ? handleDeleteWorker : undefined}
+              onDeleteAll={isSuperAdmin ? handleDeleteAllWorkers : undefined}
+              onImport={canEdit ? handleImportWorkersExcel : undefined}
               onExportExcel={(data) => exportWorkersToExcel(data)}
               onExportPdf={(data) => handleGenerateWorkerPdf('تقرير الرقابة والمتابعة - العمال', data)}
-              onRenumberWorkers={handleRenumberWorkers}
+              onRenumberWorkers={isSuperAdmin ? handleRenumberWorkers : undefined}
             />
           )}
         </motion.div>

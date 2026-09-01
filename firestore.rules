@@ -74,14 +74,15 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.uid == request.auth.uid &&
              data.email == request.auth.token.email &&
-             data.role in ['admin', 'supervisor', 'user', 'pending'];
+             data.role in ['admin', 'supervisor', 'readonly', 'user', 'pending'];
     }
 
     function isEditor() {
       return isSignedIn() && (
         isAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor')
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'))
       );
     }
 
@@ -106,7 +107,7 @@ service cloud.firestore {
     }
 
     match /salaries/{salaryId} {
-      allow read: if isApproved();
+      allow read: if isApproved() && (isAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor'));
       allow create: if isEditor() && isValidId(salaryId) && isValidSalary(request.resource.data);
       allow update: if isEditor() && isValidSalary(request.resource.data);
       allow delete: if isAdmin();
@@ -118,7 +119,7 @@ service cloud.firestore {
                     request.auth.uid == userId && 
                     isValidUser(request.resource.data) &&
                     (
-                      // Normal user must be pending
+                      // Normal user must be pending and unapproved
                       (request.resource.data.role == 'pending' && request.resource.data.get('approved', false) == false) ||
                       // Designated admin can create their profile as approved admin
                       ((request.auth.token.email == 'ahmad.abduljalil.sy@gmail.com' || request.auth.token.email == 'ahmad.abduljalilmunawwara@gmail.com') && request.resource.data.role == 'admin' && request.resource.data.get('approved', false) == true)

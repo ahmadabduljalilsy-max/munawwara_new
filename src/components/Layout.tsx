@@ -50,14 +50,24 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
 
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
+  const isSuperAdmin = profile?.role === 'admin';
+  const isOperator = profile?.role === 'supervisor';
+  const isReadOnly = !isSuperAdmin && !isOperator;
+
+  // Read-only role sees ONLY Dashboard, Fleet, Monitoring.
+  // Operator (Supervisor) sees Dashboard, Fleet, Monitoring, Salaries.
+  // Admin sees Dashboard, Fleet, Monitoring, Salaries, Admin.
   const menuItems = [
     { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'لوحة المؤشرات والتحليلات', iconColor: 'text-emerald-400', activeBg: 'bg-emerald-600' },
     { id: 'fleet', label: 'أسطول الشركة', icon: Bus, desc: 'سجل الحافلات والجاهزية', iconColor: 'text-sky-400', activeBg: 'bg-sky-600' },
     { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع العمال والمواقع', iconColor: 'text-amber-400', activeBg: 'bg-amber-600' },
-    { id: 'salaries', label: 'الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات', iconColor: 'text-purple-400', activeBg: 'bg-purple-600' },
   ];
 
-  if (profile?.role === 'admin') {
+  if (isSuperAdmin || isOperator) {
+    menuItems.push({ id: 'salaries', label: 'الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات', iconColor: 'text-purple-400', activeBg: 'bg-purple-600' });
+  }
+
+  if (isSuperAdmin) {
     menuItems.push({ id: 'admin', label: 'الإدارة', icon: Settings, desc: 'الصلاحيات وإعدادات النظام', iconColor: 'text-rose-400', activeBg: 'bg-rose-600' });
   }
 
@@ -207,11 +217,16 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
              </div>
              <div className="flex flex-col min-w-0 flex-1 text-right">
                 <span className="font-semibold text-xs text-white truncate leading-tight">{profile?.displayName || 'مستخدم'}</span>
-                <span className="text-[10px] text-slate-400 font-normal tracking-tight flex items-center gap-1 mt-0.5">
+                 <span className="text-[10px] text-slate-400 font-normal tracking-tight flex items-center gap-1 mt-0.5">
                   {profile?.role === 'admin' ? (
                     <span className="text-emerald-400 font-medium flex items-center gap-1">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
                       مدير النظام
+                    </span>
+                  ) : profile?.role === 'supervisor' ? (
+                    <span className="text-sky-400 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-sky-400 rounded-full" />
+                      موظف تشغيل
                     </span>
                   ) : (
                     <span className="text-amber-400 flex items-center gap-1 font-medium">
@@ -269,15 +284,20 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
 
              {/* Profile and Role Indicator */}
              <div className="flex items-center gap-3 pr-3 border-r border-[#E8E5DF] dark:border-border">
-               {profile?.role !== 'admin' ? (
-                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-semibold rounded-lg shadow-xs">
-                   <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                   وضع القراءة فقط
-                 </span>
-               ) : (
+               {profile?.role === 'admin' ? (
                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold rounded-lg shadow-xs">
                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                    مدير النظام
+                 </span>
+               ) : profile?.role === 'supervisor' ? (
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900 text-sky-700 dark:text-sky-400 text-[10px] font-semibold rounded-lg shadow-xs">
+                   <span className="w-1.5 h-1.5 bg-sky-500 rounded-full" />
+                   موظف تشغيل
+                 </span>
+               ) : (
+                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[10px] font-semibold rounded-lg shadow-xs">
+                   <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                   وضع القراءة فقط
                  </span>
                )}
 

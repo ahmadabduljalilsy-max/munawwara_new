@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bus, Worker, SalaryRecord } from '../types';
 import { useLogo, DEFAULT_LOGO } from '../lib/LogoContext';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface ReportProps {
   title: string;
@@ -85,7 +86,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
                 <td className="border border-[#E5E7EB] p-3">{bus.color || '-'}</td>
                 <td className="border border-[#E5E7EB] p-3 font-bold">{bus.seatsCount ? `${bus.seatsCount} مقعد` : '-'}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.model}</td>
-                <td className="border border-[#E5E7EB] p-3">{bus.location}</td>
+                <td className="border border-[#E5E7EB] p-3">{normalizeBusLocation(bus.location)}</td>
                 <td className="border border-[#E5E7EB] p-3">{bus.technicalStatus}</td>
                 <td className="border border-[#E5E7EB] p-3 text-[10px] text-[#6B7280]">{bus.notes || '-'}</td>
               </tr>
@@ -119,7 +120,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
             <div className="space-y-4">
               <div className="p-4 border border-[#E5E7EB] rounded-2xl">
                 <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الموقع الحالي</p>
-                <p className="text-base font-bold text-[#111827]">{buses[0].location}</p>
+                <p className="text-base font-bold text-[#111827]">{normalizeBusLocation(buses[0].location)}</p>
               </div>
               <div className="p-4 border border-[#E5E7EB] rounded-2xl">
                 <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">الحالة الفنية</p>
@@ -310,7 +311,7 @@ export const DashboardStatsReportTemplate: React.FC<{
   } = {};
 
   buses.forEach(bus => {
-    const loc = bus.location?.trim() || 'غير محدد';
+    const loc = normalizeBusLocation(bus.location);
     if (!locationMap[loc]) {
       locationMap[loc] = { total: 0, available: 0, inService: 0, maintenance: 0, workers: new Set() };
     }
@@ -446,7 +447,7 @@ export const DashboardStatsReportTemplate: React.FC<{
                 <tr key={bus.id} className="hover:bg-slate-50">
                   <td className="border border-slate-300 p-1.5 font-bold font-mono text-primary">{bus.operationalNumber}</td>
                   <td className="border border-slate-300 p-1.5 font-mono">{bus.plateNumber}</td>
-                  <td className="border border-slate-300 p-1.5 font-bold text-slate-800">{bus.location}</td>
+                  <td className="border border-slate-300 p-1.5 font-bold text-slate-800">{normalizeBusLocation(bus.location)}</td>
                   <td className="border border-slate-300 p-1.5">{bus.category} ({bus.model || '—'})</td>
                   <td className="border border-slate-300 p-1.5 text-center font-bold">{bus.technicalStatus}</td>
                   <td className="border border-slate-300 p-1.5 font-semibold text-indigo-800">{driverNames}</td>

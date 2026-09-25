@@ -38,7 +38,7 @@ import {
   LabelList
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType } from '../types';
-import { exportDashboardStatsToExcel } from '../lib/excelService';
+import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
 
 interface DashboardProps {
   buses: BusType[];
@@ -61,6 +61,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   const handleExportExcel = () => {
     exportDashboardStatsToExcel(buses, workers);
     setIsExportModalOpen(false);
+  };
+
+  const handleExportLocationModels = (locFilter: string = 'all') => {
+    exportLocationModelStatsToExcel(buses, workers, locFilter);
   };
 
   // Stats by Operational Status (متاحة، صيانة، في الخدمة)
@@ -110,7 +114,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
 
     buses.forEach(bus => {
       const isUnderMaintenance = bus.technicalStatus === 'تحت الصيانة' || bus.technicalStatus === 'متوقف';
-      const loc = bus.location?.trim() || 'غير محدد';
+      const loc = normalizeBusLocation(bus.location);
       if (isUnderMaintenance) {
         mtMap[loc] = (mtMap[loc] || 0) + 1;
       } else if (assignedBusIds.has(bus.id)) {
@@ -138,7 +142,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   // Stats by Location
   const locationCounts = React.useMemo(() => {
     return buses.reduce((acc: any, bus) => {
-      acc[bus.location] = (acc[bus.location] || 0) + 1;
+      const loc = normalizeBusLocation(bus.location);
+      acc[loc] = (acc[loc] || 0) + 1;
       return acc;
     }, {});
   }, [buses]);
@@ -149,7 +154,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
       .sort((a, b) => b.value - a.value);
   }, [locationCounts]);
 
-  const topLocation = locationData[0]?.name || 'غير محدد';
+  const topLocation = locationData[0]?.name || 'في الشركة';
 
   const [locSearch, setLocSearch] = useState('');
   const [locSort, setLocSort] = useState<'value' | 'name'>('value');
@@ -159,15 +164,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   const filteredLocationData = React.useMemo(() => {
     return locationData
       .filter(loc => {
-        const displayName = loc.name?.trim() || 'موقع غير محدد';
+        const displayName = loc.name?.trim() || 'في الشركة';
         return displayName.toLowerCase().includes(locSearch.trim().toLowerCase());
       })
       .sort((a, b) => {
         if (locSort === 'value') {
           return b.value - a.value;
         } else {
-          const nameA = a.name?.trim() || 'موقع غير محدد';
-          const nameB = b.name?.trim() || 'موقع غير محدد';
+          const nameA = a.name?.trim() || 'في الشركة';
+          const nameB = b.name?.trim() || 'في الشركة';
           return nameA.localeCompare(nameB, 'ar');
         }
       });
@@ -175,7 +180,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
 
   const busesInSelectedLocation = React.useMemo(() => {
     if (!selectedLocation) return [];
-    return buses.filter(b => (b.location || '').trim() === selectedLocation.trim());
+    const targetLoc = normalizeBusLocation(selectedLocation);
+    return buses.filter(b => normalizeBusLocation(b.location) === targetLoc);
   }, [buses, selectedLocation]);
 
   const uniqueCategories = React.useMemo(() => {
@@ -268,7 +274,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   const availableLocationsForModels = React.useMemo(() => {
     const locMap: { [key: string]: number } = {};
     buses.forEach(b => {
-      const loc = (b.location || '').trim() || 'غير محدد';
+      const loc = normalizeBusLocation(b.location);
       locMap[loc] = (locMap[loc] || 0) + 1;
     });
     return Object.entries(locMap)
@@ -279,7 +285,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
   const modelsInSelectedLocation = React.useMemo(() => {
     const targetBuses = modelLocationFilter === 'all'
       ? buses
-      : buses.filter(b => ((b.location || '').trim() || 'غير محدد') === modelLocationFilter);
+      : buses.filter(b => {
+          const loc = normalizeBusLocation(b.location);
+          return loc === normalizeBusLocation(modelLocationFilter);
+        });
 
     const modelMap: { [key: string]: number } = {};
     targetBuses.forEach(b => {
@@ -293,12 +302,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
       const percentage = totalInFilter > 0 ? (count / totalInFilter) * 100 : 0;
       const numValue = parseInt(model, 10);
       const isNumeric = !isNaN(numValue) && numValue > 1900;
+      const matchingBuses = targetBuses.filter(b => ((b.model || '').trim() || 'غير محدد') === model);
+      const categories = Array.from(new Set(matchingBuses.map(b => (b.category || '').trim()).filter(Boolean)));
       return {
         model,
         count,
         percentage,
         isNumeric,
         numValue: isNumeric ? numValue : 0,
+        categories
       };
     });
 
@@ -313,7 +325,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
     return {
       total: totalInFilter,
       models: list,
-      selectedLocationName: modelLocationFilter === 'all' ? 'جميع المواقع' : modelLocationFilter
+      selectedLocationName: modelLocationFilter === 'all' ? 'جميع المواقع' : normalizeBusLocation(modelLocationFilter)
     };
   }, [buses, modelLocationFilter]);
 
@@ -485,9 +497,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                   <Calendar className="w-5 h-5 text-primary" />
                   <span>توزيع الموديلات حسب الموقع</span>
                 </h3>
-                <span className="text-[10px] font-black bg-primary/10 text-primary px-2.5 py-1 rounded-full">
-                  {modelsInSelectedLocation.total} {modelsInSelectedLocation.total === 1 ? 'حافلة' : modelsInSelectedLocation.total === 2 ? 'حافلتان' : modelsInSelectedLocation.total <= 10 ? 'حافلات' : 'حافلة'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleExportLocationModels(modelLocationFilter)}
+                    className="bg-emerald-600/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-400 border border-emerald-600/20 px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                    title="تصدير هذا التوزيع فورياً إلى ملف إكسل Excel"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>تصدير Excel</span>
+                  </button>
+                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                    {modelsInSelectedLocation.total} {modelsInSelectedLocation.total === 1 ? 'حافلة' : modelsInSelectedLocation.total === 2 ? 'حافلتان' : modelsInSelectedLocation.total <= 10 ? 'حافلات' : 'حافلة'}
+                  </span>
+                </div>
               </div>
               <p className="text-[11px] text-text-muted font-bold">
                 اختر الموقع لعرض إحصائية سنوات الصنع والموديلات الخاصة به فورياً:
@@ -520,14 +542,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
 
                 return (
                   <div key={item.model} className="p-3 bg-background rounded-xl border border-border/60 hover:border-primary/40 transition-all">
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: itemColor }} />
-                        <span className="text-xs font-black text-text-main">
-                          {item.isNumeric ? `موديل ${item.model}` : item.model}
-                        </span>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-start gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: itemColor }} />
+                        <div>
+                          <span className="text-xs font-black text-text-main block">
+                            {item.isNumeric ? `موديل ${item.model}` : item.model}
+                          </span>
+                          {item.categories && item.categories.length > 0 && (
+                            <span className="inline-block mt-0.5 text-[10px] text-primary/90 font-bold bg-primary/5 border border-primary/15 px-1.5 py-0.2 rounded">
+                              النوع: {item.categories.join(' ، ')}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs font-black text-primary bg-primary/10 px-2 py-0.5 rounded-md">
                           {item.count} {item.count === 1 ? 'حافلة' : item.count === 2 ? 'حافلتان' : item.count <= 10 ? 'حافلات' : 'حافلة'}
                         </span>
@@ -560,13 +589,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
             </div>
           </div>
 
-          <div className="mt-5 p-3 bg-primary/[0.03] rounded-xl border border-primary/10">
-            <p className="text-[10px] text-primary/80 font-bold leading-relaxed flex items-center gap-1.5">
-              <span>💡</span>
-              <span>
-                توزيع سنوات الصنع والموديلات الخاصة بموقع: <strong>{modelsInSelectedLocation.selectedLocationName}</strong>
-              </span>
-            </p>
+          <div className="mt-5 space-y-3">
+            <div className="p-3 bg-primary/[0.03] rounded-xl border border-primary/10">
+              <p className="text-[10px] text-primary/80 font-bold leading-relaxed flex items-center gap-1.5">
+                <span>💡</span>
+                <span>
+                  توزيع سنوات الصنع وأنواع الحافلات لموقع: <strong>{modelsInSelectedLocation.selectedLocationName}</strong>
+                </span>
+              </p>
+            </div>
+
+            {/* Dedicated Excel Export Button for Workplace, Bus Types & Models */}
+            <div className="pt-2 border-t border-border/60 flex flex-col gap-2">
+              <button
+                onClick={() => handleExportLocationModels(modelLocationFilter)}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer hover:shadow-sm active:scale-[0.99]"
+                title="تصدير ملف إكسل يوضح مكان العمل وعدد الحافلات مع الموديلات ونوع الحافلة"
+              >
+                <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                <span>
+                  تصدير تقرير الموديلات والأنواع والمواقع (Excel)
+                </span>
+              </button>
+
+              {modelLocationFilter !== 'all' && (
+                <button
+                  onClick={() => handleExportLocationModels('all')}
+                  className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[10px] py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  title="تصدير كشف شامل لكافة مواقع العمل والموديلات والأنواع في ملف إكسل واحد"
+                >
+                  <Download className="w-3 h-3 text-slate-500" />
+                  <span>تصدير تقرير شامل لكافة المواقع ({availableLocationsForModels.length} موقع)</span>
+                </button>
+              )}
+            </div>
           </div>
         </motion.div>
 
@@ -1013,15 +1069,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
               </div>
            </div>
            
-           <div className="flex items-center gap-4 text-right" dir="rtl">
-              <div className="p-3 bg-slate-50/80 rounded-2xl border border-border/50 text-right min-w-[120px]">
+           <div className="flex items-center gap-3 text-right" dir="rtl">
+              <div className="p-3 bg-slate-50/80 rounded-2xl border border-border/50 text-right min-w-[110px]">
                  <div className="text-[9px] font-black text-text-muted uppercase tracking-widest leading-none mb-1.5">إجمالي المواقع</div>
                  <div className="text-xl font-black text-primary leading-none">{locationData.length} موقع</div>
               </div>
-              <div className="p-3 bg-slate-50/80 rounded-2xl border border-border/50 text-right min-w-[120px]">
+              <div className="p-3 bg-slate-50/80 rounded-2xl border border-border/50 text-right min-w-[110px]">
                  <div className="text-[9px] font-black text-text-muted uppercase tracking-widest leading-none mb-1.5">الموقع الأكثر نشاطاً</div>
-                 <div className="text-sm font-black text-text-main leading-none truncate max-w-[150px]" title={topLocation}>{topLocation}</div>
+                 <div className="text-sm font-black text-text-main leading-none truncate max-w-[140px]" title={topLocation}>{topLocation}</div>
               </div>
+              <button
+                onClick={() => handleExportLocationModels('all')}
+                className="p-3 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200 rounded-2xl flex items-center gap-2.5 text-emerald-800 transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                title="تصدير كشف أماكن العمل وعدد الحافلات والموديلات إلى ملف Excel"
+              >
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div className="text-right hidden sm:block">
+                  <div className="text-[9px] text-emerald-700 font-bold uppercase leading-none">تصدير Excel</div>
+                  <div className="text-xs font-black text-emerald-950 mt-1">المواقع والموديلات</div>
+                </div>
+              </button>
            </div>
         </div>
 
@@ -1291,7 +1360,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                </div>
              ) : (
                filteredLocationData.map((loc, idx) => {
-                 const displayName = loc.name?.trim() || 'مجمع المواقع الرئيسي';
+                 const displayName = normalizeBusLocation(loc.name);
                  const percentage = totalBuses > 0 ? (loc.value / totalBuses) * 100 : 0;
                  return (
                    <motion.div 
@@ -1374,7 +1443,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                   <div>
                     <h3 className="text-lg font-black text-text-main flex items-center gap-2">
                       <span>حافلات موقع:</span>
-                      <span className="text-primary">{selectedLocation}</span>
+                      <span className="text-primary">{selectedLocation ? normalizeBusLocation(selectedLocation) : ''}</span>
                     </h3>
                     <p className="text-[11px] text-text-muted font-bold mt-0.5">
                       يوجد {busesInSelectedLocation.length} حافلة مسجلة ميدانياً في هذا الموقع
@@ -1641,23 +1710,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                {/* Export Excel Option */}
+                {/* Export Location Models Specifically */}
                 <button
-                  onClick={handleExportExcel}
-                  className="p-4 bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-200/80 rounded-2xl flex items-center justify-between transition-all group cursor-pointer text-right hover:shadow-md"
+                  onClick={() => {
+                    handleExportLocationModels(modelLocationFilter);
+                    setIsExportModalOpen(false);
+                  }}
+                  className="p-4 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center justify-between transition-all group cursor-pointer text-right hover:shadow-md"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                    <div className="w-12 h-12 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
                       <FileSpreadsheet className="w-6 h-6" />
                     </div>
                     <div>
-                      <span className="font-black text-sm text-emerald-950 block">تصدير إلى ملف إكسل (Excel .xlsx)</span>
-                      <span className="text-[11px] font-bold text-emerald-800/80 block mt-1 leading-relaxed">
-                        يتضمن 3 صفحات تفصيلية (الملخص الإحصائي العام، إحصائيات مواقع العمل، وتفاصيل الأسطول والكوادر)
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-sm text-emerald-950 dark:text-emerald-100 block">
+                          تصدير إحصائية الموديلات والأنواع ومواقع العمل (Excel)
+                        </span>
+                        <span className="text-[10px] font-bold bg-emerald-600/20 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md">
+                          مطلوب
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-emerald-800/80 dark:text-emerald-200/80 block mt-1 leading-relaxed">
+                        ملف إكسل متخصص يوضح مكان العمل وعدد الحافلات مع الموديلات ونوع الحافلة وسنوات الصنع والمصفوفة التقاطعية الميدانية
                       </span>
                     </div>
                   </div>
-                  <Download className="w-5 h-5 text-emerald-600 shrink-0 group-hover:translate-x-[-2px] transition-transform" />
+                  <Download className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 group-hover:translate-x-[-2px] transition-transform" />
+                </button>
+
+                {/* Export Full General Dashboard Stats */}
+                <button
+                  onClick={handleExportExcel}
+                  className="p-4 bg-slate-50 hover:bg-slate-100/90 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-border rounded-2xl flex items-center justify-between transition-all group cursor-pointer text-right hover:shadow-md"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="font-black text-sm text-text-main block">التقرير الإحصائي الشامل للأسطول (Excel .xlsx)</span>
+                      <span className="text-[11px] font-bold text-text-muted block mt-1 leading-relaxed">
+                        يتضمن 4 صفحات تفصيلية (الملخص الإحصائي العام، إحصائيات مواقع العمل، مصفوفة الموديلات، وتفاصيل الأسطول والكوادر)
+                      </span>
+                    </div>
+                  </div>
+                  <Download className="w-5 h-5 text-primary shrink-0 group-hover:translate-x-[-2px] transition-transform" />
                 </button>
               </div>
 

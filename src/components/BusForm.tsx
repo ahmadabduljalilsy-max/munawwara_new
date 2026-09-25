@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { X, Save, Bus as BusIcon, History, Calendar, MapPin, ArrowRight } from 'lucide-react';
 import type { Bus } from '../types';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface BusFormProps {
   bus?: Bus | null;
@@ -55,7 +56,7 @@ const parseMovementLogs = (notes: string): MovementLog[] => {
         logs.push({
           index,
           date: date || 'غير محدد',
-          fromLocation: fromLocation || 'غير محدد'
+          fromLocation: (!fromLocation || fromLocation === 'غير محدد') ? 'في الشركة' : fromLocation
         });
       } else {
         logs.push({
@@ -323,7 +324,7 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
-                    placeholder="مثال: أمكور / رابغ"
+                    placeholder="مثال: في الشركة ، أمكور / رابغ"
                     className="w-full p-2.5 bg-background border border-border rounded-xl outline-none focus:border-primary transition-all text-sm font-semibold"
                   />
                 </div>
@@ -387,7 +388,7 @@ export const BusForm: React.FC<BusFormProps> = ({ bus, onSave, onClose }) => {
                     <span className="text-[9px] font-bold text-text-muted block">الموقع الحالي</span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-black text-primary bg-primary/10 px-2.5 py-1 rounded-lg mt-0.5 border border-primary/20">
                       <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                      {formData.location || 'غير محدد'}
+                      {(!formData.location || formData.location === 'غير محدد') ? 'في الشركة' : formData.location}
                     </span>
                   </div>
                 </div>

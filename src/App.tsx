@@ -151,7 +151,7 @@ function AppContent() {
         const oldBus = buses.find(b => b.id === oldBusId);
         if (oldBus) {
           batch.update(doc(db, 'buses', oldBusId), {
-            location: 'غير محدد',
+            location: 'في الشركة',
             updatedAt: serverTimestamp()
           });
         }
@@ -175,7 +175,7 @@ function AppContent() {
         // Update the new bus's location to match worker's workplace/client
         const newBus = buses.find(b => b.id === newBusId);
         if (newBus) {
-          const newLocation = `${cleaned.clientName}${cleaned.clientName && cleaned.workplace ? ' / ' : ''}${cleaned.workplace}` || 'غير محدد';
+          const newLocation = `${cleaned.clientName}${cleaned.clientName && cleaned.workplace ? ' / ' : ''}${cleaned.workplace}` || 'في الشركة';
           
           if (newBus.location !== newLocation) {
             let finalNotes = newBus.notes || '';
@@ -190,7 +190,7 @@ function AppContent() {
               if (matches) nextIndex = matches.length + 1;
             }
 
-            const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${newBus.location || 'غير محدد'} (عن طريق تعيين العامل ${cleaned.name})`;
+            const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${newBus.location || 'في الشركة'} (عن طريق تعيين العامل ${cleaned.name})`;
             
             if (!finalNotes.includes(historyHeader)) {
               finalNotes = finalNotes ? `${finalNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;

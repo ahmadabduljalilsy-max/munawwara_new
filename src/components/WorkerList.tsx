@@ -45,6 +45,7 @@ import { Worker } from '../types';
 import { differenceInDays, parseISO } from 'date-fns';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { WorkerDetailsModal } from './WorkerDetailsModal';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface WorkerListProps {
   workers: Worker[];
@@ -104,7 +105,13 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const workplaces = useMemo(() => Array.from(new Set(workers.map(w => w.workplace))).filter(Boolean).sort(), [workers]);
+  const workplaces = useMemo(() => {
+    const set = new Set<string>();
+    workers.forEach(w => {
+      set.add(normalizeBusLocation(w.workplace));
+    });
+    return Array.from(set).sort();
+  }, [workers]);
   const clients = useMemo(() => Array.from(new Set(workers.map(w => w.clientName))).filter(Boolean).sort(), [workers]);
   const companies = useMemo(() => Array.from(new Set(workers.map(w => w.recruitmentCompany))).filter(Boolean).sort(), [workers]);
 
@@ -168,7 +175,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     workers.forEach(w => {
       const isTerminated = w.endDate && w.endDate < today;
       if (!isTerminated) {
-        const wp = w.workplace || 'غير محدد';
+        const wp = normalizeBusLocation(w.workplace);
         counts[wp] = (counts[wp] || 0) + 1;
       }
     });
@@ -228,7 +235,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(searchTerm)) ||
         (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(searchTerm));
       
-      const matchesWorkplace = !filters.workplace || w.workplace === filters.workplace;
+      const wp = normalizeBusLocation(w.workplace);
+      const matchesWorkplace = !filters.workplace || wp === filters.workplace;
       const matchesClient = !filters.clientName || w.clientName === filters.clientName;
       const matchesCompany = !filters.recruitmentCompany || w.recruitmentCompany === filters.recruitmentCompany;
       const matchesBusStatus = 
@@ -272,7 +280,10 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const groupedWorkers = useMemo(() => {
     const groups: { [key: string]: Worker[] } = {};
     filteredWorkers.forEach(worker => {
-      const group = worker[groupBy] || 'غير محدد';
+      const rawGroup = worker[groupBy];
+      const group = (groupBy === 'workplace') 
+        ? normalizeBusLocation(rawGroup) 
+        : (rawGroup || 'غير محدد');
       if (!groups[group]) groups[group] = [];
       groups[group].push(worker);
     });
@@ -935,7 +946,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                       <td className="px-4 py-3.5 whitespace-nowrap text-xs">
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-black border border-emerald-100/50 shadow-sm shadow-emerald-500/[0.02]">
                           <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                          {worker.workplace || '-'}
+                          {normalizeBusLocation(worker.workplace)}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap text-xs">
@@ -1176,7 +1187,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                                 <div className="space-y-1 mb-4">
                                   <h4 className="text-sm font-black text-text-main line-clamp-1">{worker.name}</h4>
                                   <p className="text-[10px] text-text-muted font-bold truncate">
-                                    {groupBy === 'workplace' ? worker.clientName : worker.workplace}
+                                    {groupBy === 'workplace' ? (worker.clientName || 'غير محدد') : normalizeBusLocation(worker.workplace)}
                                   </p>
                                 </div>
 

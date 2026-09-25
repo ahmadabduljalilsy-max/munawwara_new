@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Worker, SalaryRecord } from '../types';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface SalaryListProps {
   workers: Worker[];
@@ -252,7 +253,7 @@ export const SalaryList: React.FC<SalaryListProps> = ({
     filteredWorkers.forEach(w => {
       const saved = monthSalariesMap[w.id];
       const local = localSalaries[w.id];
-      const loc = local?.workLocation || saved?.workLocation || w.workplace || 'غير محدد';
+      const loc = normalizeBusLocation(local?.workLocation || saved?.workLocation || w.workplace);
       const baseSalary = Number(local?.baseSalary ?? saved?.baseSalary ?? w.basicSalary ?? 0);
       const extraValue = Number(local?.extraHoursValue ?? saved?.extraHoursValue ?? 0);
       const morabata = Number(local?.morabata ?? saved?.morabata ?? 0);

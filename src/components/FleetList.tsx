@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { Bus } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface FleetListProps {
   buses: Bus[];
@@ -68,7 +69,7 @@ export const FleetList: React.FC<FleetListProps> = ({
   const itemsPerPage = 50;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const locations = useMemo(() => Array.from(new Set(buses.map(b => b.location))).filter(Boolean), [buses]);
+  const locations = useMemo(() => Array.from(new Set(buses.map(b => normalizeBusLocation(b.location)))).filter(Boolean), [buses]);
   const categories = useMemo(() => Array.from(new Set(buses.map(b => b.category))).filter(Boolean), [buses]);
   const models = useMemo(() => Array.from(new Set(buses.map(b => b.model))).filter(Boolean).sort(), [buses]);
   const technicalStatuses = useMemo(() => Array.from(new Set(buses.map(b => b.technicalStatus))).filter(Boolean).sort(), [buses]);
@@ -89,13 +90,14 @@ export const FleetList: React.FC<FleetListProps> = ({
   const filteredBuses = useMemo(() => {
     return buses.filter(bus => {
       const searchLower = searchTerm.toLowerCase();
+      const busLoc = normalizeBusLocation(bus.location);
       const matchesSearch = 
         bus.operationalNumber.toLowerCase().includes(searchLower) ||
         bus.plateNumber.toLowerCase().includes(searchLower) ||
-        bus.location.toLowerCase().includes(searchLower) ||
+        busLoc.toLowerCase().includes(searchLower) ||
         (bus.category || '').toLowerCase().includes(searchLower);
       
-      const matchesLocation = !filters.location || bus.location === filters.location;
+      const matchesLocation = !filters.location || busLoc === filters.location;
       const matchesModel = !filters.model || bus.model === filters.model;
       const matchesCategory = !filters.category || bus.category === filters.category;
       const matchesStatus = !filters.technicalStatus || bus.technicalStatus === filters.technicalStatus;
@@ -438,7 +440,7 @@ export const FleetList: React.FC<FleetListProps> = ({
                       <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">الموقع الميداني</span>
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
                         <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                        <span className="truncate">{bus.location}</span>
+                        <span className="truncate">{normalizeBusLocation(bus.location)}</span>
                       </div>
                     </div>
                     <div className="space-y-1">

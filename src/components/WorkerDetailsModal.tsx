@@ -21,6 +21,7 @@ import {
 import { Worker } from '../types';
 import { differenceInDays, parseISO, formatDistanceStrict } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface WorkerDetailsModalProps {
   worker: Worker | null;
@@ -182,7 +183,7 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({ worker, 
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-text-muted uppercase">مكان وموقع العمل الحالي</p>
-                      <p className="text-sm font-black text-text-main">{worker.workplace || 'غير محدد'}</p>
+                      <p className="text-sm font-black text-text-main">{normalizeBusLocation(worker.workplace)}</p>
                     </div>
                   </div>
 

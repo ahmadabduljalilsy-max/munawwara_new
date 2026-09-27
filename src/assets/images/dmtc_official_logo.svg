@@ -1,0 +1,245 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 520" width="100%" height="100%">
+  <defs>
+    <!-- Ambient Lotus Glow Filters -->
+    <filter id="lotus-glow-amber" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="lotus-glow-cyan" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="lotus-glow-blue" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Neon Violet Aura Filter for "درة المنورة" -->
+    <filter id="neon-violet-glow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#8A2BE2" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#7B1FA2" flood-opacity="0.5" />
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#4A148C" flood-opacity="0.9" />
+    </filter>
+
+    <!-- Metallic Emboss Shadow for "للنقليات" -->
+    <filter id="metallic-bevel" x="-10%" y="-20%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+
+    <!-- Center Orange Petal Gradients -->
+    <linearGradient id="center-petal-left" x1="250" y1="35" x2="195" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#FFA000" />
+      <stop offset="45%" stopColor="#FF6000" />
+      <stop offset="100%" stopColor="#E63500" />
+    </linearGradient>
+
+    <linearGradient id="center-petal-right" x1="250" y1="35" x2="305" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#FFC107" />
+      <stop offset="45%" stopColor="#FF7700" />
+      <stop offset="100%" stopColor="#D50000" />
+    </linearGradient>
+
+    <!-- Left Lotus Petal (Gold to Warm Orange) -->
+    <linearGradient id="left-petal-grad" x1="120" y1="110" x2="230" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#FFD54F" />
+      <stop offset="40%" stopColor="#FFA000" />
+      <stop offset="85%" stopColor="#FF5722" />
+      <stop offset="100%" stopColor="#E64A19" />
+    </linearGradient>
+
+    <!-- Right Lotus Petal (Orange to Magenta & Purple) -->
+    <linearGradient id="right-petal-grad" x1="380" y1="110" x2="270" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#FFB300" />
+      <stop offset="30%" stopColor="#FF5722" />
+      <stop offset="70%" stopColor="#C2185B" />
+      <stop offset="100%" stopColor="#6A1B9A" />
+    </linearGradient>
+
+    <!-- Cyan Wing (Lower Left) -->
+    <linearGradient id="cyan-wing-grad" x1="60" y1="240" x2="210" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#80DEEA" />
+      <stop offset="35%" stopColor="#00BCD4" />
+      <stop offset="80%" stopColor="#0288D1" />
+      <stop offset="100%" stopColor="#01579B" />
+    </linearGradient>
+
+    <!-- Blue Wing (Lower Right) -->
+    <linearGradient id="blue-wing-grad" x1="440" y1="240" x2="290" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#81D4FA" />
+      <stop offset="35%" stopColor="#039BE5" />
+      <stop offset="80%" stopColor="#1565C0" />
+      <stop offset="100%" stopColor="#0D47A1" />
+    </linearGradient>
+
+    <!-- DMTC Gradient -->
+    <linearGradient id="dmtc-purple-grad" x1="250" y1="295" x2="250" y2="345" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#311B92" />
+      <stop offset="100%" stopColor="#4A148C" />
+    </linearGradient>
+
+    <!-- Arabic Calligraphy Gradient -->
+    <linearGradient id="arabic-name-grad" x1="250" y1="365" x2="250" y2="435" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#512DA8" />
+      <stop offset="50%" stopColor="#4A148C" />
+      <stop offset="100%" stopColor="#311B92" />
+    </linearGradient>
+
+    <!-- Metallic Charcoal Gradient for للنقليات -->
+    <linearGradient id="metallic-transport-grad" x1="250" y1="445" x2="250" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#546E7A" />
+      <stop offset="30%" stopColor="#37474F" />
+      <stop offset="70%" stopColor="#263238" />
+      <stop offset="100%" stopColor="#1A2226" />
+    </linearGradient>
+  </defs>
+
+  <!-- ==================== 1. EMBLEM: GLOWING CRYSTAL LOTUS ==================== -->
+  <g id="crystal-lotus-emblem">
+    <!-- Amber aura behind the center/top -->
+    <ellipse cx="250" cy="150" rx="90" ry="110" fill="#FF7700" opacity="0.22" filter="url(#lotus-glow-amber)" />
+    <!-- Cyan aura on left wing -->
+    <ellipse cx="140" cy="265" rx="55" ry="30" fill="#00BCD4" opacity="0.35" filter="url(#lotus-glow-cyan)" />
+    <!-- Blue aura on right wing -->
+    <ellipse cx="360" cy="265" rx="55" ry="30" fill="#1565C0" opacity="0.35" filter="url(#lotus-glow-blue)" />
+
+    <!-- LOWER LEFT WING (CYAN/SKY) -->
+    <!-- Main wing body -->
+    <path 
+      d="M65 260 C100 236 150 240 205 285 L135 305 C95 300 72 280 65 260 Z" 
+      fill="url(#cyan-wing-grad)" 
+    />
+    <!-- Wing bottom facet shadow -->
+    <path 
+      d="M135 305 L205 285 L170 318 C135 318 110 312 135 305 Z" 
+      fill="#01579B" 
+      opacity="0.85" 
+    />
+    <!-- Wing top specular facet -->
+    <path 
+      d="M65 260 C100 240 140 246 175 265 L120 278 C85 272 70 266 65 260 Z" 
+      fill="#E0F7FA" 
+      opacity="0.65" 
+    />
+
+    <!-- LOWER RIGHT WING (ROYAL BLUE) -->
+    <!-- Main wing body -->
+    <path 
+      d="M435 260 C400 236 350 240 295 285 L365 305 C405 300 428 280 435 260 Z" 
+      fill="url(#blue-wing-grad)" 
+    />
+    <!-- Wing bottom facet shadow -->
+    <path 
+      d="M365 305 L295 285 L330 318 C365 318 390 312 365 305 Z" 
+      fill="#0D47A1" 
+      opacity="0.85" 
+    />
+    <!-- Wing top specular facet -->
+    <path 
+      d="M435 260 C400 240 360 246 325 265 L380 278 C415 272 430 266 435 260 Z" 
+      fill="#E1F5FE" 
+      opacity="0.65" 
+    />
+
+    <!-- UPPER LEFT PETAL (GOLD / WARM AMBER) -->
+    <path 
+      d="M105 135 C95 195 130 248 225 270 C210 200 170 142 105 135 Z" 
+      fill="url(#left-petal-grad)" 
+    />
+    <!-- Specular highlight facet on upper left petal -->
+    <path 
+      d="M105 135 C140 165 180 210 225 270 C190 230 145 190 105 135 Z" 
+      fill="#FFF9C4" 
+      opacity="0.45" 
+    />
+
+    <!-- UPPER RIGHT PETAL (WARM ORANGE TO ROYAL PURPLE) -->
+    <path 
+      d="M395 135 C405 195 370 248 275 270 C290 200 330 142 395 135 Z" 
+      fill="url(#right-petal-grad)" 
+    />
+    <!-- Specular highlight facet on upper right petal -->
+    <path 
+      d="M395 135 C360 165 320 210 275 270 C310 230 355 190 395 135 Z" 
+      fill="#FFE082" 
+      opacity="0.38" 
+    />
+
+    <!-- CENTER 3D FACETED CRYSTAL PETAL -->
+    <!-- Center left facet (flame orange) -->
+    <path 
+      d="M250 35 L180 165 C176 215 208 270 250 288 L250 35 Z" 
+      fill="url(#center-petal-left)" 
+    />
+    <!-- Center right facet (deep scarlet/ruby-orange) -->
+    <path 
+      d="M250 35 L320 165 C324 215 292 270 250 288 L250 35 Z" 
+      fill="url(#center-petal-right)" 
+    />
+
+    <!-- Center vertical razor ridge specular line -->
+    <line x1="250" y1="35" x2="250" y2="288" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.9" />
+
+    <!-- Center top crystal tip high-gloss facet -->
+    <polygon points="250,35 232,105 250,96 268,105" fill="#FFFFFF" opacity="0.8" />
+    <polygon points="250,96 232,105 250,165" fill="#FFE082" opacity="0.35" />
+    <polygon points="250,96 268,105 250,165" fill="#FFFFFF" opacity="0.4" />
+  </g>
+
+  <!-- ==================== 2. ENGLISH WORDMARK: DMTC ==================== -->
+  <g id="brand-dmtc">
+    <text 
+      x="250" 
+      y="348" 
+      text-anchor="middle" 
+      font-family="'Plus Jakarta Sans', 'Arial Black', Impact, sans-serif" 
+      font-size="64" 
+      font-weight="900" 
+      letter-spacing="4" 
+      fill="url(#dmtc-purple-grad)"
+    >
+      DMTC
+    </text>
+  </g>
+
+  <!-- ==================== 3. ARABIC CALLIGRAPHY: درة المنورة ==================== -->
+  <g id="brand-arabic-name" filter="url(#neon-violet-glow)">
+    <text 
+      x="250" 
+      y="428" 
+      text-anchor="middle" 
+      font-family="'Tajawal', 'Cairo', 'Almarai', sans-serif" 
+      font-size="68" 
+      font-weight="900" 
+      letter-spacing="-1" 
+      fill="url(#arabic-name-grad)"
+    >
+      درة المنورة
+    </text>
+  </g>
+
+  <!-- ==================== 4. METALLIC SUBTITLE: للنقليات ==================== -->
+  <g id="brand-transport" filter="url(#metallic-bevel)">
+    <!-- Outer metallic border for 3D bevel look -->
+    <text 
+      x="250" 
+      y="484" 
+      text-anchor="middle" 
+      font-family="'Tajawal', 'Cairo', 'Almarai', sans-serif" 
+      font-size="44" 
+      font-weight="900" 
+      letter-spacing="2" 
+      fill="url(#metallic-transport-grad)"
+      stroke="#78909C"
+      stroke-width="1.5"
+      paint-order="stroke fill"
+    >
+      للنقليات
+    </text>
+
+    <!-- Metallic accent dots under the text for authentic typography balance -->
+    <circle cx="230" cy="494" r="3.5" fill="#37474F" stroke="#78909C" stroke-width="1" />
+    <circle cx="242" cy="494" r="3.5" fill="#37474F" stroke="#78909C" stroke-width="1" />
+  </g>
+</svg>

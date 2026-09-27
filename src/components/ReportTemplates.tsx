@@ -17,6 +17,7 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
   const now = new Date().toLocaleString('ar-SA');
 
   const totalBase = salaries ? salaries.reduce((sum, s) => sum + (s.baseSalary || 0), 0) : 0;
+  const totalEarnedBase = salaries ? salaries.reduce((sum, s) => sum + (s.earnedBaseSalary ?? s.baseSalary ?? 0), 0) : 0;
   const totalExtra = salaries ? salaries.reduce((sum, s) => sum + (s.extraHoursValue || 0), 0) : 0;
   const totalMorabata = salaries ? salaries.reduce((sum, s) => sum + (s.morabata || 0), 0) : 0;
   const grandTotal = salaries ? salaries.reduce((sum, s) => sum + (s.totalSalary || 0), 0) : 0;
@@ -35,8 +36,8 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
             />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-[#111827]">درة المنورة لنقل الحجاج والمعتمرين</h1>
-            <p className="text-sm font-bold text-[#6B7280]">مكتب التشغيل - فريق تشغيل درة المنورة</p>
+            <h1 className="text-2xl font-black text-[#111827]">شركة درة المنورة للنقليات (DMTC)</h1>
+            <p className="text-sm font-bold text-primary">قسم التشغيل ونقل العمال</p>
           </div>
         </div>
         <div className="text-left">
@@ -185,10 +186,12 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
         <table className="w-full border-collapse border border-[#CBD5E1] text-[11px] shadow-sm rounded-lg overflow-hidden">
           <thead>
             <tr className="bg-[#F1F5F9] text-right text-[#334155] border-b-2 border-[#94A3B8]">
-              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold w-10">م</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold w-8">م</th>
               <th className="border border-[#CBD5E1] p-2.5 text-right font-bold">الموظف / الرقم الوظيفي</th>
               <th className="border border-[#CBD5E1] p-2.5 text-right font-bold">موقع العمل</th>
-              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">الراتب الأساسي</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">الأساسي الشهري</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">أيام العمل</th>
+              <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">الأساسي المستحق</th>
               <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">العمل الإضافي</th>
               <th className="border border-[#CBD5E1] p-2.5 text-center font-bold">بدل المرابطة</th>
               <th className="border border-[#CBD5E1] p-2.5 text-center font-black">إجمالي المستحق</th>
@@ -197,49 +200,59 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
             </tr>
           </thead>
           <tbody>
-            {salaries.map((salary, index) => (
-              <tr key={salary.id || salary.workerId} className={index % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
-                <td className="border border-[#CBD5E1] p-2 text-center text-slate-500 font-mono font-bold">
-                  {index + 1}
-                </td>
-                <td className="border border-[#CBD5E1] p-2 font-bold">
-                  <div className="font-bold text-[#1F2937]">{salary.workerName}</div>
-                  <div className="text-[9px] text-[#4B5563] font-mono mt-0.5">{salary.workerNumber}</div>
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-[#475569] font-semibold">
-                  {salary.workLocation || '-'}
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
-                  {salary.baseSalary.toLocaleString()} ريال
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-center">
-                  <div className="font-semibold text-slate-700">
-                    {salary.extraHoursValue.toLocaleString()} ريال
-                  </div>
-                  {salary.extraHours > 0 && (
-                    <div className="text-[9px] text-slate-500 mt-0.5">({salary.extraHours} ساعة)</div>
-                  )}
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
-                  {salary.morabata > 0 ? `${salary.morabata.toLocaleString()} ريال` : '-'}
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-center font-bold text-primary bg-primary/[0.01]">
-                  {salary.totalSalary.toLocaleString()} ريال
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-center font-bold">
-                  <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black tracking-wide ${
-                    salary.status === 'paid' 
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                      : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}>
-                    {salary.status === 'paid' ? 'تم الصرف' : 'قيد الانتظار'}
-                  </span>
-                </td>
-                <td className="border border-[#CBD5E1] p-2 text-right text-[10px] text-slate-500 max-w-[120px] truncate" title={salary.notes}>
-                  {salary.notes || '-'}
-                </td>
-              </tr>
-            ))}
+            {salaries.map((salary, index) => {
+              const days = salary.workingDays !== undefined ? salary.workingDays : 30;
+              const earnedBase = salary.earnedBaseSalary !== undefined ? salary.earnedBaseSalary : salary.baseSalary;
+              return (
+                <tr key={salary.id || salary.workerId} className={index % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-50'}>
+                  <td className="border border-[#CBD5E1] p-2 text-center text-slate-500 font-mono font-bold">
+                    {index + 1}
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 font-bold">
+                    <div className="font-bold text-[#1F2937]">{salary.workerName}</div>
+                    <div className="text-[9px] text-[#4B5563] font-mono mt-0.5">{salary.workerNumber}</div>
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-[#475569] font-semibold">
+                    {salary.workLocation || '-'}
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
+                    {salary.baseSalary.toLocaleString()} ريال
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-bold text-slate-800">
+                    {days} / 30
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-800">
+                    {earnedBase.toLocaleString()} ريال
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center">
+                    <div className="font-semibold text-slate-700">
+                      {salary.extraHoursValue.toLocaleString()} ريال
+                    </div>
+                    {salary.extraHours > 0 && (
+                      <div className="text-[9px] text-slate-500 mt-0.5">({salary.extraHours} ساعة)</div>
+                    )}
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-semibold text-slate-700">
+                    {salary.morabata > 0 ? `${salary.morabata.toLocaleString()} ريال` : '-'}
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-bold text-primary bg-primary/[0.01]">
+                    {salary.totalSalary.toLocaleString()} ريال
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-center font-bold">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black tracking-wide ${
+                      salary.status === 'paid' 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    }`}>
+                      {salary.status === 'paid' ? 'تم الصرف' : 'قيد الانتظار'}
+                    </span>
+                  </td>
+                  <td className="border border-[#CBD5E1] p-2 text-right text-[10px] text-slate-500 max-w-[120px] truncate" title={salary.notes}>
+                    {salary.notes || '-'}
+                  </td>
+                </tr>
+              );
+            })}
 
             {/* Totals Row */}
             <tr className="bg-slate-100/90 font-bold border-t-2 border-slate-300 text-slate-800">
@@ -248,6 +261,12 @@ export const ReportTemplate: React.FC<ReportProps> = ({ title, buses, workers, s
               </td>
               <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
                 {totalBase.toLocaleString()} ريال
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-bold text-slate-600 bg-slate-100 text-[10px]">
+                -
+              </td>
+              <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
+                {totalEarnedBase.toLocaleString()} ريال
               </td>
               <td className="border border-[#CBD5E1] p-2.5 text-center font-black text-slate-800 bg-slate-100">
                 {totalExtra.toLocaleString()} ريال

@@ -1,13 +1,12 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Bus, LogIn, ShieldAlert } from 'lucide-react';
+import { Bus, ShieldCheck, Activity, Users, MapPin, CheckCircle2 } from 'lucide-react';
 import { signInWithGoogle } from '../lib/firebase';
 import { useAuth } from '../lib/AuthContext';
-import { useLogo } from '../lib/LogoContext';
+import { DmtcLogo } from './DmtcLogo';
 
 export const AuthPage: React.FC = () => {
   const { profile, loading: authLoading } = useAuth();
-  const { logoURL } = useLogo();
   const [localLoading, setLocalLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -40,13 +39,9 @@ export const AuthPage: React.FC = () => {
           <motion.div 
             animate={{ scale: [1, 1.05, 1], opacity: [0.8, 1, 0.8] }}
             transition={{ duration: 2, repeat: Infinity }}
-            className="w-24 h-24 bg-white p-2 rounded-3xl shadow-xl border border-border flex items-center justify-center"
+            className="w-28 h-28 bg-surface p-3 rounded-3xl shadow-xl border border-border flex items-center justify-center"
           >
-            <img 
-              src={logoURL} 
-              alt="Logo" 
-              className="w-full h-full object-contain"
-            />
+            <DmtcLogo size="lg" variant="full" />
           </motion.div>
           <div className="text-xl font-black text-primary animate-pulse">جاري تحضير النظام...</div>
         </div>
@@ -61,24 +56,19 @@ export const AuthPage: React.FC = () => {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-surface p-10 rounded-[40px] shadow-2xl border border-border max-w-md w-full text-center relative overflow-hidden"
+          className="soft-panel p-10 max-w-md w-full text-center relative overflow-hidden shadow-2xl"
         >
-          <div className="w-24 h-24 bg-white p-2 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl border border-border relative z-10">
-            <img 
-              src={logoURL} 
-              alt="Logo" 
-              className="w-full h-full object-contain"
-            />
+          <div className="w-28 h-28 bg-surface p-2 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-md border border-border relative z-10">
+            <DmtcLogo size="lg" variant="full" />
           </div>
-          <h1 className="text-2xl font-black text-text-main mb-4">بانتظار الموافقة</h1>
-          <p className="text-text-muted text-base font-bold leading-relaxed mb-10">
-            شكرا لتسجيلك حسابك حاليا قيد المراجعة من قبل مدير التشغيل الاستاذ عبد الحميد سالمة وفريق التشغيل يرجى الانتظار لتفعيل حسابك
+          <h1 className="text-2xl font-black text-text-main mb-3">الحساب قيد المراجعة</h1>
+          <p className="text-text-muted text-sm font-bold leading-relaxed mb-8">
+            شكراً لتسجيلك. حسابك حالياً بانتظار الاعتماد من قِبل إدارة التشغيل بشركة درة المنورة للنقليات.
           </p>
-          <div className="p-5 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center gap-3 text-amber-700 text-sm font-black shadow-sm">
-            <ShieldAlert className="w-5 h-5" />
-            حالة الحساب: {profile.role === 'pending' ? 'بانتظار المراجعة' : 'غير مفعل'}
+          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center gap-3 text-amber-800 text-xs font-black shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+            حالة الحساب: {profile.role === 'pending' ? 'بانتظار موافقة الإدارة' : 'غير مفعل'}
           </div>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         </motion.div>
       </div>
     );
@@ -86,117 +76,137 @@ export const AuthPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row font-sans text-right overflow-hidden" dir="rtl">
-      {/* Left side - Login Form (Section 1) */}
-      <div className="md:w-1/2 bg-surface flex items-center justify-center p-8 md:p-16 relative z-10 shadow-2xl">
+      {/* Left side - Login Form (Malwarebytes Clean Soft Panel) */}
+      <div className="md:w-1/2 flex items-center justify-center p-6 md:p-14 relative z-10">
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="bg-surface p-10 md:p-14 rounded-[32px] shadow-2xl border border-border w-full max-w-md ring-8 ring-background"
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="soft-panel p-8 md:p-12 w-full max-w-md shadow-2xl"
         >
-          <div className="mb-10 text-center md:text-right">
-            <h3 className="text-3xl font-black text-primary mb-3">تسجيل الدخول إلى قسم التشغيل - نقل العمال</h3>
+          <div className="mb-8 text-center md:text-right">
+            <div className="mb-4 flex justify-center md:justify-start">
+              <DmtcLogo size="md" variant="full" />
+            </div>
+            <h3 className="text-2xl font-black text-text-main mt-2">تسجيل الدخول للمنظومة</h3>
+            <p className="text-xs font-bold text-text-muted mt-1">قسم التشغيل والرقابة الميدانية • نقل العمال</p>
           </div>
 
           <button 
             onClick={handleSignIn}
             disabled={localLoading}
-            className={`group w-full flex items-center justify-center gap-4 py-4 px-6 bg-primary text-white rounded-2xl font-bold transition-all duration-300 transform active:scale-[0.98] shadow-lg shadow-primary/20
-              ${localLoading ? 'opacity-70 cursor-not-allowed' : 'hover:bg-accent hover:shadow-xl hover:shadow-accent/30'}
+            className={`w-full flex items-center justify-center gap-3 py-3.5 px-6 soft-btn-primary font-black text-sm transition-all duration-300 transform active:scale-98 cursor-pointer
+              ${localLoading ? 'opacity-70 cursor-not-allowed' : ''}
             `}
           >
             {localLoading ? (
-              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <div className="bg-white p-1.5 rounded-lg shadow-sm group-hover:rotate-12 transition-transform">
-                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+              <div className="bg-white p-1 rounded-md shadow-2xs">
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4" />
               </div>
             )}
-            <span className="text-lg">
-              {localLoading ? 'جاري الدخول...' : 'تسجيل الدخول باستخدام Google'}
+            <span>
+              {localLoading ? 'جاري التحقق...' : 'تسجيل الدخول عبر البريد الإلكتروني'}
             </span>
           </button>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-bold text-center">
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-bold text-center">
               {error}
             </div>
           )}
 
-          <div className="mt-12 p-5 bg-background rounded-2xl border border-border/50 flex flex-col gap-3">
-             <div className="flex items-center gap-3 text-text-muted">
-                <ShieldAlert className="w-4 h-4 text-accent" />
-                <span className="text-[11px] font-bold uppercase tracking-wider">نظام داخلي حصري لشركة درة المنورة</span>
+          <div className="mt-8 p-4 bg-blue-50/60 dark:bg-slate-800/60 rounded-2xl border border-blue-100/80 dark:border-slate-700 flex flex-col gap-2">
+             <div className="flex items-center gap-2 text-primary font-black text-xs">
+                <ShieldCheck className="w-4 h-4" />
+                <span>دخول آمن وموثق - شركة درة المنورة للنقليات</span>
              </div>
-             <p className="text-[10px] text-text-muted/60 leading-relaxed font-medium">مخصص فقط لموظفي شركة درة المنورة الحديثة - مكتب التشغيل وقسم نقل العمال.</p>
+             <p className="text-[11px] text-text-muted leading-relaxed font-bold">
+               منظومة سحابية مخصصة لفريق الإشراف، المتابعة اللحظية لأسطول الحافلات، وجداول تشغيل الكوادر.
+             </p>
           </div>
 
-          <div className="mt-8 text-center text-[10px] text-text-muted font-bold opacity-50">
-            © {new Date().getFullYear()} جميع الحقوق محفوظة لشركة درة المنورة
+          <div className="mt-6 text-center text-[11px] text-text-muted font-bold opacity-60">
+            © {new Date().getFullYear()} شركة درة المنورة للنقليات DMTC. جميع الحقوق محفوظة.
           </div>
         </motion.div>
       </div>
 
-      {/* Right side - Branding Identity (Section 2) */}
-      <div className="md:flex-1 relative flex flex-col justify-between p-12 lg:p-20 overflow-hidden min-h-[40vh] md:min-h-screen">
-        {/* Office Background Image */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ 
-            backgroundImage: `url('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=1200')` 
-          }}
-        />
-        {/* Animated Background Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/95 via-primary/80 to-accent/30 opacity-90" />
-        <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-accent/40 via-transparent to-transparent blur-3xl opacity-30" />
+      {/* Right side - Branding & Feature Cards (Malwarebytes Aesthetic) */}
+      <div className="md:flex-1 relative flex flex-col justify-between p-8 lg:p-16 overflow-hidden bg-gradient-to-br from-blue-100/40 via-white to-blue-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 border-r border-border">
+        {/* Soft Radial Ambient Highlight */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10">
-          <motion.div 
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center gap-6 mb-20 group"
-          >
-            <div className="w-24 h-24 bg-surface p-1 rounded-[28px] flex items-center justify-center shadow-2xl ring-4 ring-white/20 transform group-hover:scale-105 transition-transform duration-500 overflow-hidden">
-               <img 
-                 src={logoURL} 
-                 alt="Logo" 
-                 className="w-full h-full object-contain"
-               />
+        <div className="relative z-10 max-w-xl">
+          <div className="flex items-center gap-5 mb-8">
+            <div className="w-24 h-24 shrink-0 flex items-center justify-center">
+              <DmtcLogo size="sm" variant="full" />
             </div>
-            <div className="flex flex-col text-right">
-              <span className="text-white font-black text-3xl tracking-tight leading-tight drop-shadow-md">شركة درة المنورة</span>
-              <span className="text-secondary font-black text-sm uppercase tracking-[0.2em] drop-shadow-sm">لنقل الحجاج والمعتمرين</span>
-              <span className="text-accent font-black text-xs uppercase tracking-[0.1em] mt-1 drop-shadow-sm">مكتب نقل العمال</span>
+            <div>
+              <h2 className="text-3xl lg:text-4xl font-black text-text-main leading-tight">
+                شركة درة المنورة للنقليات
+              </h2>
+              <span className="text-xs font-black text-primary uppercase tracking-widest mt-1 block">
+                DURRAT AL-MUNAWWARAH TRANSPORT CO. (DMTC)
+              </span>
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="max-w-xl"
-          >
-            <h2 className="text-5xl lg:text-7xl font-black text-white leading-[1.2] mb-8">
-              شركة درة المنورة – <br />
-              <span className="text-accent underline decoration-white/20 underline-offset-[12px]">قسم نقل العمال</span>
-            </h2>
-            <p className="text-white/80 text-xl font-medium leading-relaxed mb-12">
-              نظام متكامل لإدارة أسطول الحافلات، تتبع المواقع، وتوليد التقارير الاحترافية.
-            </p>
-          </motion.div>
+          <p className="text-text-muted text-base font-bold leading-relaxed mb-8">
+            منظومة رقمية متقدمة مبنية على أحدث معايير المراقبة والتحكم اللحظي، تتيح إدارة شاملة لأسطول الحافلات والكوادر الميدانية ومسيرات الرواتب.
+          </p>
+
+          {/* Feature Highlights Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="soft-panel p-4 flex items-center gap-3.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-primary flex items-center justify-center shrink-0">
+                <Bus className="w-5 h-5" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-xs font-black text-text-main">إدارة الأسطول</h4>
+                <p className="text-[10px] text-text-muted font-bold mt-0.5">جاهزية الحافلات وتوزيعها</p>
+              </div>
+            </div>
+
+            <div className="soft-panel p-4 flex items-center gap-3.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-xs font-black text-text-main">الرقابة والمتابعة</h4>
+                <p className="text-[10px] text-text-muted font-bold mt-0.5">سجل السائقين ومواقع العمل</p>
+              </div>
+            </div>
+
+            <div className="soft-panel p-4 flex items-center gap-3.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-[#4A148C] flex items-center justify-center shrink-0">
+                <Activity className="w-5 h-5" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-xs font-black text-text-main">مسيرات الرواتب</h4>
+                <p className="text-[10px] text-text-muted font-bold mt-0.5">حساب آلي وجبر الفواصل</p>
+              </div>
+            </div>
+
+            <div className="soft-panel p-4 flex items-center gap-3.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-xs font-black text-text-main">تغطية جغرافية شاملة</h4>
+                <p className="text-[10px] text-text-muted font-bold mt-0.5">المدينة • الرياض • مكة</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="relative z-10"
-        >
-           <p className="text-white/60 text-xs font-bold leading-relaxed">
-             تم تصميمه بحب من قبل فريق تشغيل درة المنورة - جميع الحقوق محفوظة لشركة درة المنورة
-           </p>
-        </motion.div>
+        <div className="relative z-10 mt-10 pt-4 border-t border-border/60">
+          <p className="text-text-muted text-xs font-bold">
+            قسم التشغيل ونقل العمال • شركة درة المنورة لنقل الحجاج والمعتمرين
+          </p>
+        </div>
       </div>
     </div>
   );

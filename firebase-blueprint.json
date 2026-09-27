@@ -48,6 +48,8 @@
         "workerNumber": { "type": "string" },
         "month": { "type": "string" },
         "baseSalary": { "type": "number" },
+        "workingDays": { "type": "number" },
+        "earnedBaseSalary": { "type": "number" },
         "extraHours": { "type": "number" },
         "extraHoursValue": { "type": "number" },
         "morabata": { "type": "number" },

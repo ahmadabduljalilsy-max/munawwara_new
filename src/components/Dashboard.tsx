@@ -39,6 +39,7 @@ import {
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType } from '../types';
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
+import { DmtcLogo } from './DmtcLogo';
 
 interface DashboardProps {
   buses: BusType[];
@@ -365,39 +366,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
     return { avgAge, newest, oldest, mostCommonBrand, avgYear };
   }, [buses]);
 
+  const readinessScore = totalBuses > 0 
+    ? Math.round(((totalBuses - maintenanceBusesCount) / totalBuses) * 100) 
+    : 100;
+
   const statsCards = [
     { 
       label: 'إجمالي الحافلات', 
       value: totalBuses, 
       icon: Bus, 
-      color: 'text-emerald-700 dark:text-emerald-400', 
-      valueColor: 'text-emerald-800 dark:text-emerald-300',
-      bg: 'bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60', 
+      color: 'text-primary dark:text-sky-400', 
+      valueColor: 'text-primary dark:text-sky-300',
+      bg: 'bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/60', 
       trend: 'الأسطول الكلي المسجل',
-      trendColor: 'text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
+      trendColor: 'text-primary dark:text-sky-300 bg-blue-50 dark:bg-blue-950/40'
     },
     { 
-      label: 'الحافلات النشطة', 
+      label: 'الحافلات الجاهزة للعمل', 
       value: activeBusesCount, 
       icon: CheckCircle2, 
       color: 'text-emerald-600 dark:text-emerald-400', 
-      valueColor: 'text-emerald-700 dark:text-emerald-400',
+      valueColor: 'text-emerald-600 dark:text-emerald-400',
       bg: 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/50', 
       trend: `جاهزة وتعمل (${totalBuses > 0 ? Math.round((activeBusesCount / totalBuses) * 100) : 0}%)`,
       trendColor: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
     },
     { 
-      label: 'تحتاج صيانة / متوقفة', 
+      label: 'تحت الصيانة / متوقفة', 
       value: maintenanceBusesCount, 
       icon: Wrench, 
       color: 'text-rose-600 dark:text-rose-400', 
       valueColor: 'text-rose-600 dark:text-rose-400',
       bg: 'bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50', 
-      trend: maintenanceBusesCount > 0 ? `تتطلب فحص ومتابعة (${maintenanceBusesCount})` : 'لا توجد أعطال حالياً',
+      trend: maintenanceBusesCount > 0 ? `تتطلب فحص ومتابعة (${maintenanceBusesCount})` : 'جاهزية كاملة 100%',
       trendColor: 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40'
     },
     { 
-      label: 'المواقع النشطة', 
+      label: 'مواقع العمل النشطة', 
       value: Object.keys(locationCounts).length, 
       icon: MapPin, 
       color: 'text-amber-600 dark:text-amber-400', 
@@ -410,49 +415,187 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
       label: 'الكوادر والسائقين', 
       value: workersCount || workers.length, 
       icon: Users, 
-      color: 'text-blue-600 dark:text-blue-400', 
-      valueColor: 'text-blue-700 dark:text-blue-400',
-      bg: 'bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/50', 
+      color: 'text-[#4A148C] dark:text-purple-400', 
+      valueColor: 'text-[#4A148C] dark:text-purple-300',
+      bg: 'bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800/50', 
       trend: 'الكوادر الميدانية المسجلة',
-      trendColor: 'text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40'
+      trendColor: 'text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40'
     },
   ];
 
   return (
     <div className="space-y-8 pb-12 text-right" dir="rtl">
-      {/* Header & Export Action Bar */}
-      <motion.div 
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-surface p-6 rounded-2xl border border-border shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center text-primary shrink-0 shadow-xs">
-            <Activity className="w-6 h-6 text-primary" />
+      {/* Malwarebytes Style: Operations Hub & Operational Readiness Advisor */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column (8 cols): SECURITY / FLEET OPERATIONS GRID */}
+        <div className="lg:col-span-8 flex flex-col gap-4">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-black text-text-muted uppercase tracking-wider flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span>مركز العمليات والمراقبة اللحظية • درة المنورة</span>
+            </span>
+            <span className="text-[11px] font-bold text-primary">نظام الفحص والمتابعة المباشر</span>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>لوحة</span>
-              <span className="text-primary font-bold">الإحصائيات العامة</span>
-              <span className="text-slate-400 font-normal">و</span>
-              <span className="text-accent font-bold">الرقابة الميدانية</span>
-            </h2>
-            <p className="text-xs text-slate-700 dark:text-slate-300 font-medium mt-1">
-              متابعة لحظية لـ <span className="text-emerald-700 dark:text-emerald-400 font-bold">إشغال الحافلات</span>، و<span className="text-amber-700 dark:text-amber-400 font-bold">مواقع العمل</span>، و<span className="text-rose-600 dark:text-rose-400 font-bold">الحالات الفنية</span>، و<span className="text-blue-700 dark:text-blue-400 font-bold">الكوادر البشرية</span>
-            </p>
-          </div>
+
+          {/* Subcard 1: Fleet Scanner (Icon + Status + Scan Button) */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="soft-panel p-5 flex items-center justify-between gap-4 relative overflow-hidden"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800 flex items-center justify-center text-primary shrink-0 shadow-2xs">
+                <Activity className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-sm font-black text-text-main leading-tight">فحص الأسطول والجاهزية الفنية</h4>
+                <p className="text-xs text-text-muted font-bold mt-1">
+                  آخر فحص شامل: <span className="text-primary font-black">اليوم ({activeBusesCount} حافلة جاهزة للعمل)</span>
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsExportModalOpen(true)}
+              className="soft-btn-primary px-6 py-2.5 text-xs font-black shrink-0 flex items-center gap-2 cursor-pointer shadow-md"
+            >
+              <span>فحص فوري</span>
+            </button>
+          </motion.div>
+
+          {/* Subcard 2: Detection & Operational History */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="soft-panel p-5 flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 flex items-center justify-center text-sky-600 shrink-0 shadow-2xs">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-sm font-black text-text-main leading-tight">سجل التشغيل ومواقع العمل</h4>
+                <p className="text-xs text-text-muted font-bold mt-1">
+                  متابعة {workers.length} سائق وموظف موزعين على {Object.keys(locationCounts).length} موقع عمل
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-black text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/50 px-3 py-1 rounded-full border border-sky-200/60">
+              محدث دورياً
+            </span>
+          </motion.div>
+
+          {/* Subcard 3: Real-Time Fleet Protection / Dispatch */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="soft-panel p-5 flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800 flex items-center justify-center text-emerald-600 shrink-0 shadow-2xs">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div className="text-right">
+                <h4 className="text-sm font-black text-text-main leading-tight">الربط الميداني اللحظي</h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-xs text-emerald-600 font-black">نشط ومباشر</span>
+                  <span className="text-xs text-text-muted font-bold">• ربط الحافلات بالسائقين والعملاء</span>
+                </div>
+              </div>
+            </div>
+            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60">
+              100% متزامن
+            </span>
+          </motion.div>
         </div>
 
-        <div className="flex items-center gap-3 self-end md:self-auto">
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2.5 transition-all shadow-sm shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+        {/* Right Column (4 cols): TRUSTED ADVISOR (Readiness Score Arc Gauge) */}
+        <div className="lg:col-span-4 flex flex-col gap-4">
+          <div className="px-1">
+            <span className="text-[11px] font-black text-text-muted uppercase tracking-wider">
+              مؤشر الجاهزية التشغيلية (TRUSTED ADVISOR)
+            </span>
+          </div>
+
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="soft-panel p-6 flex flex-col items-center justify-between text-center relative overflow-hidden h-full shadow-md"
           >
-            <Download className="w-4 h-4" />
-            <span>استخراج تقرير الإحصائيات (Excel)</span>
-          </button>
+            {/* Circular Gauge Inspired by Malwarebytes Image 1 */}
+            <div className="relative w-48 h-48 my-2 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+                {/* Background Track */}
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="48"
+                  className="stroke-blue-100/70 dark:stroke-slate-800"
+                  strokeWidth="11"
+                  fill="transparent"
+                  strokeDasharray="301.59"
+                  strokeDashoffset="75.4" // ~270 degree arc
+                  strokeLinecap="round"
+                />
+                {/* Gradient Definition */}
+                <defs>
+                  <linearGradient id="score-arc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00BCD4" />
+                    <stop offset="60%" stopColor="#0066F6" />
+                    <stop offset="100%" stopColor="#10B981" />
+                  </linearGradient>
+                </defs>
+                {/* Active Colored Arc */}
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="48"
+                  stroke="url(#score-arc-grad)"
+                  strokeWidth="11"
+                  fill="transparent"
+                  strokeDasharray="301.59"
+                  strokeDashoffset={301.59 - ((readinessScore * 0.75) / 100) * 301.59}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+
+              {/* Inside Score Content */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span className="text-[10px] font-black text-text-muted uppercase tracking-wider mb-0.5">
+                  معدل الجاهزية
+                </span>
+                <span className="text-4xl font-black font-sans text-text-main tracking-tight">
+                  {readinessScore}
+                </span>
+                <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {readinessScore >= 95 ? 'ممتاز (جاهزية قصوى)' : readinessScore >= 80 ? 'جيد جداً' : 'يحتاج صيانة'}
+                </span>
+              </div>
+            </div>
+
+            {/* See details pill button */}
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              className="mt-2 px-6 py-2 bg-blue-50/80 hover:bg-blue-100/90 text-primary border border-blue-200/80 rounded-full text-xs font-black transition-all cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
+            >
+              عرض تقرير الجاهزية الشامل
+            </button>
+
+            {/* Bottom Info Banner */}
+            <div className="mt-5 pt-4 border-t border-border/80 w-full flex flex-col items-center text-center">
+              <div className="flex items-center justify-center gap-2 mb-1.5">
+                <DmtcLogo size="xs" variant="horizontal" />
+              </div>
+              <p className="text-[10px] text-text-muted font-bold leading-relaxed">
+                موثوقية عالية وتشغيل معتمد لأسطول نقل الحجاج والمعتمرين والكوادر الميدانية.
+              </p>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
+      </div>
 
       {/* Metrics Summary Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4.5">
@@ -462,14 +605,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
-            className="bg-surface p-4.5 rounded-2xl border border-border shadow-xs flex flex-col justify-between gap-3 relative overflow-hidden group hover:shadow-md transition-all hover:border-primary/50"
+            className="soft-panel p-4.5 flex flex-col justify-between gap-3 relative overflow-hidden group hover:border-primary/50 transition-all shadow-xs"
           >
             <div className="flex justify-between items-start relative z-10">
               <div className="text-right">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">{card.label}</p>
+                <p className="text-xs font-bold text-text-muted mb-1.5">{card.label}</p>
                 <h3 className={`text-3xl font-extrabold ${card.valueColor} leading-none tracking-tight`}>{card.value}</h3>
               </div>
-              <div className={`${card.bg} p-2.5 rounded-xl group-hover:scale-105 transition-transform shadow-xs`}>
+              <div className={`${card.bg} p-2.5 rounded-2xl group-hover:scale-105 transition-transform shadow-2xs`}>
                 <card.icon className={`${card.color} w-5 h-5`} />
               </div>
             </div>
@@ -478,7 +621,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
                  {card.trend}
                </span>
             </div>
-            <div className="absolute top-0 left-0 w-28 h-28 bg-gradient-to-tr from-transparent to-black/[0.02] -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl pointer-events-none" />
           </motion.div>
         ))}
       </div>

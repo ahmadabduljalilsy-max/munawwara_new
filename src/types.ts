@@ -68,6 +68,8 @@ export interface SalaryRecord {
   workerNumber: string;
   month: string; // YYYY-MM
   baseSalary: number;
+  workingDays?: number; // عدد أيام العمل الفعلية للشهر (افتراضياً 30 يوم)
+  earnedBaseSalary?: number; // الراتب الأساسي المستحق حسب أيام العمل
   extraHours: number;
   extraHoursValue: number;
   morabata: number;

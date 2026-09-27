@@ -56,6 +56,8 @@ service cloud.firestore {
        return data.workerId is string && data.workerId.size() <= 100 &&
               data.month is string && data.month.size() <= 10 &&
               (data.get('baseSalary', 0) is number || data.get('baseSalary', 0) is int) &&
+              (data.get('workingDays', 30) is number || data.get('workingDays', 30) is int) &&
+              (data.get('earnedBaseSalary', 0) is number || data.get('earnedBaseSalary', 0) is int) &&
               (data.get('extraHours', 0) is number || data.get('extraHours', 0) is int) &&
               (data.get('extraHoursValue', 0) is number || data.get('extraHoursValue', 0) is int) &&
               (data.get('morabata', 0) is number || data.get('morabata', 0) is int) &&
@@ -89,7 +91,7 @@ service cloud.firestore {
     // --- Collections ---
 
     match /test/connection {
-      allow read: if isSignedIn();
+      allow read: if true;
     }
 
     match /buses/{busId} {

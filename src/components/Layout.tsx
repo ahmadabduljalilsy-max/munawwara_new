@@ -14,7 +14,8 @@ import {
   Calendar,
   Sparkles,
   ChevronLeft,
-  Bell
+  Bell,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { auth } from '../lib/firebase';
@@ -51,20 +52,26 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
   const isSuperAdmin = profile?.role === 'admin';
-  const isOperator = profile?.role === 'supervisor';
+  const isBusSupervisor = profile?.role === 'bus_supervisor' || profile?.role === 'inspector' || profile?.role === 'supervisor' || profile?.role === 'operator';
+  const isReadOnly = profile?.role === 'readonly';
 
   const menuItems = [
-    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'مؤشرات الأداء والجاهزية', iconBg: 'bg-blue-50 dark:bg-blue-900/40 text-primary' },
-    { id: 'fleet', label: 'أسطول الحافلات', icon: Bus, desc: 'حالة الأسطول والتشغيل', iconBg: 'bg-sky-50 dark:bg-sky-900/40 text-sky-600' },
-    { id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع السائقين والمواقع', iconBg: 'bg-cyan-50 dark:bg-cyan-900/40 text-cyan-600' },
+    { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard, desc: 'مؤشرات الأداء وبوابة الردود', iconBg: 'bg-blue-50 dark:bg-blue-900/40 text-primary' },
   ];
 
-  if (isSuperAdmin || isOperator) {
-    menuItems.push({ id: 'salaries', label: 'سلم الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات', iconBg: 'bg-purple-50 dark:bg-purple-900/40 text-purple-600' });
-  }
+  // Bus Supervisor has access ONLY to the Dashboard (الصفحة الرئيسية فقط)
+  if (!isBusSupervisor) {
+    // Both Super Admin and Read-only can view Fleet and Monitoring (read-only mode)
+    menuItems.push({ id: 'fleet', label: 'أسطول الحافلات', icon: Bus, desc: 'حالة الأسطول والتشغيل', iconBg: 'bg-sky-50 dark:bg-sky-900/40 text-sky-600' });
+    menuItems.push({ id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع السائقين والمواقع', iconBg: 'bg-cyan-50 dark:bg-cyan-900/40 text-cyan-600' });
 
-  if (isSuperAdmin) {
-    menuItems.push({ id: 'admin', label: 'إدارة النظام', icon: Settings, desc: 'المستخدمين والصلاحيات', iconBg: 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600' });
+    // ONLY Super Admin can view Company Drivers, Salaries, and Admin Panel
+    // Read-only is strictly forbidden from: سائقين الشركة - سلم الرواتب - إدارة النظام
+    if (isSuperAdmin) {
+      menuItems.push({ id: 'drivers', label: 'سائقين الشركة', icon: UserCheck, desc: 'سجل وتصنيف وردود السائقين', iconBg: 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600' });
+      menuItems.push({ id: 'salaries', label: 'سلم الرواتب', icon: CircleDollarSign, desc: 'مسيرات الرواتب والمستحقات', iconBg: 'bg-purple-50 dark:bg-purple-900/40 text-purple-600' });
+      menuItems.push({ id: 'admin', label: 'إدارة النظام', icon: Settings, desc: 'المستخدمين والصلاحيات', iconBg: 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600' });
+    }
   }
 
   const handleLogout = () => {
@@ -190,15 +197,15 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                       <span className="w-1.5 h-1.5 bg-primary rounded-full" />
                       مدير النظام
                     </span>
-                  ) : profile?.role === 'supervisor' ? (
-                    <span className="text-sky-600 dark:text-sky-400 font-bold flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-sky-500 rounded-full" />
-                      موظف تشغيل
+                  ) : (profile?.role === 'bus_supervisor' || profile?.role === 'inspector' || profile?.role === 'supervisor' || profile?.role === 'operator') ? (
+                    <span className="text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-purple-500 rounded-full" />
+                      مشرف نقل الحافلات
                     </span>
                   ) : (
                     <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-bold">
                       <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                      قراءة فقط
+                      وضع قراءة فقط
                     </span>
                   )}
                 </span>
@@ -262,10 +269,10 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
                    مدير النظام
                  </span>
-               ) : profile?.role === 'supervisor' ? (
-                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-50 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-sky-400 text-[10px] font-black rounded-full shadow-2xs">
-                   <span className="w-1.5 h-1.5 bg-sky-500 rounded-full" />
-                   موظف تشغيل
+               ) : (profile?.role === 'bus_supervisor' || profile?.role === 'inspector' || profile?.role === 'supervisor' || profile?.role === 'operator') ? (
+                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800 text-purple-700 dark:text-purple-400 text-[10px] font-black rounded-full shadow-2xs">
+                   <span className="w-1.5 h-1.5 bg-purple-500 rounded-full" />
+                   مشرف نقل الحافلات
                  </span>
                ) : (
                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-[10px] font-black rounded-full shadow-2xs">

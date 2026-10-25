@@ -16,15 +16,21 @@ import { ReportTemplate } from './components/ReportTemplates';
 import { WorkerList } from './components/WorkerList';
 import { WorkerForm } from './components/WorkerForm';
 import { SalaryList } from './components/SalaryList';
+import { CompanyDriversList } from './components/CompanyDriversList';
+import { CompanyDriverFormModal } from './components/CompanyDriverFormModal';
+import { DriverResponseModal } from './components/DriverResponseModal';
+import { PublicDriverResponsePage } from './components/PublicDriverResponsePage';
+import { WelcomeAnnouncementModal } from './components/WelcomeAnnouncementModal';
 import { AnimatePresence, motion } from 'motion/react';
 import { db, auth, testConnection } from './lib/firebase';
 import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
-import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel } from './lib/excelService';
+import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
+import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
 import { generatePdf } from './lib/pdfService';
-import type { Bus, Worker, SalaryRecord } from './types';
+import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResponse } from './types';
 
-function AppContent() {
+function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
   const { user, profile, loading: authLoading } = useAuth();
   const { logoURL, loading: logoLoading } = useLogo();
   const loading = authLoading || logoLoading;
@@ -32,11 +38,58 @@ function AppContent() {
   const [buses, setBuses] = useState<Bus[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
+  const [companyDrivers, setCompanyDrivers] = useState<CompanyDriver[]>([]);
+  const [driverResponses, setDriverResponses] = useState<DriverResponse[]>([]);
+  const [isDriverResponseModalOpen, setIsDriverResponseModalOpen] = useState(false);
+  const [prefilledResponseDriver, setPrefilledResponseDriver] = useState<CompanyDriver | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBus, setEditingBus] = useState<Bus|null>(null);
   const [isWorkerFormOpen, setIsWorkerFormOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker|null>(null);
+  const [isCompanyDriverFormOpen, setIsCompanyDriverFormOpen] = useState(false);
+  const [editingCompanyDriver, setEditingCompanyDriver] = useState<CompanyDriver|null>(null);
   const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], salaries?: SalaryRecord[], stats: any}|null>(null);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+
+  // Check if current URL is targeting the public driver response page (no auth required)
+  const [isPublicResponsePage, setIsPublicResponsePage] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    const pathname = window.location.pathname;
+    return (
+      urlParams.get('action') === 'driver-response' ||
+      urlParams.get('action') === 'response' ||
+      urlParams.get('mode') === 'response' ||
+      urlParams.get('view') === 'response' ||
+      hash === '#driver-response' ||
+      pathname.endsWith('/response')
+    );
+  });
+
+  // URL Listener for direct links and route transitions
+  useEffect(() => {
+    const handleUrlActions = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+      const pathname = window.location.pathname;
+      const isPublic = (
+        urlParams.get('action') === 'driver-response' ||
+        urlParams.get('action') === 'response' ||
+        urlParams.get('mode') === 'response' ||
+        urlParams.get('view') === 'response' ||
+        hash === '#driver-response' ||
+        pathname.endsWith('/response')
+      );
+      setIsPublicResponsePage(isPublic);
+
+      if (!isPublic && (urlParams.get('tab') === 'drivers' || hash === '#drivers')) {
+        setActiveTab('drivers');
+      }
+    };
+    handleUrlActions();
+    window.addEventListener('popstate', handleUrlActions);
+    return () => window.removeEventListener('popstate', handleUrlActions);
+  }, []);
 
   useEffect(() => {
     if (user && profile?.approved) {
@@ -58,7 +111,7 @@ function AppContent() {
       }, (error) => handleFirestoreError(error, OperationType.GET, pathWorkers));
 
       let unsubSalaries = () => {};
-      const isPrivileged = profile?.role === 'admin' || profile?.role === 'supervisor';
+      const isPrivileged = profile?.role === 'admin';
       if (isPrivileged) {
         const pathSalaries = 'salaries';
         const qSalaries = query(collection(db, pathSalaries));
@@ -68,32 +121,97 @@ function AppContent() {
         }, (error) => handleFirestoreError(error, OperationType.GET, pathSalaries));
       }
 
+      let unsubCompanyDrivers = () => {};
+      const isAdminUser = profile?.role === 'admin';
+      if (isAdminUser) {
+        const pathCompanyDrivers = 'company_drivers';
+        const qCompanyDrivers = query(collection(db, pathCompanyDrivers));
+        unsubCompanyDrivers = onSnapshot(qCompanyDrivers, async (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompanyDriver));
+          
+          // Guarantee unique sequential serial numbers starting from 1 with no repeats
+          const missingSerial = list.filter(d => !d.serialNumber || isNaN(Number(d.serialNumber)) || Number(d.serialNumber) <= 0);
+          if (missingSerial.length > 0) {
+            const assignedNumbers = list
+              .filter(d => d.serialNumber && !isNaN(Number(d.serialNumber)) && Number(d.serialNumber) > 0)
+              .map(d => Number(d.serialNumber));
+            let nextNum = assignedNumbers.length > 0 ? Math.max(...assignedNumbers) + 1 : 1;
+
+            try {
+              const batch = writeBatch(db);
+              for (const driver of missingSerial) {
+                batch.update(doc(db, 'company_drivers', driver.id), {
+                  serialNumber: nextNum++,
+                  updatedAt: serverTimestamp()
+                });
+              }
+              await batch.commit();
+            } catch (err) {
+              console.error('Error backfilling serial numbers:', err);
+            }
+          }
+
+          list.sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0));
+          setCompanyDrivers(list);
+        }, (error) => handleFirestoreError(error, OperationType.GET, pathCompanyDrivers));
+      }
+
+      // Realtime listener for driver responses
+      let unsubDriverResponses = () => {};
+      const pathResponses = 'driver_responses';
+      const qResponses = query(collection(db, pathResponses));
+      unsubDriverResponses = onSnapshot(qResponses, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DriverResponse));
+        // Sort newest responses first
+        list.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || a.createdDate || 0).getTime();
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || b.createdDate || 0).getTime();
+          return timeB - timeA;
+        });
+        setDriverResponses(list);
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathResponses));
+
       return () => {
         unsubBuses();
         unsubWorkers();
         unsubSalaries();
+        unsubCompanyDrivers();
+        unsubDriverResponses();
       };
     }
   }, [user, profile]);
 
   const isSuperAdmin = profile?.role === 'admin';
-  const isOperator = profile?.role === 'supervisor';
-  const canEdit = isSuperAdmin || isOperator;
-  const isReadOnly = !canEdit;
+  const isBusSupervisor = profile?.role === 'bus_supervisor' || profile?.role === 'inspector' || profile?.role === 'supervisor' || profile?.role === 'operator';
+  const isReadOnly = profile?.role === 'readonly';
 
-  // Protect tabs if role does not permit
+  // Only super admin has edit privileges (adding, editing, deleting, importing)
+  // Readonly users are strictly prevented from any edits or changes
+  const canEdit = isSuperAdmin;
+
+  // Protect tabs based on user role:
+  // 1. Bus Supervisor: restricted ONLY to Dashboard (الصفحة الرئيسية فقط)
+  // 2. Read-only: allowed Dashboard, Fleet, and Monitoring only. Forbidden from: drivers, salaries, admin.
+  // 3. Super Admin: full access to all tabs.
   useEffect(() => {
-    if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin')) {
+    if (isBusSupervisor && activeTab !== 'dashboard') {
       setActiveTab('dashboard');
-    } else if (!isSuperAdmin && activeTab === 'admin') {
+    } else if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin' || activeTab === 'drivers')) {
+      setActiveTab('dashboard');
+    } else if (!isSuperAdmin && (activeTab === 'admin' || activeTab === 'drivers' || activeTab === 'salaries')) {
       setActiveTab('dashboard');
     }
-  }, [activeTab, isReadOnly, isSuperAdmin]);
+  }, [activeTab, isBusSupervisor, isReadOnly, isSuperAdmin]);
 
   const activeWorkersCount = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return workers.filter(w => !w.endDate || w.endDate >= today).length;
   }, [workers]);
+
+  // Public standalone driver response portal (no authentication required)
+  if (isPublicResponsePage) {
+    return <PublicDriverResponsePage />;
+  }
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-background" dir="rtl">
@@ -603,6 +721,227 @@ function AppContent() {
     }
   };
 
+  const handleSaveCompanyDriver = async (data: Partial<CompanyDriver>) => {
+    try {
+      const cleaned = cleanData(data);
+      const cleanIqama = cleaned.iqamaNumber ? String(cleaned.iqamaNumber).trim() : '';
+      const cleanBorder = cleaned.borderNumber ? String(cleaned.borderNumber).trim() : '';
+
+      if (cleanIqama) {
+        const dup = companyDrivers.find(d => 
+          d.id !== editingCompanyDriver?.id && 
+          d.iqamaNumber && 
+          String(d.iqamaNumber).trim() === cleanIqama
+        );
+        if (dup) {
+          throw new Error(`رقم الإقامة (${cleanIqama}) مسجل مسبقاً للسائق: "${dup.fullName}" ولا يمكن تكراره.`);
+        }
+      }
+
+      if (cleanBorder) {
+        const dup = companyDrivers.find(d => 
+          d.id !== editingCompanyDriver?.id && 
+          d.borderNumber && 
+          String(d.borderNumber).trim() === cleanBorder
+        );
+        if (dup) {
+          throw new Error(`رقم الحدود (${cleanBorder}) مسجل مسبقاً للسائق: "${dup.fullName}" ولا يمكن تكراره.`);
+        }
+      }
+
+      const nowIso = new Date().toISOString();
+      const finalStatus = cleaned.status || 'نشط';
+      const finalStatusDate = cleaned.statusUpdatedAt || nowIso;
+
+      if (editingCompanyDriver) {
+        await updateDoc(doc(db, 'company_drivers', editingCompanyDriver.id), {
+          ...cleaned,
+          serialNumber: editingCompanyDriver.serialNumber || (companyDrivers.findIndex(d => d.id === editingCompanyDriver.id) + 1),
+          status: finalStatus,
+          statusUpdatedAt: finalStatusDate,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Find highest existing serialNumber to assign the next sequential non-repeating number starting from 1
+        const serials = companyDrivers
+          .map(d => Number(d.serialNumber))
+          .filter(n => !isNaN(n) && isFinite(n) && n > 0);
+        const maxSerial = serials.length > 0 ? Math.max(...serials) : 0;
+        const nextSerial = maxSerial + 1;
+
+        await addDoc(collection(db, 'company_drivers'), {
+          ...cleaned,
+          serialNumber: nextSerial,
+          status: finalStatus,
+          statusUpdatedAt: finalStatusDate,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          createdBy: user.uid
+        });
+      }
+      setIsCompanyDriverFormOpen(false);
+      setEditingCompanyDriver(null);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('مسجل مسبقاً')) {
+        throw error;
+      }
+      handleFirestoreError(error, editingCompanyDriver ? OperationType.UPDATE : OperationType.CREATE, 'company_drivers');
+    }
+  };
+
+  const handleSaveDriverResponse = async (data: Omit<DriverResponse, 'id'>) => {
+    try {
+      const cleaned = cleanData(data);
+      await addDoc(collection(db, 'driver_responses'), {
+        ...cleaned,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: user?.uid
+      });
+
+      // Background sync to Google Sheet if configured
+      getGoogleSheetSettings().then(settings => {
+        if (settings.webhookUrl) {
+          syncResponseToGoogleSheet(settings.webhookUrl, {
+            driverSerialNumber: cleaned.driverSerialNumber,
+            driverName: cleaned.driverName,
+            busNumber: cleaned.busNumber,
+            responseType: cleaned.responseType,
+            notes: cleaned.notes,
+            createdDate: cleaned.createdDate
+          }).catch(e => console.warn('Background Google Sheet sync warning:', e));
+        }
+      }).catch(() => {});
+
+      alert('تم تسجيل الرد وتنزيله في بطاقة السائق بنجاح.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'driver_responses');
+    }
+  };
+
+  const handleDeleteDriverResponse = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'driver_responses', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `driver_responses/${id}`);
+    }
+  };
+
+  const handleUpdateCompanyDriverStatus = async (id: string, newStatus: DriverStatus, reason?: string) => {
+    try {
+      const updateData: any = {
+        status: newStatus,
+        statusUpdatedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      };
+      if (reason !== undefined) {
+        updateData.statusReason = reason;
+      }
+      await updateDoc(doc(db, 'company_drivers', id), updateData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'company_drivers');
+    }
+  };
+
+  const handleDeleteCompanyDriver = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'company_drivers', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
+    }
+  };
+
+  const handleDeleteAllCompanyDrivers = async () => {
+    try {
+      const chunkSize = 500;
+      for (let i = 0; i < companyDrivers.length; i += chunkSize) {
+        const chunk = companyDrivers.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        for (const driver of chunk) {
+          batch.delete(doc(db, 'company_drivers', driver.id));
+        }
+        await batch.commit();
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
+    }
+  };
+
+  const handleImportCompanyDriversExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = await parseCompanyDriversExcel(file);
+      let added = 0;
+      let updated = 0;
+
+      let importedDriversTracker = [...companyDrivers];
+      let currentMaxSerial = companyDrivers.reduce((max, d) => Math.max(max, Number(d.serialNumber) || 0), 0);
+      const chunkSize = 500;
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+
+        for (const driverData of chunk) {
+          const cleaned = cleanData(driverData);
+          const cleanIqama = cleaned.iqamaNumber ? String(cleaned.iqamaNumber).trim() : '';
+          const cleanBorder = cleaned.borderNumber ? String(cleaned.borderNumber).trim() : '';
+          const cleanName = cleaned.fullName ? String(cleaned.fullName).trim() : '';
+
+          const existingIndex = importedDriversTracker.findIndex(d => {
+            const dIqama = d.iqamaNumber ? String(d.iqamaNumber).trim() : '';
+            const dBorder = d.borderNumber ? String(d.borderNumber).trim() : '';
+            const dName = d.fullName ? String(d.fullName).trim() : '';
+
+            if (cleanIqama && dIqama && dIqama === cleanIqama) return true;
+            if (cleanBorder && dBorder && dBorder === cleanBorder) return true;
+            if (cleanName && dName && dName === cleanName) return true;
+            return false;
+          });
+
+          if (existingIndex !== -1) {
+            const existingDriver = importedDriversTracker[existingIndex];
+            const resolvedSerial = existingDriver.serialNumber || ++currentMaxSerial;
+            batch.update(doc(db, 'company_drivers', existingDriver.id), {
+              ...cleaned,
+              serialNumber: resolvedSerial,
+              updatedAt: serverTimestamp()
+            });
+            importedDriversTracker[existingIndex] = {
+              ...existingDriver,
+              ...cleaned,
+              serialNumber: resolvedSerial
+            };
+            updated++;
+          } else {
+            const nextSerial = ++currentMaxSerial;
+            const newDocRef = doc(collection(db, 'company_drivers'));
+            batch.set(newDocRef, {
+              ...cleaned,
+              serialNumber: nextSerial,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              createdBy: user.uid
+            });
+            importedDriversTracker.push({
+              id: newDocRef.id,
+              ...cleaned,
+              serialNumber: nextSerial
+            } as any);
+            added++;
+          }
+        }
+        await batch.commit();
+      }
+
+      alert(`تم استيراد سائقي الشركة بنجاح: إضافة ${added} سائق جديد وتحديث ${updated} سائق موجود.`);
+      e.target.value = '';
+    } catch (error) {
+      console.error('Error importing company drivers:', error);
+      alert('حدث خطأ أثناء استيراد ملف إكسل للسائقين: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   const handleGeneratePdf = async (title: string, data: Bus[]) => {
     const locationCounts = data.reduce((acc: any, b) => {
       acc[b.location] = (acc[b.location] || 0) + 1;
@@ -674,7 +1013,18 @@ function AppContent() {
            transition={{ duration: 0.2, ease: "easeInOut" }}
            className="w-full h-full"
         >
-          {activeTab === 'dashboard' && <Dashboard buses={buses} workers={workers} profile={profile} workersCount={activeWorkersCount} />}
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+              buses={buses} 
+              workers={workers} 
+              profile={profile} 
+              workersCount={activeWorkersCount}
+              driverResponses={driverResponses}
+              companyDrivers={companyDrivers}
+              onOpenResponsePage={onOpenPublicResponsePage}
+              onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
+            />
+          )}
           {activeTab === 'fleet' && (
             <FleetList 
               buses={buses} 
@@ -704,6 +1054,27 @@ function AppContent() {
             />
           )}
           {activeTab === 'admin' && isSuperAdmin && <AdminPanel />}
+
+          {activeTab === 'drivers' && isSuperAdmin && (
+            <CompanyDriversList 
+              drivers={companyDrivers}
+              isAdmin={isSuperAdmin}
+              driverResponses={driverResponses}
+              onOpenDriverResponse={(driver) => {
+                setPrefilledResponseDriver(driver || null);
+                setIsDriverResponseModalOpen(true);
+              }}
+              onOpenPublicResponsePage={onOpenPublicResponsePage}
+              onDeleteDriverResponse={handleDeleteDriverResponse}
+              onAdd={() => { setEditingCompanyDriver(null); setIsCompanyDriverFormOpen(true); }}
+              onEdit={(driver) => { setEditingCompanyDriver(driver); setIsCompanyDriverFormOpen(true); }}
+              onDelete={handleDeleteCompanyDriver}
+              onDeleteAll={handleDeleteAllCompanyDrivers}
+              onStatusChange={handleUpdateCompanyDriverStatus}
+              onImport={handleImportCompanyDriversExcel}
+              onExport={(data) => exportCompanyDriversToExcel(data)}
+            />
+          )}
 
           {activeTab === 'monitoring' && (
             <WorkerList 
@@ -741,6 +1112,31 @@ function AppContent() {
         />
       )}
 
+      {isCompanyDriverFormOpen && (
+        <CompanyDriverFormModal 
+          driver={editingCompanyDriver}
+          existingDrivers={companyDrivers}
+          buses={buses}
+          isOpen={isCompanyDriverFormOpen}
+          onSave={handleSaveCompanyDriver}
+          onClose={() => { setIsCompanyDriverFormOpen(false); setEditingCompanyDriver(null); }}
+        />
+      )}
+
+      {isDriverResponseModalOpen && (
+        <DriverResponseModal
+          isOpen={isDriverResponseModalOpen}
+          onClose={() => {
+            setIsDriverResponseModalOpen(false);
+            setPrefilledResponseDriver(null);
+          }}
+          drivers={companyDrivers}
+          buses={buses}
+          prefilledDriver={prefilledResponseDriver}
+          onSave={handleSaveDriverResponse}
+        />
+      )}
+
       {/* Hidden report template for PDF generation */}
       <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
         {reportConfig && (
@@ -754,15 +1150,85 @@ function AppContent() {
           />
         )}
       </div>
+
+      {/* First-visit & On-demand Welcome Announcement Modal */}
+      <WelcomeAnnouncementModal 
+        forceOpen={isAnnouncementModalOpen}
+        onClose={() => setIsAnnouncementModalOpen(false)}
+      />
     </Layout>
   );
 }
 
+function isPublicResponseUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const urlParams = new URLSearchParams(window.location.search);
+  const hash = window.location.hash;
+  const pathname = window.location.pathname;
+  return (
+    urlParams.get('action') === 'driver-response' ||
+    urlParams.get('action') === 'response' ||
+    urlParams.get('mode') === 'response' ||
+    urlParams.get('view') === 'response' ||
+    urlParams.get('page') === 'response' ||
+    hash === '#driver-response' ||
+    hash === '#response' ||
+    pathname.endsWith('/response')
+  );
+}
+
 export default function App() {
+  const [showPublicResponse, setShowPublicResponse] = useState(isPublicResponseUrl);
+
+  useEffect(() => {
+    const handleUrl = () => setShowPublicResponse(isPublicResponseUrl());
+    window.addEventListener('popstate', handleUrl);
+    window.addEventListener('hashchange', handleUrl);
+    return () => {
+      window.removeEventListener('popstate', handleUrl);
+      window.removeEventListener('hashchange', handleUrl);
+    };
+  }, []);
+
+  if (showPublicResponse) {
+    return (
+      <LogoProvider>
+        <PublicDriverResponsePage 
+          onBackToDashboard={() => {
+            setShowPublicResponse(false);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('action');
+              url.searchParams.delete('mode');
+              url.searchParams.delete('view');
+              url.searchParams.delete('page');
+              url.hash = '';
+              window.history.pushState({}, '', url.pathname + (url.search ? url.search : ''));
+            } catch {
+              // ignore
+            }
+          }} 
+        />
+        <WelcomeAnnouncementModal />
+      </LogoProvider>
+    );
+  }
+
   return (
     <AuthProvider>
       <LogoProvider>
-        <AppContent />
+        <AppContent 
+          onOpenPublicResponsePage={() => {
+            setShowPublicResponse(true);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.set('action', 'driver-response');
+              window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+            } catch {
+              // ignore
+            }
+          }} 
+        />
       </LogoProvider>
     </AuthProvider>
   );

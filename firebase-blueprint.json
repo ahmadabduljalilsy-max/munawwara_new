@@ -85,6 +85,42 @@
         "logoURL": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "CompanyDriver": {
+      "title": "CompanyDriver",
+      "description": "Company drivers record classified as resident, temporary, or seasonal",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "nationality": { "type": "string" },
+        "driverType": { "type": "string", "enum": ["مقيم", "مؤقت", "موسمي"] },
+        "iqamaNumber": { "type": "string" },
+        "borderNumber": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "workplace": { "type": "string" },
+        "busNumber": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["fullName", "driverType"]
+    },
+    "DriverResponse": {
+      "title": "DriverResponse",
+      "description": "Log of driver responses for route destinations",
+      "type": "object",
+      "properties": {
+        "driverId": { "type": "string" },
+        "driverSerialNumber": { "type": "number" },
+        "driverName": { "type": "string" },
+        "busNumber": { "type": "string" },
+        "responseType": { "type": "string", "enum": ["محايل عسير", "ينبع", "القصيم", "الرياض"] },
+        "notes": { "type": "string" },
+        "createdDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["driverSerialNumber", "driverName", "busNumber", "responseType"]
     }
   },
   "firestore": {
@@ -92,6 +128,8 @@
     "/workers/{workerId}": { "schema": "Worker", "description": "Worker records" },
     "/salaries/{salaryId}": { "schema": "Salary", "description": "Worker monthly salaries" },
     "/users/{userId}": { "schema": "User", "description": "User profiles" },
-    "/settings/app": { "schema": "AppSettings", "description": "Global settings" }
+    "/settings/app": { "schema": "AppSettings", "description": "Global settings" },
+    "/company_drivers/{driverId}": { "schema": "CompanyDriver", "description": "Company drivers directory" },
+    "/driver_responses/{responseId}": { "schema": "DriverResponse", "description": "Driver responses log" }
   }
 }

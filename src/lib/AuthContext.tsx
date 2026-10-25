@@ -3,12 +3,14 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
+import type { UserRole } from '../types';
+
 interface AppUser {
   uid: string;
   email: string;
   displayName: string | null;
   photoURL: string | null;
-  role: 'admin' | 'supervisor' | 'readonly' | 'user' | 'pending';
+  role: UserRole;
   approved: boolean;
 }
 

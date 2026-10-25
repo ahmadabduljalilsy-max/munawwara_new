@@ -24,14 +24,18 @@ import {
   Download,
   Upload,
   Database,
-  AlertTriangle
+  AlertTriangle,
+  UserCog,
+  ShieldCheck,
+  ShieldAlert,
+  Check
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useLogo } from '../lib/LogoContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
-import type { AppUser } from '../types';
+import type { AppUser, UserRole } from '../types';
 
 type SortField = 'displayName' | 'email' | 'role';
 type SortOrder = 'asc' | 'desc';
@@ -39,139 +43,227 @@ type SortOrder = 'asc' | 'desc';
 interface UserCardProps {
   user: AppUser;
   isPending: boolean;
-  onApprove: (uid: string) => void;
-  onMakeSupervisor: (uid: string) => void;
-  onMakeUser: (uid: string) => void;
+  onApprove: (uid: string, initialRole?: UserRole) => void;
+  onChangeRole: (uid: string, newRole: UserRole) => void;
+  onToggleResponsePermission: (uid: string, currentVal?: boolean) => void;
   onDeactivate: (uid: string) => void;
   onDelete: (user: { uid: string; name: string }) => void;
   adminEmails: string[];
 }
 
+const getRoleBadgeInfo = (role: UserRole) => {
+  switch (role) {
+    case 'admin':
+      return { label: 'مدير النظام', bg: 'bg-indigo-600 text-white' };
+    case 'bus_supervisor':
+    case 'supervisor':
+    case 'operator':
+    case 'inspector':
+      return { label: 'مشرف نقل الحافلات', bg: 'bg-purple-600 text-white' };
+    case 'readonly':
+      return { label: 'وضع قراءة فقط', bg: 'bg-amber-500 text-white' };
+    case 'user':
+      return { label: 'سائق / عامل', bg: 'bg-slate-500 text-white' };
+    default:
+      return { label: 'قيد المراجعة', bg: 'bg-slate-400 text-white' };
+  }
+};
+
+const isUserAuthorizedForDriverResponse = (user: AppUser, adminEmails: string[]) => {
+  // Readonly users are strictly forbidden from submitting driver responses
+  if (user.role === 'readonly') return false;
+  if (adminEmails.includes(user.email)) return true;
+  if (['admin', 'bus_supervisor', 'supervisor', 'operator', 'inspector'].includes(user.role)) return true;
+  return Boolean(user.canSubmitDriverResponses);
+};
+
 const UserCard: React.FC<UserCardProps> = ({ 
   user, 
   isPending, 
   onApprove, 
-  onMakeSupervisor, 
-  onMakeUser, 
+  onChangeRole,
+  onToggleResponsePermission,
   onDeactivate, 
   onDelete,
   adminEmails
-}) => (
-  <motion.div 
-    layout
-    initial={{ opacity: 0, scale: 0.95 }}
-    animate={{ opacity: 1, scale: 1 }}
-    className="bg-surface p-6 rounded-[32px] border border-border shadow-sm flex flex-col hover:shadow-md transition-all group relative overflow-hidden h-full"
-  >
-    {/* Role/Status Badge */}
-    <div className="absolute top-4 left-4 z-10">
-      {isPending ? (
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 shadow-sm border border-amber-200">
-          قيد المراجعة
-        </span>
-      ) : (
-        <span className={`
-          inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm
-          ${user.role === 'admin' ? 'bg-indigo-600 text-white' : 
-            user.role === 'supervisor' ? 'bg-sky-600 text-white' : 
-            'bg-amber-500 text-white'}
-        `}>
-          {user.role === 'admin' ? 'مدير النظام' : 
-           user.role === 'supervisor' ? 'موظف تشغيل' : 
-           'وضع قراءة فقط'}
-        </span>
-      )}
-    </div>
+}) => {
+  const isSuperAdminEmail = adminEmails.includes(user.email);
+  const roleInfo = getRoleBadgeInfo(user.role);
+  const canRespond = isUserAuthorizedForDriverResponse(user, adminEmails);
 
-    <div className="flex flex-col items-center text-center gap-4 mb-6 mt-4">
-      <div className="relative group/avatar">
-        <div className="w-20 h-20 rounded-[28px] overflow-hidden p-1 bg-white border border-border shadow-md group-hover:scale-105 transition-transform duration-500">
-          <img 
-            src={user.photoURL || ''} 
-            alt="" 
-            className={`w-full h-full object-cover rounded-[22px] ${isPending ? 'grayscale' : ''}`} 
-          />
-        </div>
-        {!isPending && user.role === 'admin' && (
-          <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1.5 rounded-xl border-4 border-white shadow-lg">
-            <Shield className="w-3.5 h-3.5 text-white" />
-          </div>
+  return (
+    <motion.div 
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-surface p-5 rounded-[28px] border border-border shadow-xs flex flex-col hover:shadow-md transition-all group relative overflow-hidden h-full"
+    >
+      {/* Role/Status Badge */}
+      <div className="flex items-center justify-between w-full mb-3">
+        {isPending ? (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 shadow-2xs border border-amber-200">
+            قيد المراجعة
+          </span>
+        ) : (
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black tracking-wide shadow-2xs ${roleInfo.bg}`}>
+            {roleInfo.label}
+          </span>
         )}
-        {isPending && (
-          <div className="absolute -bottom-1 -right-1 bg-amber-500 w-5 h-5 rounded-full border-2 border-white animate-pulse" />
+
+        {/* Driver response permission badge */}
+        {!isPending && (
+          <span 
+            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black border transition-all ${
+              canRespond 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                : 'bg-slate-100 text-slate-500 border-slate-200'
+            }`}
+            title={canRespond ? 'مصرح له بالدخول وتسجيل ردود وحركة السائقين' : 'غير مخول بتسجيل ردود وحركة السائقين'}
+          >
+            <ShieldCheck className="w-3 h-3" />
+            <span>{canRespond ? 'مخول للردود' : 'غير مخول'}</span>
+          </span>
         )}
       </div>
-      
-      <div className="space-y-1 w-full overflow-hidden">
-        <h4 className="font-black text-lg text-text-main leading-tight truncate">{user.displayName}</h4>
-        <p className="text-xs text-text-muted font-bold flex items-center justify-center gap-1.5 truncate">
-          <Mail className="w-3 h-3 flex-shrink-0" />
-          <span className="truncate">{user.email}</span>
-        </p>
-      </div>
-    </div>
 
-    <div className="mt-auto space-y-3">
-      {adminEmails.includes(user.email) ? (
-        <div className="w-full py-2.5 bg-slate-50 rounded-2xl text-xs font-black text-slate-400 text-center border border-slate-100 italic">
-          حساب المدير محمي
+      <div className="flex flex-col items-center text-center gap-3 mb-4">
+        <div className="relative group/avatar">
+          <div className="w-16 h-16 rounded-[22px] overflow-hidden p-1 bg-white border border-border shadow-xs group-hover:scale-105 transition-transform duration-500">
+            <img 
+              src={user.photoURL || ''} 
+              alt="" 
+              className={`w-full h-full object-cover rounded-[18px] ${isPending ? 'grayscale' : ''}`} 
+            />
+          </div>
+          {!isPending && user.role === 'admin' && (
+            <div className="absolute -bottom-1 -right-1 bg-amber-400 p-1.5 rounded-xl border-2 border-white shadow-md">
+              <Shield className="w-3 h-3 text-white" />
+            </div>
+          )}
+          {isPending && (
+            <div className="absolute -bottom-1 -right-1 bg-amber-500 w-4 h-4 rounded-full border-2 border-white animate-pulse" />
+          )}
         </div>
-      ) : isPending ? (
-        <div className="flex items-stretch gap-2">
-          <button 
-            onClick={() => onApprove(user.uid)}
-            className="flex-[2] bg-[#10B981] text-white py-3.5 rounded-2xl font-black text-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 shadow-emerald-100"
-          >
-            <CheckCircle className="w-5 h-5" /> تفعيل
-          </button>
-          <button 
-            onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
-            className="flex-1 bg-red-50 text-red-600 py-3.5 rounded-2xl font-black text-sm hover:bg-red-100 transition-all flex items-center justify-center gap-2 border-2 border-red-200 active:scale-95"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+        
+        <div className="space-y-0.5 w-full overflow-hidden">
+          <h4 className="font-black text-base text-text-main leading-tight truncate">{user.displayName || 'مستخدم بدون اسم'}</h4>
+          <p className="text-[11px] text-text-muted font-bold flex items-center justify-center gap-1.5 truncate">
+            <Mail className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">{user.email}</span>
+          </p>
         </div>
-      ) : (
-        <>
-          <div className="flex items-center gap-2">
-            {user.role !== 'supervisor' && (
+      </div>
+
+      {/* Role Selection & Permission Controls */}
+      <div className="mt-auto space-y-3 pt-2 border-t border-border/60">
+        {isSuperAdminEmail ? (
+          <div className="w-full py-2 bg-slate-50 rounded-xl text-[11px] font-black text-slate-500 text-center border border-slate-200/80">
+            مدير نظام محمي (كامل الصلاحيات)
+          </div>
+        ) : isPending ? (
+          <div className="space-y-2">
+            <div className="flex items-stretch gap-2">
               <button 
-                onClick={() => onMakeSupervisor(user.uid)}
-                className="flex-1 px-3 py-2.5 bg-sky-50 text-sky-700 rounded-2xl text-[11px] font-black hover:bg-sky-100 transition-all active:scale-95 border border-sky-100"
+                onClick={() => onApprove(user.uid, 'bus_supervisor')}
+                className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl font-black text-xs hover:bg-purple-700 transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                title="تفعيل كمشرف نقل الحافلات"
               >
-                ترقية لموظف تشغيل
+                <CheckCircle className="w-4 h-4" /> تفعيل كمشرف نقل الحافلات
+              </button>
+              <button 
+                onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
+                className="p-2.5 bg-red-50 text-red-600 rounded-xl font-black text-xs hover:bg-red-100 transition-all flex items-center justify-center border border-red-200 active:scale-95 cursor-pointer"
+                title="رفض وحذف الحساب"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <button 
+                onClick={() => onApprove(user.uid, 'admin')}
+                className="flex-1 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-black border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer"
+              >
+                مدير النظام
+              </button>
+              <button 
+                onClick={() => onApprove(user.uid, 'readonly')}
+                className="flex-1 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black border border-amber-200 hover:bg-amber-100 transition-all cursor-pointer"
+              >
+                وضع قراءة فقط
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Role Dropdown Selector */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-text-muted flex items-center justify-between">
+                <span>تحديد الصفة والمسؤولية:</span>
+                <UserCog className="w-3 h-3 text-primary" />
+              </label>
+              <select
+                value={user.role === 'supervisor' || user.role === 'operator' || user.role === 'inspector' ? 'bus_supervisor' : user.role}
+                onChange={(e) => onChangeRole(user.uid, e.target.value as UserRole)}
+                className="w-full p-2 bg-slate-50 border border-border focus:border-primary rounded-xl text-xs font-black text-slate-800 outline-hidden transition-all cursor-pointer"
+              >
+                <option value="bus_supervisor">مشرف نقل الحافلات</option>
+                <option value="admin">مدير النظام (إدارة شاملة)</option>
+                <option value="readonly">وضع قراءة فقط</option>
+              </select>
+            </div>
+
+            {/* Toggle Driver Response Permission */}
+            {user.role === 'readonly' ? (
+              <div className="w-full py-2 px-3 rounded-xl text-[10px] font-bold bg-amber-50/80 border border-amber-200 text-amber-800 flex items-center justify-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>ممنوع من تسجيل الردود والتعديل (قراءة فقط)</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onToggleResponsePermission(user.uid, user.canSubmitDriverResponses)}
+                className={`w-full py-2 px-3 rounded-xl text-[11px] font-black border transition-all flex items-center justify-between cursor-pointer ${
+                  canRespond
+                    ? 'bg-emerald-50/80 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className={`w-3.5 h-3.5 ${canRespond ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <span>صلاحية تسجيل رد وحركة السائقين</span>
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${
+                  canRespond ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {canRespond ? 'مفعل ✓' : 'معطل'}
+                </span>
               </button>
             )}
-            {user.role === 'supervisor' && (
+
+            {/* Account Actions */}
+            <div className="flex items-center gap-2 pt-1">
               <button 
-                onClick={() => onMakeUser(user.uid)}
-                className="flex-1 px-3 py-2.5 bg-amber-50 text-amber-700 rounded-2xl text-[11px] font-black hover:bg-amber-100 transition-all active:scale-95 border border-amber-100"
+                onClick={() => onDeactivate(user.uid)}
+                className="flex-1 px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-[11px] font-black hover:bg-amber-100 transition-all flex items-center justify-center gap-1 border border-amber-200 active:scale-95 cursor-pointer"
+                title="تعطيل الحساب وتحويله إلى قيد المراجعة"
               >
-                تحويل لقراءة فقط
+                <XCircle className="w-3.5 h-3.5" /> تعطيل
               </button>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => onDeactivate(user.uid)}
-              className="flex-1 px-4 py-3 bg-amber-50 text-amber-600 rounded-2xl text-xs font-black hover:bg-amber-100 transition-all flex items-center justify-center gap-2 border border-amber-100 active:scale-95"
-            >
-              <XCircle className="w-4 h-4" /> تعطيل
-            </button>
-            <button 
-              onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
-              className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-100 active:scale-95 group/del"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-    <div className="absolute inset-0 pointer-events-none opacity-[0.02] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px] -z-10" />
-  </motion.div>
-);
+              <button 
+                onClick={() => onDelete({ uid: user.uid, name: user.displayName || 'مستخدم' })}
+                className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all border border-red-200 active:scale-95 cursor-pointer"
+                title="حذف الحساب نهائياً"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px] -z-10" />
+    </motion.div>
+  );
+};
 
 export const AdminPanel: React.FC = () => {
   const { logoURL: currentLogo } = useLogo();
@@ -715,33 +807,41 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const handleApprove = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من تفعيل هذا المستخدم (وضع القراءة فقط)؟')) {
-      try {
-        await updateDoc(doc(db, 'users', uid), { approved: true, role: 'readonly' });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+  const handleApprove = async (uid: string, initialRole: UserRole = 'readonly') => {
+    try {
+      const updates: any = { approved: true, role: initialRole };
+      if (initialRole === 'readonly') {
+        updates.canSubmitDriverResponses = false;
+      } else if (['admin', 'supervisor', 'operator', 'inspector', 'bus_supervisor'].includes(initialRole)) {
+        updates.canSubmitDriverResponses = true;
       }
+      await updateDoc(doc(db, 'users', uid), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
   };
 
-  const handleMakeSupervisor = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من ترقية هذا المستخدم إلى موظف تشغيل (صلاحيات تعديل وإدارة)؟')) {
-      try {
-        await updateDoc(doc(db, 'users', uid), { role: 'supervisor', approved: true });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
+  const handleChangeRole = async (uid: string, newRole: UserRole) => {
+    try {
+      const updates: any = { role: newRole, approved: true };
+      if (newRole === 'readonly') {
+        updates.canSubmitDriverResponses = false;
+      } else if (['admin', 'supervisor', 'operator', 'inspector', 'bus_supervisor'].includes(newRole)) {
+        updates.canSubmitDriverResponses = true;
       }
+      await updateDoc(doc(db, 'users', uid), updates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
   };
 
-  const handleMakeUser = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من تحويل هذا المستخدم إلى وضع القراءة فقط؟')) {
-      try {
-        await updateDoc(doc(db, 'users', uid), { role: 'readonly', approved: true });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
-      }
+  const handleToggleResponsePermission = async (uid: string, currentVal?: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        canSubmitDriverResponses: !currentVal
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
   };
 
@@ -1072,8 +1172,8 @@ export const AdminPanel: React.FC = () => {
                   user={user} 
                   isPending={true} 
                   onApprove={handleApprove}
-                  onMakeSupervisor={handleMakeSupervisor}
-                  onMakeUser={handleMakeUser}
+                  onChangeRole={handleChangeRole}
+                  onToggleResponsePermission={handleToggleResponsePermission}
                   onDeactivate={handleDeactivate}
                   onDelete={setUserToDelete}
                   adminEmails={ADMIN_EMAILS}
@@ -1114,8 +1214,8 @@ export const AdminPanel: React.FC = () => {
                   user={user} 
                   isPending={false} 
                   onApprove={handleApprove}
-                  onMakeSupervisor={handleMakeSupervisor}
-                  onMakeUser={handleMakeUser}
+                  onChangeRole={handleChangeRole}
+                  onToggleResponsePermission={handleToggleResponsePermission}
                   onDeactivate={handleDeactivate}
                   onDelete={setUserToDelete}
                   adminEmails={ADMIN_EMAILS}

@@ -81,7 +81,15 @@ export interface SalaryRecord {
   updatedAt?: any;
 }
 
-export type UserRole = 'admin' | 'supervisor' | 'readonly' | 'user' | 'pending';
+export type UserRole = 
+  | 'admin'           // مدير النظام
+  | 'supervisor'      // موظف تشغيل (مشرف)
+  | 'operator'        // موظف تشغيل
+  | 'inspector'       // مراقب
+  | 'bus_supervisor'  // مشرف نقل الحافلات
+  | 'readonly'        // وضع قراءة فقط
+  | 'user' 
+  | 'pending';
 
 export interface AppUser {
   uid: string;
@@ -90,10 +98,50 @@ export interface AppUser {
   photoURL: string | null;
   role: UserRole;
   approved: boolean;
+  canSubmitDriverResponses?: boolean; // تصريح خاص لتسجيل ردود وحركة السائقين
   createdAt?: any;
 }
 
 export interface AppSettings {
   logoURL: string;
   updatedAt?: any;
+}
+
+export type DriverType = 'مقيم' | 'مؤقت' | 'موسمي';
+export type DriverStatus = 'نشط' | 'في إجازة' | 'مستبعد';
+export type DriverResponseType = 'محايل عسير' | 'ينبع' | 'القصيم' | 'الرياض' | 'الترددية';
+
+export interface CompanyDriver {
+  id: string;
+  serialNumber?: number; // رقم متسلسل تلقائي يبدأ من 1 ولا يتكرر
+  fullName: string; // اسم السائق الثلاثي
+  nationality: string; // الجنسية
+  driverType: DriverType; // مقيم - مؤقت - موسمي
+  status?: DriverStatus; // نشط - في إجازة - مستبعد (الافتراضي: نشط)
+  statusUpdatedAt?: string | any; // تاريخ آخر تحديث للحالة
+  statusReason?: string; // سبب الحالة (إجازة سنوية، انتهاء عقد، مخالفة...)
+  iqamaNumber: string; // رقم الإقامة
+  borderNumber: string; // رقم الحدود
+  mobileNumber: string; // رقم الموبايل
+  workplace?: string; // مكان العمل
+  busNumber?: string; // رقم الحافلة
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  createdBy?: string;
+}
+
+export interface DriverResponse {
+  id: string;
+  driverId: string; // معرف السائق المرتبط
+  driverSerialNumber: number; // الرقم المتسلسل للسائق
+  driverName: string; // اسم السائق
+  busNumber: string; // رقم الحافلة
+  responseType: DriverResponseType; // نوع الرد: محايل عسير - ينبع - القصيم - الرياض - الترددية
+  notes?: string; // ملاحظات إضافية
+  createdAt?: any;
+  createdDate?: string; // تاريخ ووقت التسجيل بتنسيق مقروء
+  createdBy?: string;
+  recordedBy?: string; // اسم الموظف / المراقب / المشرف الذي سجل الرد
+  recordedByRole?: string; // الدور الوظيفي للشخص الذي سجل الرد
 }

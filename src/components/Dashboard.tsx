@@ -21,7 +21,15 @@ import {
   Loader2,
   PieChart as PieChartIcon,
   BarChart3,
-  LayoutGrid
+  LayoutGrid,
+  Navigation,
+  Send,
+  Copy,
+  Check,
+  ExternalLink,
+  Link2,
+  Shield,
+  Award
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -37,7 +45,7 @@ import {
   Legend,
   LabelList
 } from 'recharts';
-import type { Bus as BusType, Worker as WorkerType } from '../types';
+import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDriver } from '../types';
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
 import { DmtcLogo } from './DmtcLogo';
 
@@ -46,12 +54,26 @@ interface DashboardProps {
   workers?: WorkerType[];
   profile: any;
   workersCount?: number;
+  driverResponses?: DriverResponse[];
+  companyDrivers?: CompanyDriver[];
+  onOpenResponsePage?: () => void;
+  onOpenAnnouncement?: () => void;
 }
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
 
-export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profile, workersCount = 0 }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ 
+  buses, 
+  workers = [], 
+  profile, 
+  workersCount = 0,
+  driverResponses = [],
+  companyDrivers = [],
+  onOpenResponsePage,
+  onOpenAnnouncement
+}) => {
   const totalBuses = buses.length;
+  const [copiedResponseLink, setCopiedResponseLink] = useState(false);
   const [chartTab, setChartTab] = useState<'year' | 'brand'>('year');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [modalSearch, setModalSearch] = useState('');
@@ -423,18 +445,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ buses, workers = [], profi
     },
   ];
 
+  const handleCopyResponseLink = () => {
+    const link = `${window.location.origin}${window.location.pathname}?action=driver-response`;
+    navigator.clipboard.writeText(link);
+    setCopiedResponseLink(true);
+    setTimeout(() => setCopiedResponseLink(false), 2000);
+  };
+
+  // Check if current user is authorized to access driver response registration
+  const canAccessDriverResponse = profile?.role !== 'readonly' && (
+    profile?.role === 'admin' || 
+    profile?.role === 'bus_supervisor' || 
+    profile?.role === 'inspector' || 
+    profile?.role === 'supervisor' || 
+    profile?.role === 'operator' || 
+    Boolean(profile?.canSubmitDriverResponses)
+  );
+
   return (
     <div className="space-y-8 pb-12 text-right" dir="rtl">
+      {/* 🚀 Driver Response Quick Access (يظهر فقط لمشرف نقل الحافلات ومدير النظام، ويمنع وضع القراءة فقط) */}
+      {canAccessDriverResponse && (
+      <motion.div
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl px-4 sm:px-5 py-3 shadow-md flex flex-wrap items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Navigation className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sm font-black text-white">
+            نموذج تسجيل رد وحركة السائق
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenResponsePage) {
+                onOpenResponsePage();
+              } else {
+                window.location.search = '?action=driver-response';
+              }
+            }}
+            className="px-4 py-2 bg-white hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-black transition-all shadow-sm flex items-center gap-2 cursor-pointer active:scale-95"
+          >
+            <Send className="w-3.5 h-3.5 text-emerald-700" />
+            <span>الدخول على الرابط وتسجيل الرد</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopyResponseLink}
+            className="p-2 bg-white/15 hover:bg-white/25 text-white border border-white/25 rounded-xl transition-all cursor-pointer active:scale-95"
+            title="نسخ الرابط"
+          >
+            {copiedResponseLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </motion.div>
+      )}
+
       {/* Malwarebytes Style: Operations Hub & Operational Readiness Advisor */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (8 cols): SECURITY / FLEET OPERATIONS GRID */}
         <div className="lg:col-span-8 flex flex-col gap-4">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex items-center justify-between px-1 flex-wrap gap-2">
             <span className="text-[11px] font-black text-text-muted uppercase tracking-wider flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               <span>مركز العمليات والمراقبة اللحظية • درة المنورة</span>
             </span>
-            <span className="text-[11px] font-bold text-primary">نظام الفحص والمتابعة المباشر</span>
+            <div className="flex items-center gap-2">
+              {onOpenAnnouncement && (
+                <button
+                  type="button"
+                  onClick={onOpenAnnouncement}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl text-[11px] font-black transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title="عرض بيان وتوجيهات مدير التشغيل"
+                >
+                  <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>بيان إدارة مكتب التشغيل</span>
+                </button>
+              )}
+              <span className="text-[11px] font-bold text-primary">نظام الفحص والمتابعة المباشر</span>
+            </div>
           </div>
 
           {/* Subcard 1: Fleet Scanner (Icon + Status + Scan Button) */}

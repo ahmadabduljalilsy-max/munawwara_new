@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Bus, Worker } from '../types';
+import { Bus, Worker, DriverResponse, CompanyDriver } from '../types';
 
 /**
  * Normalizes bus or worker location so that empty, 'غير محدد', or '( غير محدد )' becomes 'في الشركة'
@@ -830,4 +830,453 @@ export const parseWorkersExcel = (file: File): Promise<any[]> => {
     reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
+};
+
+export const exportCompanyDriversToExcel = (drivers: any[]) => {
+  const worksheet = XLSX.utils.json_to_sheet(drivers.map((d, index) => {
+    let formattedDate = '';
+    if (d.statusUpdatedAt) {
+      try {
+        const dt = new Date(d.statusUpdatedAt);
+        formattedDate = !isNaN(dt.getTime()) ? dt.toISOString().split('T')[0] : String(d.statusUpdatedAt);
+      } catch {
+        formattedDate = String(d.statusUpdatedAt);
+      }
+    }
+
+    return {
+      'الرقم المتسلسل': d.serialNumber || (index + 1),
+      'اسم السائق الثلاثي': d.fullName || '',
+      'التصنيف': d.driverType || 'مقيم',
+      'الحالة': d.status || 'نشط',
+      'تاريخ آخر تحديث للحالة': formattedDate,
+      'سبب الحالة': d.statusReason || '',
+      'الجنسية': d.nationality || '',
+      'رقم الإقامة': d.iqamaNumber || '',
+      'رقم الحدود': d.borderNumber || '',
+      'رقم الموبايل': d.mobileNumber || '',
+      'مكان العمل': d.workplace || '',
+      'رقم الحافلة': d.busNumber || '',
+      'ملاحظات': d.notes || ''
+    };
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  safeAddSheet(workbook, worksheet, 'سائقين الشركة');
+  const dateStr = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(workbook, `سائقين_شركة_درة_المنورة_${dateStr}.xlsx`);
+};
+
+export const downloadCompanyDriversTemplate = () => {
+  const today = new Date().toISOString().split('T')[0];
+  const sampleData = [
+    {
+      'م': 1,
+      'اسم السائق الثلاثي': 'محمد أحمد السعيد',
+      'التصنيف': 'مقيم',
+      'الحالة': 'نشط',
+      'تاريخ آخر تحديث للحالة': today,
+      'سبب الحالة': 'جاهز ومتاح للعمل',
+      'الجنسية': 'مصر',
+      'رقم الإقامة': '2345678901',
+      'رقم الحدود': '',
+      'رقم الموبايل': '0501234567',
+      'مكان العمل': 'المدينة المنورة',
+      'رقم الحافلة': '101',
+      'ملاحظات': 'سائق حافلة كبيرة'
+    },
+    {
+      'م': 2,
+      'اسم السائق الثلاثي': 'عبدالله خان رحمن',
+      'التصنيف': 'مؤقت',
+      'الحالة': 'في إجازة',
+      'تاريخ آخر تحديث للحالة': today,
+      'سبب الحالة': 'إجازة سنوية لمدة 30 يوم',
+      'الجنسية': 'باكستان',
+      'رقم الإقامة': '2456789012',
+      'رقم الحدود': '3456789012',
+      'رقم الموبايل': '0559876543',
+      'مكان العمل': 'مكة المكرمة',
+      'رقم الحافلة': '105',
+      'ملاحظات': 'عقد مؤقت لـ 3 أشهر'
+    },
+    {
+      'م': 3,
+      'اسم السائق الثلاثي': 'طارق عمر الفضلي',
+      'التصنيف': 'موسمي',
+      'الحالة': 'مستبعد',
+      'تاريخ آخر تحديث للحالة': today,
+      'سبب الحالة': 'انتهاء موسم الحج',
+      'الجنسية': 'اليمن',
+      'رقم الإقامة': '',
+      'رقم الحدود': '3987654321',
+      'رقم الموبايل': '0561122334',
+      'مكان العمل': 'جدة',
+      'رقم الحافلة': '120',
+      'ملاحظات': 'موسم الحج والعمرة'
+    }
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(sampleData);
+  const workbook = XLSX.utils.book_new();
+  safeAddSheet(workbook, worksheet, 'نموذج سائقين الشركة');
+  XLSX.writeFile(workbook, `نموذج_استيراد_سائقين_الشركة.xlsx`);
+};
+
+export const parseCompanyDriversExcel = (file: File): Promise<any[]> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        const mapped = json.map(row => {
+          // Normalize driver type (تصنيف السائق)
+          const rawType = String(
+            row['التصنيف'] || 
+            row['نوع السائق'] || 
+            row['الصفة'] || 
+            row['Driver Type'] || 
+            row['Type'] || 
+            ''
+          ).trim();
+
+          let driverType: 'مقيم' | 'مؤقت' | 'موسمي' = 'مقيم';
+          if (rawType.includes('موسم')) {
+            driverType = 'موسمي';
+          } else if (rawType.includes('مؤقت') || rawType.includes('مؤقتة')) {
+            driverType = 'مؤقت';
+          } else if (rawType.includes('مقيم') || rawType.includes('دائم')) {
+            driverType = 'مقيم';
+          }
+
+          // Normalize driver status (حالة السائق: نشط / في إجازة / مستبعد)
+          const rawStatus = String(
+            row['الحالة'] || 
+            row['حالة السائق'] || 
+            row['Status'] || 
+            ''
+          ).trim();
+
+          let status: 'نشط' | 'في إجازة' | 'مستبعد' = 'نشط';
+          if (rawStatus.includes('إجازة') || rawStatus.includes('اجازة')) {
+            status = 'في إجازة';
+          } else if (rawStatus.includes('مستبعد') || rawStatus.includes('موقوف') || rawStatus.includes('استبعاد')) {
+            status = 'مستبعد';
+          } else if (rawStatus.includes('نشط') || rawStatus.includes('فعال') || rawStatus.includes('متاح')) {
+            status = 'نشط';
+          }
+
+          const rawStatusDate = String(
+            row['تاريخ آخر تحديث للحالة'] || 
+            row['تاريخ تحديث الحالة'] || 
+            row['تاريخ الحالة'] || 
+            row['Status Date'] || 
+            ''
+          ).trim();
+          const statusUpdatedAt = rawStatusDate || new Date().toISOString();
+
+          const statusReason = String(
+            row['سبب الحالة'] || 
+            row['سبب الإجازة'] || 
+            row['سبب الاستبعاد'] || 
+            row['Status Reason'] || 
+            ''
+          ).trim();
+
+          const fullName = String(
+            row['اسم السائق الثلاثي'] || 
+            row['اسم السائق'] || 
+            row['الاسم الثلاثي'] || 
+            row['الاسم'] || 
+            row['الاسم الكامل'] || 
+            row['Driver Name'] || 
+            row['Name'] || 
+            ''
+          ).trim();
+
+          const nationality = String(
+            row['الجنسية'] || 
+            row['جنسية'] || 
+            row['البلد'] || 
+            row['Nationality'] || 
+            ''
+          ).trim();
+
+          const iqamaNumber = String(
+            row['رقم الإقامة'] || 
+            row['الإقامة'] || 
+            row['رقم الاقامة'] || 
+            row['الاقامة'] || 
+            row['رقم الهوية'] || 
+            row['Iqama Number'] || 
+            row['Iqama'] || 
+            ''
+          ).trim();
+
+          const borderNumber = String(
+            row['رقم الحدود'] || 
+            row['الحدود'] || 
+            row['رقم الدخول'] || 
+            row['Border Number'] || 
+            row['Border'] || 
+            ''
+          ).trim();
+
+          const mobileNumber = String(
+            row['رقم الموبايل'] || 
+            row['رقم الجوال'] || 
+            row['الجوال'] || 
+            row['الموبايل'] || 
+            row['الهاتف'] || 
+            row['Mobile'] || 
+            row['Phone'] || 
+            ''
+          ).trim();
+
+          const workplace = String(
+            row['مكان العمل'] || 
+            row['الموقع'] || 
+            row['موقع العمل'] || 
+            row['الفرع'] || 
+            row['Workplace'] || 
+            row['Location'] || 
+            ''
+          ).trim();
+
+          const busNumber = String(
+            row['رقم الحافلة'] || 
+            row['الحافلة'] || 
+            row['رقم الباص'] || 
+            row['الباص'] || 
+            row['رقم التشغيل'] || 
+            row['حافلة'] || 
+            row['Bus Number'] || 
+            row['Bus'] || 
+            ''
+          ).trim();
+
+          const notes = String(
+            row['ملاحظات'] || 
+            row['الملاحظات'] || 
+            row['Notes'] || 
+            ''
+          ).trim();
+
+          const rawSerial = row['الرقم المتسلسل'] || row['رقم متسلسل'] || row['م'] || row['الرقم'] || row['Serial Number'] || row['Serial'];
+          const parsedSerial = parseInt(String(rawSerial || ''), 10);
+          const serialNumber = (!isNaN(parsedSerial) && parsedSerial > 0) ? parsedSerial : undefined;
+
+          return {
+            serialNumber,
+            fullName,
+            driverType,
+            status,
+            statusUpdatedAt,
+            statusReason,
+            nationality,
+            iqamaNumber,
+            borderNumber,
+            mobileNumber,
+            workplace,
+            busNumber,
+            notes
+          };
+        }).filter(d => d.fullName || d.iqamaNumber || d.borderNumber || d.mobileNumber);
+
+        resolve(mapped);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+/**
+ * Exports Driver Responses to Excel (.xlsx) file, formatted for Excel and Google Sheets import,
+ * including Iqama Number (رقم الإقامة) and Border Number (رقم الحدود) for each driver.
+ */
+/**
+ * Exports Driver Responses to Excel (.xlsx) file, formatted for Excel and Google Sheets import,
+ * including Iqama Number (رقم الإقامة) and Border Number (رقم الحدود) for each driver.
+ */
+export const exportDriverResponsesToExcel = (
+  responses: DriverResponse[], 
+  filenameOrDrivers?: string | CompanyDriver[],
+  driversList?: CompanyDriver[]
+) => {
+  let filename = `ردود_وحركات_السائقين_${new Date().toISOString().split('T')[0]}.xlsx`;
+  let drivers: CompanyDriver[] = [];
+
+  if (typeof filenameOrDrivers === 'string') {
+    filename = filenameOrDrivers;
+    if (Array.isArray(driversList)) {
+      drivers = driversList;
+    }
+  } else if (Array.isArray(filenameOrDrivers)) {
+    drivers = filenameOrDrivers;
+    if (typeof driversList === 'string') {
+      filename = driversList;
+    }
+  } else if (Array.isArray(driversList)) {
+    drivers = driversList;
+  }
+
+  // Ensure filename is string and ends with .xlsx
+  if (typeof filename !== 'string' || !filename.trim()) {
+    filename = `ردود_وحركات_السائقين_${new Date().toISOString().split('T')[0]}.xlsx`;
+  }
+  if (!filename.toLowerCase().endsWith('.xlsx')) {
+    filename = `${filename}.xlsx`;
+  }
+
+  // Build lookup maps for fast matching by ID and serialNumber
+  const driverById = new Map<string, CompanyDriver>();
+  const driverBySerial = new Map<number, CompanyDriver>();
+  drivers.forEach(d => {
+    if (d && d.id) driverById.set(d.id, d);
+    if (d && typeof d.serialNumber === 'number') driverBySerial.set(d.serialNumber, d);
+  });
+
+  const data = responses.map((r, index) => {
+    const matchedDriver = (r.driverId && driverById.get(r.driverId)) || 
+                          (r.driverSerialNumber && driverBySerial.get(r.driverSerialNumber));
+    const iqamaNumber = matchedDriver?.iqamaNumber || '';
+    const borderNumber = matchedDriver?.borderNumber || '';
+
+    let formattedDate = r.createdDate || '';
+    if (!formattedDate && r.createdAt) {
+      try {
+        const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+        formattedDate = d.toLocaleString('ar-SA');
+      } catch {
+        formattedDate = String(r.createdAt);
+      }
+    }
+
+    return {
+      'م': index + 1,
+      'الرقم المتسلسل للسائق': r.driverSerialNumber,
+      'اسم السائق': r.driverName || (matchedDriver ? matchedDriver.fullName : ''),
+      'رقم الإقامة': iqamaNumber,
+      'رقم الحدود': borderNumber,
+      'رقم الحافلة': r.busNumber || (matchedDriver ? matchedDriver.busNumber : ''),
+      'نوع الرد / الوجهة': r.responseType || '',
+      'تاريخ ووقت الرد': formattedDate,
+      'المسؤول عن التسجيل': r.recordedBy || r.createdBy || '',
+      'الصفة': r.recordedByRole || '',
+      'ملاحظات': r.notes || ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!dir'] = 'rtl';
+  ws['!cols'] = [
+    { wch: 6 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 26 },
+    { wch: 22 },
+    { wch: 20 },
+    { wch: 30 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  safeAddSheet(wb, ws, 'ردود السائقين');
+
+  try {
+    XLSX.writeFile(wb, filename);
+  } catch (err) {
+    console.warn('XLSX.writeFile failed, downloading via Blob:', err);
+    try {
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (blobErr) {
+      console.error('Blob download also failed:', blobErr);
+    }
+  }
+};
+
+/**
+ * Copies Driver Responses to clipboard in TSV (Tab Separated Values) format
+ * so that it can be directly pasted (Ctrl+V) into any Google Sheet with columns preserved,
+ * including Iqama Number (رقم الإقامة) and Border Number (رقم الحدود).
+ */
+export const copyDriverResponsesToGoogleSheetsClipboard = (
+  responses: DriverResponse[],
+  drivers: CompanyDriver[] = []
+): boolean => {
+  try {
+    const driverById = new Map<string, CompanyDriver>();
+    const driverBySerial = new Map<number, CompanyDriver>();
+    drivers.forEach(d => {
+      if (d.id) driverById.set(d.id, d);
+      if (d.serialNumber) driverBySerial.set(d.serialNumber, d);
+    });
+
+    const headers = [
+      'الرقم المتسلسل', 
+      'اسم السائق', 
+      'رقم الإقامة', 
+      'رقم الحدود', 
+      'رقم الحافلة', 
+      'نوع الرد / الوجهة', 
+      'تاريخ ووقت التسجيل', 
+      'المسؤول عن التسجيل', 
+      'ملاحظات'
+    ];
+
+    const rows = responses.map(r => {
+      const matchedDriver = (r.driverId && driverById.get(r.driverId)) || 
+                            (r.driverSerialNumber && driverBySerial.get(r.driverSerialNumber));
+      const iqamaNumber = matchedDriver?.iqamaNumber || '';
+      const borderNumber = matchedDriver?.borderNumber || '';
+
+      let formattedDate = r.createdDate || '';
+      if (!formattedDate && r.createdAt) {
+        try {
+          const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+          formattedDate = d.toLocaleString('ar-SA');
+        } catch {
+          formattedDate = String(r.createdAt);
+        }
+      }
+      return [
+        r.driverSerialNumber,
+        (r.driverName || '').replace(/[\t\n]/g, ' '),
+        iqamaNumber.replace(/[\t\n]/g, ' '),
+        borderNumber.replace(/[\t\n]/g, ' '),
+        (r.busNumber || '').replace(/[\t\n]/g, ' '),
+        (r.responseType || '').replace(/[\t\n]/g, ' '),
+        (formattedDate || '').replace(/[\t\n]/g, ' '),
+        (r.recordedBy || r.createdBy || '').replace(/[\t\n]/g, ' '),
+        (r.notes || '').replace(/[\t\n]/g, ' ')
+      ].join('\t');
+    });
+
+    const tsvContent = [headers.join('\t'), ...rows].join('\n');
+    navigator.clipboard.writeText(tsvContent);
+    return true;
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err);
+    return false;
+  }
 };

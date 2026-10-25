@@ -76,16 +76,11 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.uid == request.auth.uid &&
              data.email == request.auth.token.email &&
-             data.role in ['admin', 'supervisor', 'readonly', 'user', 'pending'];
+             data.role in ['admin', 'supervisor', 'operator', 'inspector', 'bus_supervisor', 'readonly', 'user', 'pending'];
     }
 
     function isEditor() {
-      return isSignedIn() && (
-        isAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'))
-      );
+      return isSignedIn() && isAdmin();
     }
 
     // --- Collections ---
@@ -95,7 +90,7 @@ service cloud.firestore {
     }
 
     match /buses/{busId} {
-      allow read: if isApproved();
+      allow read: if true;
       allow create: if isEditor() && isValidId(busId) && isValidBus(request.resource.data);
       allow update: if isEditor() && isValidBus(request.resource.data);
       allow delete: if isAdmin();
@@ -138,9 +133,28 @@ service cloud.firestore {
       allow delete: if isAdmin() && resource.data.email != 'ahmad.abduljalil.sy@gmail.com' && resource.data.email != 'ahmad.abduljalilmunawwara@gmail.com';
     }
 
+    // --- Driver Response Validation ---
+    function isValidDriverResponse(data) {
+      return (data.driverSerialNumber is number || data.driverSerialNumber is int) &&
+             data.driverName is string && data.driverName.size() <= 200 &&
+             data.busNumber is string && data.busNumber.size() <= 100 &&
+             data.responseType in ['محايل عسير', 'ينبع', 'القصيم', 'الرياض', 'الترددية'];
+    }
+
     match /settings/app {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /company_drivers/{driverId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /driver_responses/{responseId} {
+      allow read: if true;
+      allow create: if isValidDriverResponse(request.resource.data);
+      allow update, delete: if isAdmin();
     }
   }
 }

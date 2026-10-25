@@ -19,7 +19,7 @@ interface WelcomeAnnouncementModalProps {
   onClose?: () => void;
 }
 
-const STORAGE_KEY = 'operations_system_welcome_announcement_seen_v1';
+const STORAGE_KEY = 'operations_system_welcome_announcement_seen_v2';
 
 export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> = ({
   forceOpen = false,
@@ -127,7 +127,7 @@ export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> =
                   </div>
                   {/* The exact text requested by user */}
                   <p className="text-sm sm:text-base font-bold leading-relaxed text-slate-800 dark:text-slate-100 select-text">
-                    "بفضل الله وتوفيقه وبإشراف مباشر من مدير التشغيل تم تصميم هذه المنظومة لتكون شاملة لعمليات مكتب التشغيل، وتهدف إلى تنظيم الأعمال، وتسهيل متابعة السائقين والمركبات، ورفع كفاءة الأداء ودقة المتابعة."
+                    "بفضل الله وتوفيقه وبإشراف مباشر من مدير التشغيل الاستاذ عبد الحميد سالمة تم تصميم هذه المنظومة لتكون شاملة لعمليات مكتب التشغيل، وتهدف إلى تنظيم الأعمال، وتسهيل متابعة السائقين والمركبات، ورفع كفاءة الأداء ودقة المتابعة."
                   </p>
                 </div>
               </div>
@@ -168,9 +168,9 @@ export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> =
 
             {/* Action Bar */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border">
-              <div className="text-xs text-text-muted flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>إشراف مباشر من مدير التشغيل</span>
+              <div className="text-xs text-text-muted flex items-center gap-1.5 font-bold">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>إشراف مباشر: أ. عبد الحميد سالمة (مدير التشغيل)</span>
               </div>
 
               <button

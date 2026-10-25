@@ -523,7 +523,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   type="button"
                   onClick={onOpenAnnouncement}
                   className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl text-[11px] font-black transition-all cursor-pointer shadow-2xs active:scale-95"
-                  title="عرض بيان وتوجيهات مدير التشغيل"
+                  title="عرض بيان وتوجيهات مدير التشغيل الأستاذ عبد الحميد سالمة"
                 >
                   <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>بيان إدارة مكتب التشغيل</span>

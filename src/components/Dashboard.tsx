@@ -29,7 +29,10 @@ import {
   ExternalLink,
   Link2,
   Shield,
-  Award
+  Award,
+  UserCheck,
+  Sparkles,
+  Clock
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -47,6 +50,7 @@ import {
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDriver } from '../types';
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
+import { resolveDriverType, getDriverClassification } from '../lib/driverUtils';
 import { DmtcLogo } from './DmtcLogo';
 
 interface DashboardProps {
@@ -58,6 +62,7 @@ interface DashboardProps {
   companyDrivers?: CompanyDriver[];
   onOpenResponsePage?: () => void;
   onOpenAnnouncement?: () => void;
+  onNavigateToDrivers?: () => void;
 }
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
@@ -70,7 +75,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   driverResponses = [],
   companyDrivers = [],
   onOpenResponsePage,
-  onOpenAnnouncement
+  onOpenAnnouncement,
+  onNavigateToDrivers
 }) => {
   const totalBuses = buses.length;
   const [copiedResponseLink, setCopiedResponseLink] = useState(false);
@@ -121,6 +127,50 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { name: 'في الخدمة', value: opStatusCounts.inService, color: '#6366f1', shortName: 'في الخدمة', id: 'inService' },
     { name: 'تحت الصيانة / متوقفة', value: opStatusCounts.maintenance, color: '#f43f5e', shortName: 'صيانة', id: 'maintenance' },
   ], [opStatusCounts]);
+
+  // Driver statistics: مقيم - موسمي - نقل عمال - عمرة - في إجازة
+  const driverStats = React.useMemo(() => {
+    let resident = 0;
+    let seasonal = 0;
+    let laborTransport = 0;
+    let umrah = 0;
+    let onLeave = 0;
+    const total = companyDrivers.length;
+
+    companyDrivers.forEach(d => {
+      // 1. Legal Document / Type (مقيم / موسمي)
+      const effType = resolveDriverType(d);
+      if (effType === 'موسمي') {
+        seasonal++;
+      } else {
+        resident++;
+      }
+
+      // 2. Operational Classification (نقل عمال / عمرة)
+      // Automatically resolves to 'نقل عمال' if driver is active in monitoring (الرقابة والمتابعة)
+      const classification = getDriverClassification(d, workers);
+      if (classification === 'عمرة') {
+        umrah++;
+      } else {
+        laborTransport++;
+      }
+
+      // 3. Status (في إجازة)
+      const st = (d.status || '').trim();
+      if (st === 'في إجازة' || st.includes('إجازة') || st.includes('اجازة')) {
+        onLeave++;
+      }
+    });
+
+    return {
+      total,
+      resident,
+      seasonal,
+      laborTransport,
+      umrah,
+      onLeave
+    };
+  }, [companyDrivers, workers]);
 
   const [activeStatusKey, setActiveStatusKey] = useState<string | null>(null);
 
@@ -604,6 +654,160 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60">
               100% متزامن
             </span>
+          </motion.div>
+
+          {/* Subcard 4: أسطول وسائقي الشركة (إحصائية السائقين: مقيم - موسمي - نقل عمال - عمرة - في إجازة) */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="soft-panel p-5 flex flex-col gap-3.5 relative overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-text-main leading-tight">إحصائية أسطول السائقين</h4>
+                    <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                      تحديث فوري
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-muted font-bold mt-0.5">
+                    تصنيف الوثيقة (مقيم / موسمي) ونوع التشغيل (نقل عمال / عمرة) وحالة الإجازات
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {onNavigateToDrivers && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToDrivers}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-primary hover:text-primary-hover hover:bg-primary/5 bg-primary/5 rounded-xl border border-primary/20 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                    title="فتح سجل أسطول السائقين بالكامل"
+                  >
+                    <span>سجل السائقين</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <div className="text-center bg-muted/40 dark:bg-muted/20 px-3.5 py-1 rounded-xl border border-border/70">
+                  <span className="text-[10px] text-text-muted font-black block leading-tight">الإجمالي</span>
+                  <span className="text-base font-black text-text-main leading-none">{driverStats.total}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 5 Stats Cards Grid: مقيم - موسمي - نقل عمال - عمرة - في إجازة */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {/* 1. مقيم */}
+              <div 
+                onClick={onNavigateToDrivers}
+                className={`p-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-emerald-300 cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-emerald-800 dark:text-emerald-300">مقيم</span>
+                  <div className="w-7 h-7 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-700 dark:text-emerald-300">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300 leading-none">
+                    {driverStats.resident}
+                  </div>
+                  <span className="text-[10px] text-emerald-600/90 dark:text-emerald-400 font-bold block mt-1">
+                    إقامة نظامية
+                  </span>
+                </div>
+              </div>
+
+              {/* 2. موسمي */}
+              <div 
+                onClick={onNavigateToDrivers}
+                className={`p-3 rounded-2xl bg-purple-50/80 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-purple-300 cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-purple-800 dark:text-purple-300">موسمي</span>
+                  <div className="w-7 h-7 rounded-xl bg-purple-100/90 dark:bg-purple-900/60 flex items-center justify-center text-purple-700 dark:text-purple-300">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-purple-700 dark:text-purple-300 leading-none">
+                    {driverStats.seasonal}
+                  </div>
+                  <span className="text-[10px] text-purple-600/90 dark:text-purple-400 font-bold block mt-1">
+                    رقم حدود / موسم
+                  </span>
+                </div>
+              </div>
+
+              {/* 3. نقل عمال */}
+              <div 
+                onClick={onNavigateToDrivers}
+                className={`p-3 rounded-2xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-sky-300 cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-sky-800 dark:text-sky-300">نقل عمال</span>
+                  <div className="w-7 h-7 rounded-xl bg-sky-100/90 dark:bg-sky-900/60 flex items-center justify-center text-sky-700 dark:text-sky-300">
+                    <Bus className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-sky-700 dark:text-sky-300 leading-none">
+                    {driverStats.laborTransport}
+                  </div>
+                  <span className="text-[10px] text-sky-600/90 dark:text-sky-400 font-bold block mt-1">
+                    عقود وتشغيل
+                  </span>
+                </div>
+              </div>
+
+              {/* 4. عمرة */}
+              <div 
+                onClick={onNavigateToDrivers}
+                className={`p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-amber-300 cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-amber-800 dark:text-amber-300">عمرة</span>
+                  <div className="w-7 h-7 rounded-xl bg-amber-100/90 dark:bg-amber-900/60 flex items-center justify-center text-amber-700 dark:text-amber-300">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-amber-700 dark:text-amber-300 leading-none">
+                    {driverStats.umrah}
+                  </div>
+                  <span className="text-[10px] text-amber-600/90 dark:text-amber-400 font-bold block mt-1">
+                    رحلات المعتمرين
+                  </span>
+                </div>
+              </div>
+
+              {/* 5. في إجازة */}
+              <div 
+                onClick={onNavigateToDrivers}
+                className={`col-span-2 sm:col-span-1 p-3 rounded-2xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-rose-300 cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-rose-800 dark:text-rose-300">في إجازة</span>
+                  <div className="w-7 h-7 rounded-xl bg-rose-100/90 dark:bg-rose-900/60 flex items-center justify-center text-rose-700 dark:text-rose-300">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-black text-rose-700 dark:text-rose-300 leading-none">
+                    {driverStats.onLeave}
+                  </div>
+                  <span className="text-[10px] text-rose-600/90 dark:text-rose-400 font-bold block mt-1">
+                    إجازة رسمية
+                  </span>
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
 

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Marhey:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -21,7 +21,6 @@
 
   --font-sans: "Tajawal", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Plus Jakarta Sans", monospace;
-  --font-handwriting: "Aref Ruqaa", "Marhey", cursive, handwriting, sans-serif;
 }
 
 @variant dark (&:where(.dark, .dark *));
@@ -111,9 +110,4 @@
   box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.04);
   border-radius: 9999px;
 }
-
-.font-handwriting {
-  font-family: 'Aref Ruqaa', 'Marhey', cursive, 'Tajawal', sans-serif;
-}
-
 

@@ -110,6 +110,7 @@ export interface AppSettings {
 export type DriverType = 'مقيم' | 'مؤقت' | 'موسمي';
 export type DriverStatus = 'نشط' | 'في إجازة' | 'مستبعد';
 export type DriverResponseType = 'محايل عسير' | 'ينبع' | 'القصيم' | 'الرياض' | 'الترددية';
+export type DriverClassification = 'نقل عمال' | 'عمرة';
 
 export interface CompanyDriver {
   id: string;
@@ -117,13 +118,14 @@ export interface CompanyDriver {
   fullName: string; // اسم السائق الثلاثي
   nationality: string; // الجنسية
   driverType: DriverType; // مقيم - مؤقت - موسمي
+  driverClassification?: DriverClassification | string; // تصنيف السائق: نقل عمال - عمرة
   status?: DriverStatus; // نشط - في إجازة - مستبعد (الافتراضي: نشط)
   statusUpdatedAt?: string | any; // تاريخ آخر تحديث للحالة
   statusReason?: string; // سبب الحالة (إجازة سنوية، انتهاء عقد، مخالفة...)
   iqamaNumber: string; // رقم الإقامة
   borderNumber: string; // رقم الحدود
   mobileNumber: string; // رقم الموبايل
-  workplace?: string; // مكان العمل
+  workplace?: string; // مكان العمل (legacy/متوافق)
   busNumber?: string; // رقم الحافلة
   notes?: string;
   createdAt?: any;

@@ -28,6 +28,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
 import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
 import { generatePdf } from './lib/pdfService';
+import { isDriverActiveInMonitoring } from './lib/driverUtils';
 import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResponse } from './types';
 
 function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
@@ -753,9 +754,15 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       const finalStatus = cleaned.status || 'نشط';
       const finalStatusDate = cleaned.statusUpdatedAt || nowIso;
 
+      // Auto classify as 'نقل عمال' if driver is active in monitoring (الرقابة والمتابعة)
+      const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber: cleanIqama }, workers);
+      const finalClassification = isMonitoringActive ? 'نقل عمال' : (cleaned.driverClassification || 'نقل عمال');
+
       if (editingCompanyDriver) {
         await updateDoc(doc(db, 'company_drivers', editingCompanyDriver.id), {
           ...cleaned,
+          driverClassification: finalClassification,
+          workplace: finalClassification,
           serialNumber: editingCompanyDriver.serialNumber || (companyDrivers.findIndex(d => d.id === editingCompanyDriver.id) + 1),
           status: finalStatus,
           statusUpdatedAt: finalStatusDate,
@@ -771,6 +778,8 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
         await addDoc(collection(db, 'company_drivers'), {
           ...cleaned,
+          driverClassification: finalClassification,
+          workplace: finalClassification,
           serialNumber: nextSerial,
           status: finalStatus,
           statusUpdatedAt: finalStatusDate,
@@ -871,7 +880,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const data = await parseCompanyDriversExcel(file);
+      const data = await parseCompanyDriversExcel(file, workers);
       let added = 0;
       let updated = 0;
 
@@ -1058,6 +1067,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           {activeTab === 'drivers' && isSuperAdmin && (
             <CompanyDriversList 
               drivers={companyDrivers}
+              workers={workers}
               isAdmin={isSuperAdmin}
               driverResponses={driverResponses}
               onOpenDriverResponse={(driver) => {
@@ -1072,7 +1082,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               onDeleteAll={handleDeleteAllCompanyDrivers}
               onStatusChange={handleUpdateCompanyDriverStatus}
               onImport={handleImportCompanyDriversExcel}
-              onExport={(data) => exportCompanyDriversToExcel(data)}
+              onExport={(data) => exportCompanyDriversToExcel(data, workers)}
             />
           )}
 
@@ -1117,6 +1127,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           driver={editingCompanyDriver}
           existingDrivers={companyDrivers}
           buses={buses}
+          workers={workers}
           isOpen={isCompanyDriverFormOpen}
           onSave={handleSaveCompanyDriver}
           onClose={() => { setIsCompanyDriverFormOpen(false); setEditingCompanyDriver(null); }}

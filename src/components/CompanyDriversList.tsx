@@ -31,9 +31,11 @@ import {
   Navigation,
   Hash,
   ExternalLink,
-  Link2
+  Link2,
+  Briefcase
 } from 'lucide-react';
-import type { CompanyDriver, DriverType, DriverStatus, DriverResponse } from '../types';
+import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompanyDriverDetailsModal } from './CompanyDriverDetailsModal';
 import { DriverResponseLinkModal } from './DriverResponseLinkModal';
@@ -41,6 +43,7 @@ import { downloadCompanyDriversTemplate, exportDriverResponsesToExcel } from '..
 
 interface CompanyDriversListProps {
   drivers: CompanyDriver[];
+  workers?: Worker[];
   isAdmin: boolean;
   onAdd?: () => void;
   onEdit?: (driver: CompanyDriver) => void;
@@ -57,6 +60,7 @@ interface CompanyDriversListProps {
 
 export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   drivers,
+  workers = [],
   isAdmin,
   onAdd,
   onEdit,
@@ -74,7 +78,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedNationality, setSelectedNationality] = useState<string>('');
-  const [selectedWorkplace, setSelectedWorkplace] = useState<string>('');
+  const [selectedClassification, setSelectedClassification] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copiedResponseLink, setCopiedResponseLink] = useState(false);
@@ -155,31 +159,37 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   // Metrics
   const stats = useMemo(() => {
     const total = drivers.length;
-    const resident = drivers.filter(d => d.driverType === 'مقيم').length;
-    const temporary = drivers.filter(d => d.driverType === 'مؤقت').length;
-    const seasonal = drivers.filter(d => d.driverType === 'موسمي').length;
+    // Driver Type: Iqama -> 'مقيم', Border -> 'موسمي'
+    const resident = drivers.filter(d => resolveDriverType(d) === 'مقيم').length;
+    const seasonal = drivers.filter(d => resolveDriverType(d) === 'موسمي').length;
+    const temporary = drivers.filter(d => resolveDriverType(d) === 'مؤقت').length;
     
     // Status metrics (default to 'نشط' if not explicitly set)
     const active = drivers.filter(d => !d.status || d.status === 'نشط').length;
     const onLeave = drivers.filter(d => d.status === 'في إجازة').length;
     const excluded = drivers.filter(d => d.status === 'مستبعد').length;
 
+    // Driver Classification: نقل عمال / عمرة (auto 'نقل عمال' if active in monitoring)
+    const laborTransport = drivers.filter(d => getDriverClassification(d, workers) === 'نقل عمال').length;
+    const umrah = drivers.filter(d => getDriverClassification(d, workers) === 'عمرة').length;
+
+    // Active in Monitoring count (الرقابة والمتابعة - غير منتهي عمله)
+    const activeInMonitoring = drivers.filter(d => isDriverActiveInMonitoring(d, workers)).length;
+
     const uniqueNationalities = Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).length;
 
-    return { total, resident, temporary, seasonal, active, onLeave, excluded, uniqueNationalities };
-  }, [drivers]);
+    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, umrah, activeInMonitoring, uniqueNationalities };
+  }, [drivers, workers]);
 
   const nationalities = useMemo(() => {
     return Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).sort();
   }, [drivers]);
 
-  const workplaces = useMemo(() => {
-    return Array.from(new Set(drivers.map(d => d.workplace).filter(Boolean))).sort();
-  }, [drivers]);
-
   // Filtered drivers
   const filteredDrivers = useMemo(() => {
     return drivers.filter(driver => {
+      const classification = getDriverClassification(driver, workers);
+      const effectiveType = resolveDriverType(driver);
       const search = searchTerm.trim().toLowerCase();
       const matchesSearch = !search || (
         (driver.fullName || '').toLowerCase().includes(search) ||
@@ -187,7 +197,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         (driver.iqamaNumber || '').toLowerCase().includes(search) ||
         (driver.borderNumber || '').toLowerCase().includes(search) ||
         (driver.mobileNumber || '').toLowerCase().includes(search) ||
-        (driver.workplace || '').toLowerCase().includes(search) ||
+        classification.toLowerCase().includes(search) ||
         (driver.busNumber || '').toLowerCase().includes(search) ||
         (driver.statusReason || '').toLowerCase().includes(search) ||
         (driver.notes || '').toLowerCase().includes(search) ||
@@ -195,20 +205,20 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         `#${driver.serialNumber || ''}`.includes(search)
       );
 
-      const matchesType = selectedType === 'all' || driver.driverType === selectedType;
+      const matchesType = selectedType === 'all' || effectiveType === selectedType;
       const driverCurrentStatus = driver.status || 'نشط';
       const matchesStatus = selectedStatus === 'all' || driverCurrentStatus === selectedStatus;
       const matchesNationality = !selectedNationality || driver.nationality === selectedNationality;
-      const matchesWorkplace = !selectedWorkplace || driver.workplace === selectedWorkplace;
+      const matchesClassification = !selectedClassification || classification === selectedClassification;
 
-      return matchesSearch && matchesType && matchesStatus && matchesNationality && matchesWorkplace;
+      return matchesSearch && matchesType && matchesStatus && matchesNationality && matchesClassification;
     });
-  }, [drivers, searchTerm, selectedType, selectedStatus, selectedNationality, selectedWorkplace]);
+  }, [drivers, workers, searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
 
   // Reset page when filtering
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedType, selectedStatus, selectedNationality, selectedWorkplace]);
+  }, [searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
 
   const totalPages = Math.ceil(filteredDrivers.length / itemsPerPage);
 
@@ -517,7 +527,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <Search className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors w-4 h-4 ${searchTerm ? 'text-primary' : 'text-text-muted'}`} />
               <input 
                 type="text" 
-                placeholder="ابحث بالاسم، رقم الإقامة، رقم الحدود، مكان العمل، الحافلة، الجنسية، أو الموبايل..." 
+                placeholder="ابحث بالاسم، رقم الإقامة، رقم الحدود، تصنيف السائق (نقل عمال/عمرة)، الحافلة، الجنسية، أو الموبايل..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pr-10 pl-4 py-2.5 bg-background border border-border focus:border-primary rounded-lg outline-none transition-all text-sm font-medium shadow-sm"
@@ -537,14 +547,14 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               className={`p-2.5 rounded-lg transition-all border flex items-center gap-2 cursor-pointer ${
                 showFilters 
                   ? 'bg-primary text-white border-primary shadow-sm' 
-                  : (selectedStatus !== 'all' || selectedType !== 'all' || selectedNationality || selectedWorkplace)
+                  : (selectedStatus !== 'all' || selectedType !== 'all' || selectedNationality || selectedClassification)
                     ? 'bg-primary/10 text-primary border-primary/30 font-bold'
                     : 'bg-surface text-text-muted border-border hover:bg-background'
               }`}
             >
               <Filter className="w-5 h-5" />
               <span className="text-xs font-bold hidden md:block">الفلاتر المتقدمة</span>
-              {(selectedStatus !== 'all' || selectedType !== 'all' || selectedNationality || selectedWorkplace) && (
+              {(selectedStatus !== 'all' || selectedType !== 'all' || selectedNationality || selectedClassification) && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               )}
             </button>
@@ -553,7 +563,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
           <div className="flex items-center gap-2 px-1">
             <span className="text-[10px] font-black text-text-muted/60 uppercase tracking-tighter">مجال البحث:</span>
             <div className="flex flex-wrap gap-1.5">
-              {['الاسم الثلاثي', 'الرقم المتسلسل', 'الحالة', 'رقم الإقامة', 'رقم الحدود', 'مكان العمل', 'رقم الحافلة', 'الجنسية', 'رقم الموبايل'].map((field) => (
+              {['الاسم الثلاثي', 'الرقم المتسلسل', 'الحالة', 'رقم الإقامة', 'رقم الحدود', 'تصنيف السائق (نقل عمال / عمرة)', 'رقم الحافلة', 'الجنسية', 'رقم الموبايل'].map((field) => (
                 <span 
                   key={field}
                   className={`text-[9px] px-2 py-0.5 rounded-full border transition-all ${
@@ -610,17 +620,17 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                   ))}
                 </div>
 
-                {/* Classification Quick Filter Pills */}
+                {/* Driver Type Quick Filter Pills: مقيم (إقامة) / موسمي (حدود) */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 border-t border-border/40">
                   <span className="text-xs font-bold text-text-muted shrink-0 ml-1 flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>التصنيف:</span>
+                    <span>نوع السائق:</span>
                   </span>
                   {[
                     { id: 'all', label: 'الكل', count: drivers.length },
-                    { id: 'مقيم', label: 'مقيم', count: stats.resident },
-                    { id: 'مؤقت', label: 'مؤقت', count: stats.temporary },
-                    { id: 'موسمي', label: 'موسمي', count: stats.seasonal },
+                    { id: 'مقيم', label: 'مقيم (رقم إقامة)', count: stats.resident },
+                    { id: 'موسمي', label: 'موسمي (رقم حدود)', count: stats.seasonal },
+                    ...(stats.temporary > 0 ? [{ id: 'مؤقت', label: 'مؤقت', count: stats.temporary }] : [])
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -657,17 +667,18 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-text-muted mr-1">تصفية حسب مكان العمل</label>
+                  <label className="text-[11px] font-bold text-text-muted mr-1">تصنيف السائق (نوع العمل)</label>
                   <select 
-                    value={selectedWorkplace}
-                    onChange={(e) => setSelectedWorkplace(e.target.value)}
+                    value={selectedClassification}
+                    onChange={(e) => setSelectedClassification(e.target.value)}
                     className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
                   >
-                    <option value="">كافة المواقع</option>
-                    {workplaces.map(w => <option key={w} value={w}>{w}</option>)}
+                    <option value="">كافة التصنيفات (نقل عمال / عمرة)</option>
+                    <option value="نقل عمال">🚌 نقل عمال ({stats.laborTransport})</option>
+                    <option value="عمرة">🕌 عمرة ({stats.umrah})</option>
                   </select>
                 </div>
-                {(selectedStatus !== 'all' || selectedNationality || selectedType !== 'all' || selectedWorkplace || searchTerm) && (
+                {(selectedStatus !== 'all' || selectedNationality || selectedType !== 'all' || selectedClassification || searchTerm) && (
                   <div className="col-span-1 md:col-span-2 lg:col-span-2 flex items-end justify-end">
                     <button
                       type="button"
@@ -675,7 +686,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                         setSelectedStatus('all');
                         setSelectedNationality('');
                         setSelectedType('all');
-                        setSelectedWorkplace('');
+                        setSelectedClassification('');
                         setSearchTerm('');
                       }}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-text-muted hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
@@ -695,8 +706,12 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <AnimatePresence mode="popLayout">
             {paginatedDrivers.map((driver, index) => {
-              const badge = getTypeBadge(driver.driverType);
+              const effectiveType = resolveDriverType(driver);
+              const badge = getTypeBadge(effectiveType);
               const statusBadge = getStatusBadge(driver.status);
+              const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
+              const inMonitoring = Boolean(inMonitoringWorker);
+              const classification = getDriverClassification(driver, workers);
               return (
                 <motion.div
                   key={driver.id}
@@ -748,7 +763,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                           <span>{statusBadge.label}</span>
                         </span>
 
-                        {/* Classification Badge */}
+                        {/* Classification Badge (مقيم / موسمي) */}
                         <span className={`
                           inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border tracking-tight
                           ${badge.className}
@@ -761,6 +776,20 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
                     {/* Tags */}
                     <div className="flex flex-wrap gap-1.5 pt-1">
+                      {/* Driver Classification (نقل عمال / عمرة) Tag */}
+                      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-xs ${
+                        classification === 'عمرة'
+                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                          : inMonitoring
+                            ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
+                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      }`}>
+                        <Briefcase className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-bold">
+                          {classification === 'عمرة' ? 'عمرة' : (inMonitoring ? 'نقل عمال (بالرقابة)' : 'نقل عمال')}
+                        </span>
+                      </div>
+
                       {driver.busNumber && (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-lg shadow-xs">
                           <Bus className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
@@ -794,54 +823,6 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
                   {/* Card Body */}
                   <div className="p-4 flex-1 space-y-3">
-                    {/* Status Summary & Quick Entry to Driver Card */}
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedDriverForDetails(driver);
-                      }}
-                      className={`p-2.5 rounded-xl border transition-all cursor-pointer hover:ring-2 hover:ring-primary/20 ${
-                        (driver.status === 'مستبعد') 
-                          ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60'
-                          : (driver.status === 'في إجازة')
-                            ? 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60'
-                            : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-900/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${statusBadge.dotColor} animate-pulse`} />
-                          <span className="text-[11px] font-black text-slate-800 dark:text-slate-200">
-                            حالة السائق: {statusBadge.label}
-                          </span>
-                        </div>
-                        
-                        {/* Date of last status update */}
-                        {driver.statusUpdatedAt ? (
-                          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1" title="تاريخ آخر تحديث للحالة">
-                            <Calendar className="w-3 h-3 text-primary shrink-0" />
-                            <span>آخر تحديث:</span>
-                            <span className="font-mono font-bold text-slate-900 dark:text-white">{formatArabicDate(driver.statusUpdatedAt)}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-text-muted">نشط افتراضياً</span>
-                        )}
-                      </div>
-
-                      {driver.statusReason ? (
-                        <div className="text-[10px] text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-900/70 px-2 py-0.5 rounded-md border border-border/60 line-clamp-1">
-                          <span className="font-bold text-slate-800 dark:text-slate-200">السبب/الملاحظة:</span> {driver.statusReason}
-                        </div>
-                      ) : (
-                        <div className="text-[10px] text-primary/80 dark:text-primary-light font-bold flex items-center justify-between pt-0.5">
-                          <span>خيارات الحالة: نشط / في إجازة / مستبعد</span>
-                          <span className="text-[9px] bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-border text-slate-600 dark:text-slate-300 font-bold">
-                            عرض البطاقة ‹
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
                     <div className="grid grid-cols-2 gap-2.5">
                       {/* Iqama Number */}
                       <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1">
@@ -944,33 +925,42 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                       )}
                     </div>
 
-                    {/* Workplace & Bus Info Row */}
-                    {(driver.workplace || driver.busNumber) && (
-                      <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1.5">
-                        {driver.workplace && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-red-500 shrink-0" />
-                              <span>مكان العمل:</span>
+                    {/* Driver Classification & Bus Info Row (replaced workplace) */}
+                    <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                          <Briefcase className="w-3 h-3 text-primary shrink-0" />
+                          <span>تصنيف السائق:</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-black border ${
+                            classification === 'عمرة'
+                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                              : inMonitoring
+                                ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
+                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                          }`}>
+                            <span>{classification === 'عمرة' ? '🕌 عمرة' : '🚌 نقل عمال'}</span>
+                          </span>
+                          {inMonitoring && (
+                            <span className="text-[9px] font-bold bg-cyan-100 dark:bg-cyan-950/50 text-cyan-800 dark:text-cyan-200 px-1.5 py-0.5 rounded border border-cyan-300 dark:border-cyan-700" title="نشط حالياً في الرقابة والمتابعة">
+                              نشط بالرقابة
                             </span>
-                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              {driver.workplace}
-                            </span>
-                          </div>
-                        )}
-                        {driver.busNumber && (
-                          <div className={`flex items-center justify-between ${driver.workplace ? 'pt-1.5 border-t border-border/40' : ''}`}>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                              <Bus className="w-3 h-3 text-sky-600 shrink-0" />
-                              <span>الحافلة المخصصة:</span>
-                            </span>
-                            <span className="text-xs font-mono font-bold text-sky-700 dark:text-sky-400">
-                              #{driver.busNumber}
-                            </span>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    )}
+                      {driver.busNumber && (
+                        <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                            <Bus className="w-3 h-3 text-sky-600 shrink-0" />
+                            <span>الحافلة المخصصة:</span>
+                          </span>
+                          <span className="text-xs font-mono font-bold text-sky-700 dark:text-sky-400">
+                            #{driver.busNumber}
+                          </span>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Notes (if available) */}
                     {driver.notes && (
@@ -1151,6 +1141,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
       {/* Driver Details Modal - بطاقة السائق المتكاملة متضمنة خيارات نشط / في إجازة / مستبعد وتبويب ردود السائق */}
       <CompanyDriverDetailsModal 
         driver={activeDetailDriver}
+        workers={workers}
         isOpen={!!activeDetailDriver}
         isAdmin={isAdmin}
         onClose={() => setSelectedDriverForDetails(null)}

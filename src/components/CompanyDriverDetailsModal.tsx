@@ -29,13 +29,16 @@ import {
   Plus,
   FileText,
   FileSpreadsheet,
-  Download
+  Download,
+  Briefcase
 } from 'lucide-react';
-import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType } from '../types';
+import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType, Worker } from '../types';
 import { copyDriverResponsesToGoogleSheetsClipboard, exportDriverResponsesToExcel } from '../lib/excelService';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
 
 interface CompanyDriverDetailsModalProps {
   driver: CompanyDriver | null;
+  workers?: Worker[];
   isOpen: boolean;
   isAdmin: boolean;
   onClose: () => void;
@@ -49,6 +52,7 @@ interface CompanyDriverDetailsModalProps {
 
 export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps> = ({
   driver,
+  workers = [],
   isOpen,
   isAdmin,
   onClose,
@@ -196,7 +200,11 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
     }
   };
 
-  const typeBadge = getTypeBadge(driver.driverType);
+  const effectiveType = resolveDriverType(driver);
+  const typeBadge = getTypeBadge(effectiveType);
+  const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
+  const inMonitoring = Boolean(inMonitoringWorker);
+  const classification = getDriverClassification(driver, workers);
 
   const getResponseBadge = (type: DriverResponseType | string) => {
     switch (type) {
@@ -336,6 +344,15 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${typeBadge.className}`}>
                       {typeBadge.icon}
                       <span>{typeBadge.label}</span>
+                    </span>
+
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      classification === 'عمرة'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                    }`}>
+                      <Briefcase className="w-3 h-3" />
+                      <span>{classification === 'عمرة' ? 'عمرة' : 'نقل عمال'}</span>
                     </span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-snug">
@@ -556,14 +573,28 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                       </div>
                     </div>
 
-                    {/* Workplace */}
+                    {/* Driver Classification (تصنيف السائق: نقل عمال / عمرة) */}
                     <div className="p-3 bg-slate-50/80 dark:bg-slate-800/50 border border-border rounded-xl space-y-1">
                       <span className="text-[11px] font-bold text-text-muted flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-red-500" />
-                        <span>مكان العمل</span>
+                        <Briefcase className="w-3.5 h-3.5 text-primary" />
+                        <span>تصنيف السائق</span>
                       </span>
-                      <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        {driver.workplace || 'غير محدد'}
+                      <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${
+                          classification === 'عمرة'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                            : inMonitoring
+                              ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
+                              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                        }`}>
+                          <span>{classification === 'عمرة' ? '🕌 عمرة' : '🚌 نقل عمال'}</span>
+                        </span>
+                        {inMonitoring && (
+                          <span className="text-[10px] font-bold bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-200 px-2 py-0.5 rounded-md border border-cyan-300 dark:border-cyan-700 flex items-center gap-1" title="نشط حالياً في الرقابة والمتابعة">
+                            <ShieldCheck className="w-3 h-3 text-cyan-600" />
+                            <span>تلقائي: نشط بالرقابة والمتابعة ({inMonitoringWorker?.clientName || inMonitoringWorker?.workplace || 'مسجل'})</span>
+                          </span>
+                        )}
                       </div>
                     </div>
 

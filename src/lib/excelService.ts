@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Bus, Worker, DriverResponse, CompanyDriver } from '../types';
+import { getDriverClassification, isDriverActiveInMonitoring } from './driverUtils';
 
 /**
  * Normalizes bus or worker location so that empty, 'غير محدد', or '( غير محدد )' becomes 'في الشركة'
@@ -832,7 +833,7 @@ export const parseWorkersExcel = (file: File): Promise<any[]> => {
   });
 };
 
-export const exportCompanyDriversToExcel = (drivers: any[]) => {
+export const exportCompanyDriversToExcel = (drivers: any[], workers?: any[]) => {
   const worksheet = XLSX.utils.json_to_sheet(drivers.map((d, index) => {
     let formattedDate = '';
     if (d.statusUpdatedAt) {
@@ -844,10 +845,14 @@ export const exportCompanyDriversToExcel = (drivers: any[]) => {
       }
     }
 
+    const effectiveType = d.iqamaNumber ? 'مقيم' : (d.borderNumber ? 'موسمي' : (d.driverType || 'مقيم'));
+    const classification = getDriverClassification(d, workers);
+
     return {
       'الرقم المتسلسل': d.serialNumber || (index + 1),
       'اسم السائق الثلاثي': d.fullName || '',
-      'التصنيف': d.driverType || 'مقيم',
+      'الصفة النظامية': effectiveType,
+      'تصنيف السائق': classification,
       'الحالة': d.status || 'نشط',
       'تاريخ آخر تحديث للحالة': formattedDate,
       'سبب الحالة': d.statusReason || '',
@@ -855,7 +860,6 @@ export const exportCompanyDriversToExcel = (drivers: any[]) => {
       'رقم الإقامة': d.iqamaNumber || '',
       'رقم الحدود': d.borderNumber || '',
       'رقم الموبايل': d.mobileNumber || '',
-      'مكان العمل': d.workplace || '',
       'رقم الحافلة': d.busNumber || '',
       'ملاحظات': d.notes || ''
     };
@@ -873,7 +877,8 @@ export const downloadCompanyDriversTemplate = () => {
     {
       'م': 1,
       'اسم السائق الثلاثي': 'محمد أحمد السعيد',
-      'التصنيف': 'مقيم',
+      'الصفة النظامية': 'مقيم',
+      'تصنيف السائق': 'نقل عمال',
       'الحالة': 'نشط',
       'تاريخ آخر تحديث للحالة': today,
       'سبب الحالة': 'جاهز ومتاح للعمل',
@@ -881,39 +886,38 @@ export const downloadCompanyDriversTemplate = () => {
       'رقم الإقامة': '2345678901',
       'رقم الحدود': '',
       'رقم الموبايل': '0501234567',
-      'مكان العمل': 'المدينة المنورة',
       'رقم الحافلة': '101',
       'ملاحظات': 'سائق حافلة كبيرة'
     },
     {
       'م': 2,
       'اسم السائق الثلاثي': 'عبدالله خان رحمن',
-      'التصنيف': 'مؤقت',
+      'الصفة النظامية': 'مقيم',
+      'تصنيف السائق': 'عمرة',
       'الحالة': 'في إجازة',
       'تاريخ آخر تحديث للحالة': today,
       'سبب الحالة': 'إجازة سنوية لمدة 30 يوم',
       'الجنسية': 'باكستان',
       'رقم الإقامة': '2456789012',
-      'رقم الحدود': '3456789012',
+      'رقم الحدود': '',
       'رقم الموبايل': '0559876543',
-      'مكان العمل': 'مكة المكرمة',
       'رقم الحافلة': '105',
-      'ملاحظات': 'عقد مؤقت لـ 3 أشهر'
+      'ملاحظات': 'تشغيل مسارات العمرة'
     },
     {
       'م': 3,
       'اسم السائق الثلاثي': 'طارق عمر الفضلي',
-      'التصنيف': 'موسمي',
+      'الصفة النظامية': 'موسمي',
+      'تصنيف السائق': 'عمرة',
       'الحالة': 'مستبعد',
       'تاريخ آخر تحديث للحالة': today,
-      'سبب الحالة': 'انتهاء موسم الحج',
+      'سبب الحالة': 'انتهاء موسم العمرة',
       'الجنسية': 'اليمن',
       'رقم الإقامة': '',
       'رقم الحدود': '3987654321',
       'رقم الموبايل': '0561122334',
-      'مكان العمل': 'جدة',
       'رقم الحافلة': '120',
-      'ملاحظات': 'موسم الحج والعمرة'
+      'ملاحظات': 'موسمي برقم حدود'
     }
   ];
 
@@ -923,7 +927,7 @@ export const downloadCompanyDriversTemplate = () => {
   XLSX.writeFile(workbook, `نموذج_استيراد_سائقين_الشركة.xlsx`);
 };
 
-export const parseCompanyDriversExcel = (file: File): Promise<any[]> => {
+export const parseCompanyDriversExcel = (file: File, workers?: any[]): Promise<any[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1060,6 +1064,33 @@ export const parseCompanyDriversExcel = (file: File): Promise<any[]> => {
             ''
           ).trim();
 
+          // Classification logic:
+          // 1. If iqama number is provided -> driver is 'مقيم'
+          // 2. If border number is provided without iqama -> driver is 'موسمي'
+          if (iqamaNumber) {
+            driverType = 'مقيم';
+          } else if (borderNumber) {
+            driverType = 'موسمي';
+          }
+
+          // Operation classification:
+          // Check if driver is active in monitoring (الرقابة والمتابعة) -> automatically 'نقل عمال'
+          const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber }, workers);
+
+          const rawClassification = String(
+            row['تصنيف السائق'] || 
+            row['التصنيف التشغيلي'] || 
+            row['نوع العمل'] || 
+            row['مكان العمل'] || 
+            row['Workplace'] || 
+            ''
+          ).trim();
+          const driverClassification = isMonitoringActive
+            ? 'نقل عمال'
+            : ((rawClassification.includes('عمرة') || rawClassification.includes('عمره')) 
+                ? 'عمرة' 
+                : 'نقل عمال');
+
           const notes = String(
             row['ملاحظات'] || 
             row['الملاحظات'] || 
@@ -1075,6 +1106,7 @@ export const parseCompanyDriversExcel = (file: File): Promise<any[]> => {
             serialNumber,
             fullName,
             driverType,
+            driverClassification,
             status,
             statusUpdatedAt,
             statusReason,
@@ -1082,7 +1114,7 @@ export const parseCompanyDriversExcel = (file: File): Promise<any[]> => {
             iqamaNumber,
             borderNumber,
             mobileNumber,
-            workplace,
+            workplace: driverClassification,
             busNumber,
             notes
           };

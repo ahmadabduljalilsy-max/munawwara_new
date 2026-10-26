@@ -12,9 +12,11 @@ import {
   Sparkles, 
   MapPin, 
   Bus,
-  AlertCircle
+  AlertCircle,
+  Briefcase
 } from 'lucide-react';
-import type { CompanyDriver, DriverType, DriverStatus, Bus as BusType } from '../types';
+import type { CompanyDriver, DriverType, DriverStatus, DriverClassification, Bus as BusType, Worker } from '../types';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
 import { Activity, UserX, Clock, Calendar } from 'lucide-react';
 
 interface CompanyDriverFormModalProps {
@@ -24,6 +26,7 @@ interface CompanyDriverFormModalProps {
   driver: CompanyDriver | null;
   existingDrivers?: CompanyDriver[];
   buses?: BusType[];
+  workers?: Worker[];
 }
 
 const COMMON_NATIONALITIES = [
@@ -64,11 +67,13 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
   onSave,
   driver,
   existingDrivers = [],
-  buses = []
+  buses = [],
+  workers = []
 }) => {
   const [formData, setFormData] = useState<{
     fullName: string;
     driverType: DriverType;
+    driverClassification: DriverClassification;
     status: DriverStatus;
     statusReason: string;
     nationality: string;
@@ -81,13 +86,14 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
   }>({
     fullName: '',
     driverType: 'مقيم',
+    driverClassification: 'نقل عمال',
     status: 'نشط',
     statusReason: '',
     nationality: '',
     iqamaNumber: '',
     borderNumber: '',
     mobileNumber: '',
-    workplace: '',
+    workplace: 'نقل عمال',
     busNumber: '',
     notes: ''
   });
@@ -97,16 +103,19 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
 
   useEffect(() => {
     if (driver) {
+      const computedType = resolveDriverType(driver);
+      const computedClass = getDriverClassification(driver, workers);
       setFormData({
         fullName: driver.fullName || '',
-        driverType: driver.driverType || 'مقيم',
+        driverType: computedType,
+        driverClassification: computedClass,
         status: driver.status || 'نشط',
         statusReason: driver.statusReason || '',
         nationality: driver.nationality || '',
         iqamaNumber: driver.iqamaNumber || '',
         borderNumber: driver.borderNumber || '',
         mobileNumber: driver.mobileNumber || '',
-        workplace: driver.workplace || '',
+        workplace: computedClass,
         busNumber: driver.busNumber || '',
         notes: driver.notes || ''
       });
@@ -114,13 +123,14 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
       setFormData({
         fullName: '',
         driverType: 'مقيم',
+        driverClassification: 'نقل عمال',
         status: 'نشط',
         statusReason: '',
         nationality: '',
         iqamaNumber: '',
         borderNumber: '',
         mobileNumber: '',
-        workplace: '',
+        workplace: 'نقل عمال',
         busNumber: '',
         notes: ''
       });
@@ -194,9 +204,17 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
         ? nowIso 
         : (driver?.statusUpdatedAt || nowIso);
 
+      // Auto resolve driverType: if iqama exists -> 'مقيم', if border exists and no iqama -> 'موسمي'
+      const computedDriverType: DriverType = cleanIqama ? 'مقيم' : (cleanBorder ? 'موسمي' : formData.driverType);
+
+      // Auto resolve classification: if active in monitoring (الرقابة والمتابعة) -> 'نقل عمال'
+      const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber: cleanIqama }, workers);
+      const finalClassification = isMonitoringActive ? 'نقل عمال' : formData.driverClassification;
+
       await onSave({
         fullName: formData.fullName.trim(),
-        driverType: formData.driverType,
+        driverType: computedDriverType,
+        driverClassification: finalClassification,
         status: formData.status,
         statusUpdatedAt: statusUpdatedAt,
         statusReason: formData.statusReason.trim(),
@@ -204,7 +222,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
         iqamaNumber: cleanIqama,
         borderNumber: cleanBorder,
         mobileNumber: formData.mobileNumber.trim(),
-        workplace: formData.workplace.trim(),
+        workplace: finalClassification,
         busNumber: formData.busNumber.trim(),
         notes: formData.notes.trim()
       });
@@ -302,13 +320,18 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                 </div>
               )}
 
-              {/* Classification Selector */}
+              {/* Driver Type / Legal Classification Selector */}
               <div className="space-y-2">
-                <label className="text-xs font-black text-text-main flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-primary" />
-                  <span>تصنيف السائق</span>
-                  <span className="text-red-500 font-bold">*</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-text-main flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-primary" />
+                    <span>الصفة النظامية للسائق</span>
+                    <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <span className="text-[10px] text-text-muted font-bold">
+                    (تحدد آلياً: مقيم للإقامة / موسمي للحدود)
+                  </span>
+                </div>
                 <div className="grid grid-cols-3 gap-2.5">
                   {driverTypes.map((item) => {
                     const isSelected = formData.driverType === item.type;
@@ -477,7 +500,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <span>رقم الإقامة</span>
                     </label>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                      رقم فريد غير مكرر
+                      يصنف "مقيم" تلقائياً
                     </span>
                   </div>
                   <input
@@ -485,10 +508,20 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                     dir="ltr"
                     placeholder="2XXXXXXXXX"
                     value={formData.iqamaNumber}
-                    onChange={(e) => setFormData(prev => ({ ...prev, iqamaNumber: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const inMonitoring = isDriverActiveInMonitoring({ iqamaNumber: val }, workers);
+                      setFormData(prev => ({
+                        ...prev,
+                        iqamaNumber: val,
+                        driverType: val.trim() ? 'مقيم' : (prev.borderNumber.trim() ? 'موسمي' : prev.driverType),
+                        driverClassification: inMonitoring ? 'نقل عمال' : prev.driverClassification,
+                        workplace: inMonitoring ? 'نقل عمال' : prev.workplace
+                      }));
+                    }}
                     className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-2xl outline-none text-sm font-bold text-text-main shadow-2xs transition-all text-right font-mono"
                   />
-                  <span className="text-[10px] text-text-muted font-bold mr-1 block">للسائقين المقيمين أو المؤقتين</span>
+                  <span className="text-[10px] text-text-muted font-bold mr-1 block">عند تسجيل رقم الإقامة يصبح السائق "مقيم"</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -498,7 +531,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <span>رقم الحدود</span>
                     </label>
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-                      رقم فريد غير مكرر
+                      يصنف "موسمي" تلقائياً
                     </span>
                   </div>
                   <input
@@ -506,35 +539,76 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                     dir="ltr"
                     placeholder="3XXXXXXXXX"
                     value={formData.borderNumber}
-                    onChange={(e) => setFormData(prev => ({ ...prev, borderNumber: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData(prev => ({
+                        ...prev,
+                        borderNumber: val,
+                        driverType: prev.iqamaNumber.trim() ? 'مقيم' : (val.trim() ? 'موسمي' : prev.driverType)
+                      }));
+                    }}
                     className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-2xl outline-none text-sm font-bold text-text-main shadow-2xs transition-all text-right font-mono"
                   />
-                  <span className="text-[10px] text-text-muted font-bold mr-1 block">للسائقين القادمين بتأشيرة أو موسميين</span>
+                  <span className="text-[10px] text-text-muted font-bold mr-1 block">عند تسجيل رقم الحدود بدون إقامة يصبح السائق "موسمي"</span>
                 </div>
               </div>
 
-              {/* Added: Workplace (مكان العمل) & Bus Number (رقم الحافلة) */}
+              {/* Replaced Workplace with Driver Classification (نقل عمال / عمرة) & Bus Number */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-black text-text-main flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-red-500" />
-                    <span>مكان العمل</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      list="workplaces-list"
-                      placeholder="مثال: المدينة المنورة، مكة، جدة..."
-                      value={formData.workplace}
-                      onChange={(e) => setFormData(prev => ({ ...prev, workplace: e.target.value }))}
-                      className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-2xl outline-none text-sm font-bold text-text-main shadow-2xs transition-all"
-                    />
-                    <datalist id="workplaces-list">
-                      {COMMON_WORKPLACES.map(loc => (
-                        <option key={loc} value={loc} />
-                      ))}
-                    </datalist>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-text-main flex items-center gap-1.5">
+                      <Briefcase className="w-4 h-4 text-primary" />
+                      <span>تصنيف السائق</span>
+                      <span className="text-red-500 font-bold">*</span>
+                    </label>
+                    <span className="text-[10px] text-text-muted font-bold">
+                      (نقل عمال / عمرة)
+                    </span>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'نقل عمال', workplace: 'نقل عمال' }))}
+                      className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                        formData.driverClassification === 'نقل عمال'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
+                      }`}
+                    >
+                      <Bus className="w-4 h-4 text-emerald-600" />
+                      <span>نقل عمال</span>
+                      {formData.driverClassification === 'نقل عمال' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'عمرة', workplace: 'عمرة' }))}
+                      className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                        formData.driverClassification === 'عمرة'
+                          ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 text-amber-800 dark:text-amber-200 ring-2 ring-amber-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
+                      }`}
+                    >
+                      <span className="text-base leading-none">🕌</span>
+                      <span>عمرة</span>
+                      {formData.driverClassification === 'عمرة' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Active monitoring notice if applicable */}
+                  {(() => {
+                    const matchedWorker = getMatchingActiveMonitoringWorker({ iqamaNumber: formData.iqamaNumber }, workers);
+                    return matchedWorker ? (
+                      <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 text-[11px] text-cyan-800 dark:text-cyan-200 flex items-center gap-2 font-bold mt-2">
+                        <ShieldCheck className="w-4 h-4 text-cyan-600 shrink-0" />
+                        <span>تم التصنيف تلقائياً «نقل عمال» لتطابق السائق مع سجل نشط بالرقابة والمتابعة ({matchedWorker.name} - {matchedWorker.clientName || matchedWorker.workplace || 'نشط'})</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="space-y-1.5">

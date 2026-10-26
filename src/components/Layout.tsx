@@ -177,6 +177,15 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
               </button>
             );
           })}
+
+          {/* التوقيع اليدوي في أسفل الجزء الفارغ من القائمة الجانبية */}
+          <div className="mt-auto pt-6 pb-1 px-3 flex flex-col items-center justify-center select-none text-center">
+            <div className="relative inline-block px-3 py-1 group">
+              <span className="font-handwriting text-2xl font-bold text-slate-700/85 dark:text-slate-200/90 tracking-wide inline-block transform -rotate-3 group-hover:rotate-0 group-hover:scale-105 transition-all duration-300 cursor-default drop-shadow-2xs">
+                أحمد عبد الجليل
+              </span>
+            </div>
+          </div>
         </nav>
 
         {/* User Card & Logout */}

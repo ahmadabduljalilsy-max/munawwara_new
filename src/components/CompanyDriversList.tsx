@@ -32,7 +32,10 @@ import {
   Hash,
   ExternalLink,
   Link2,
-  Briefcase
+  Briefcase,
+  MessageCircle,
+  LayoutGrid,
+  ListFilter
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
@@ -86,8 +89,27 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [updatingDriverId, setUpdatingDriverId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDriverForDetails, setSelectedDriverForDetails] = useState<CompanyDriver | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
   const itemsPerPage = 36;
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const cleanSaudiPhone = (phone?: string) => {
+    if (!phone) return '';
+    const digits = phone.replace(/[^0-9]/g, '');
+    if (digits.startsWith('00966')) return digits.slice(2);
+    if (digits.startsWith('966')) return digits;
+    if (digits.startsWith('05')) return '966' + digits.slice(1);
+    if (digits.startsWith('5')) return '966' + digits;
+    return digits;
+  };
+
+  const getDriverInitials = (name: string) => {
+    if (!name) return 'س';
+    const clean = name.replace(/^(السائق|سائق|كابتن|الأستاذ|السيد)\s+/i, '').trim();
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) return `${words[0][0]}${words[1][0]}`;
+    return clean.slice(0, 2) || 'س';
+  };
 
   const handleCopyResponseLink = () => {
     const link = `${window.location.origin}${window.location.pathname}?action=driver-response`;
@@ -558,6 +580,36 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               )}
             </button>
+
+            {/* View Mode Toggle (Grid / Compact) */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 border border-border rounded-lg p-0.5 shrink-0 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 text-xs ${
+                  viewMode === 'grid' 
+                    ? 'bg-surface text-primary shadow-xs font-black border border-border/80' 
+                    : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="عرض شبكي مفصل"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">شبكي</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('compact')}
+                className={`px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 text-xs ${
+                  viewMode === 'compact' 
+                    ? 'bg-surface text-primary shadow-xs font-black border border-border/80' 
+                    : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="عرض بطاقات مدمجة"
+              >
+                <ListFilter className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">مدمج</span>
+              </button>
+            </div>
           </div>
           
           <div className="flex items-center gap-2 px-1">
@@ -701,9 +753,13 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Drivers Cards Grid (Styled to match Fleet list cards) */}
+      {/* Drivers Cards Grid (Simplified, Compact & Full Name Visible) */}
       {paginatedDrivers.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className={
+          viewMode === 'compact'
+            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5"
+            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5"
+        }>
           <AnimatePresence mode="popLayout">
             {paginatedDrivers.map((driver, index) => {
               const effectiveType = resolveDriverType(driver);
@@ -712,278 +768,197 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
               const inMonitoring = Boolean(inMonitoringWorker);
               const classification = getDriverClassification(driver, workers);
+              const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
+              const driverRespList = driverResponses.filter(
+                r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
+              );
+              const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
+
+              // Primary ID to display: Iqama if مقيم or available, Border if موسمي
+              const primaryIdLabel = (effectiveType === 'موسمي' && driver.borderNumber) ? 'رقم الحدود' : 'رقم الإقامة';
+              const primaryIdValue = (effectiveType === 'موسمي' && driver.borderNumber)
+                ? driver.borderNumber
+                : (driver.iqamaNumber || driver.borderNumber || '—');
+
               return (
                 <motion.div
                   key={driver.id}
                   layout
-                  initial={{ opacity: 0, y: 15 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.18, delay: Math.min(index * 0.02, 0.3) }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.15, delay: Math.min(index * 0.012, 0.2) }}
                   onClick={() => setSelectedDriverForDetails(driver)}
-                  className="group bg-surface rounded-2xl border border-border shadow-sm hover:shadow-xl hover:border-primary/40 transition-all overflow-hidden flex flex-col relative cursor-pointer"
+                  className={`group bg-surface rounded-2xl border transition-all duration-200 flex flex-col justify-between relative cursor-pointer overflow-hidden ${
+                    viewMode === 'compact' ? 'p-3 gap-2 shadow-2xs hover:shadow-md' : 'p-3.5 gap-2.5 shadow-xs hover:shadow-lg'
+                  }`}
                   style={{
                     borderColor: `${statusBadge.color}35`,
-                    boxShadow: `0 0 15px -4px ${statusBadge.color}15, 0 4px 6px -4px ${statusBadge.color}10`
+                    borderTopWidth: '3.5px',
+                    borderTopColor: statusBadge.color
                   }}
                 >
-                  {/* Top Color Strip based on Status */}
-                  <div 
-                    className="h-1.5 w-full absolute top-0 left-0" 
-                    style={{ backgroundColor: statusBadge.color }}
-                  />
-
-                  {/* Card Header */}
-                  <div className="p-4 bg-gradient-to-br from-primary/[0.03] to-transparent border-b border-border/50">
-                    <div className="flex justify-between items-start mb-2.5">
-                      <div className="flex flex-col flex-1 min-w-0 pr-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="text-[11px] font-mono font-black px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shadow-2xs">
-                            #{driver.serialNumber || 1}
-                          </span>
-                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                            السائق
-                          </span>
-                        </div>
-                        <h3 
-                          className="text-base font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors leading-snug tracking-tight truncate"
-                          title={driver.fullName}
-                        >
-                          {driver.fullName}
-                        </h3>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        {/* Status Badge */}
-                        <span className={`
-                          inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-tight shadow-xs
-                          ${statusBadge.className}
-                        `}>
-                          {statusBadge.icon}
-                          <span>{statusBadge.label}</span>
-                        </span>
-
-                        {/* Classification Badge (مقيم / موسمي) */}
-                        <span className={`
-                          inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border tracking-tight
-                          ${badge.className}
-                        `}>
-                          {badge.icon}
-                          <span>{badge.label}</span>
-                        </span>
-                      </div>
+                  {/* Top Bar: Serial + Type Badge + Status Badge */}
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0">
+                        #{driver.serialNumber || 1}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${badge.className}`}>
+                        {badge.icon}
+                        <span>{badge.label}</span>
+                      </span>
                     </div>
 
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {/* Driver Classification (نقل عمال / عمرة) Tag */}
-                      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-xs ${
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 shadow-2xs ${statusBadge.className}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotColor} ${driver.status === 'نشط' || !driver.status ? 'animate-pulse' : ''}`} />
+                      <span>{statusBadge.label}</span>
+                    </span>
+                  </div>
+
+                  {/* Driver Name Section: Full Width, Completely Visible without truncation! */}
+                  <div className="pt-0.5">
+                    <h3 
+                      className="text-sm sm:text-base font-black text-slate-900 dark:text-white group-hover:text-primary transition-colors leading-snug break-words"
+                      title={driver.fullName}
+                    >
+                      {driver.fullName}
+                    </h3>
+
+                    {/* Operational Tags (Classification, Monitoring, Bus, Nationality) */}
+                    <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
+                      {/* Classification Badge (نقل عمال / عمرة) */}
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-bold ${
                         classification === 'عمرة'
                           ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                          : inMonitoring
-                            ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
-                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                          : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                       }`}>
-                        <Briefcase className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-bold">
-                          {classification === 'عمرة' ? 'عمرة' : (inMonitoring ? 'نقل عمال (بالرقابة)' : 'نقل عمال')}
-                        </span>
-                      </div>
+                        <Briefcase className="w-2.5 h-2.5" />
+                        <span>{classification === 'عمرة' ? 'عمرة' : 'نقل عمال'}</span>
+                      </span>
 
+                      {/* Active in Monitoring Live Ping */}
+                      {inMonitoring && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 font-bold" title="نشط حالياً بنظام الرقابة والمتابعة وعمليات نقل العمال">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
+                          <span>بالرقابة</span>
+                        </span>
+                      )}
+
+                      {/* Assigned Bus Number */}
                       {driver.busNumber && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-lg shadow-xs">
-                          <Bus className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                          <span className="text-[11px] font-bold text-sky-800 dark:text-sky-300 font-mono">
-                            حافلة #{driver.busNumber}
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-border font-mono font-bold">
+                          <Bus className="w-2.5 h-2.5 text-sky-600" />
+                          <span>#{driver.busNumber}</span>
+                        </span>
                       )}
+
+                      {/* Nationality */}
                       {driver.nationality && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#FAF9F6] dark:bg-background border border-border rounded-lg shadow-xs">
-                          <Globe className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-[11px] font-bold text-slate-900 dark:text-white">
-                            {driver.nationality}
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
+                          <Globe className="w-2.5 h-2.5" />
+                          <span>{driver.nationality}</span>
+                        </span>
                       )}
-                      {/* Driver responses count tag if any */}
-                      {(() => {
-                        const count = driverResponses.filter(r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)).length;
-                        return count > 0 ? (
-                          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg shadow-xs">
-                            <Navigation className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 font-mono">
-                              {count} {count === 1 ? 'رد' : count === 2 ? 'ردان' : 'ردود'}
-                            </span>
-                          </div>
-                        ) : null;
-                      })()}
                     </div>
                   </div>
 
-                  {/* Card Body */}
-                  <div className="p-4 flex-1 space-y-3">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {/* Iqama Number */}
-                      <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                            <IdCard className="w-3 h-3 text-primary" />
-                            <span>رقم الإقامة</span>
-                          </span>
-                          {driver.iqamaNumber && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(driver.iqamaNumber || '', `iqama-${driver.id}`);
-                              }}
-                              className="text-text-muted hover:text-primary transition-colors p-0.5 cursor-pointer"
-                              title="نسخ رقم الإقامة"
-                            >
-                              {copiedField === `iqama-${driver.id}` ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-mono font-bold text-slate-900 dark:text-white truncate">
-                          {driver.iqamaNumber || '—'}
-                        </div>
-                      </div>
-
-                      {/* Border Number */}
-                      <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-amber-600" />
-                            <span>رقم الحدود</span>
-                          </span>
-                          {driver.borderNumber && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(driver.borderNumber || '', `border-${driver.id}`);
-                              }}
-                              className="text-text-muted hover:text-primary transition-colors p-0.5 cursor-pointer"
-                              title="نسخ رقم الحدود"
-                            >
-                              {copiedField === `border-${driver.id}` ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-mono font-bold text-slate-900 dark:text-white truncate">
-                          {driver.borderNumber || '—'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Mobile Number Row */}
-                    <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center shrink-0">
-                          <Phone className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <span className="text-[10px] font-bold text-text-muted block">رقم الموبايل</span>
-                          <span className="text-xs font-mono font-bold text-slate-900 dark:text-white" dir="ltr">
-                            {driver.mobileNumber || 'غير مسجل'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {driver.mobileNumber && (
-                        <div className="flex items-center gap-1">
+                  {/* Compact Info Row: Official ID + Mobile Phone with Direct WhatsApp & Call */}
+                  <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border/50 text-[11px]">
+                    {/* ID Container */}
+                    <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] text-text-muted">
+                        <span className="flex items-center gap-1 font-bold">
+                          <IdCard className="w-3 h-3 text-primary" />
+                          <span>{primaryIdLabel}</span>
+                        </span>
+                        {primaryIdValue !== '—' && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              copyToClipboard(driver.mobileNumber || '', `phone-${driver.id}`);
+                              copyToClipboard(primaryIdValue, `id-${driver.id}`);
                             }}
-                            className="p-1.5 hover:bg-white dark:hover:bg-slate-700 text-text-muted hover:text-slate-900 rounded-lg transition-colors cursor-pointer"
-                            title="نسخ رقم الموبايل"
+                            className="text-text-muted hover:text-primary transition-colors p-0.5 cursor-pointer"
+                            title="نسخ الرقم"
                           >
-                            {copiedField === `phone-${driver.id}` ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            {copiedField === `id-${driver.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
                             ) : (
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className="w-3 h-3" />
                             )}
                           </button>
-                          <a 
-                            href={`tel:${driver.mobileNumber}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-xs"
-                            title="اتصال مباشر"
-                          >
-                            <PhoneCall className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" title={primaryIdValue}>
+                        {primaryIdValue}
+                      </div>
                     </div>
 
-                    {/* Driver Classification & Bus Info Row (replaced workplace) */}
-                    <div className="p-2.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/70 rounded-xl space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                          <Briefcase className="w-3 h-3 text-primary shrink-0" />
-                          <span>تصنيف السائق:</span>
+                    {/* Mobile Container */}
+                    <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] text-text-muted">
+                        <span className="flex items-center gap-1 font-bold">
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          <span>الجوال</span>
                         </span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-black border ${
-                            classification === 'عمرة'
-                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                              : inMonitoring
-                                ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
-                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                          }`}>
-                            <span>{classification === 'عمرة' ? '🕌 عمرة' : '🚌 نقل عمال'}</span>
-                          </span>
-                          {inMonitoring && (
-                            <span className="text-[9px] font-bold bg-cyan-100 dark:bg-cyan-950/50 text-cyan-800 dark:text-cyan-200 px-1.5 py-0.5 rounded border border-cyan-300 dark:border-cyan-700" title="نشط حالياً في الرقابة والمتابعة">
-                              نشط بالرقابة
-                            </span>
-                          )}
-                        </div>
+                        {driver.mobileNumber && (
+                          <div className="flex items-center gap-1">
+                            {cleanPhone && (
+                              <a 
+                                href={`https://wa.me/${cleanPhone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
+                                title="محادثة واتساب مباشرة"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            <a 
+                              href={`tel:${driver.mobileNumber}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
+                              title="اتصال هاتفي"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        )}
                       </div>
-                      {driver.busNumber && (
-                        <div className="flex items-center justify-between pt-1.5 border-t border-border/40">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                            <Bus className="w-3 h-3 text-sky-600 shrink-0" />
-                            <span>الحافلة المخصصة:</span>
-                          </span>
-                          <span className="text-xs font-mono font-bold text-sky-700 dark:text-sky-400">
-                            #{driver.busNumber}
-                          </span>
-                        </div>
-                      )}
+                      <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" dir="ltr" title={driver.mobileNumber || ''}>
+                        {driver.mobileNumber || 'غير مسجل'}
+                      </div>
                     </div>
-
-                    {/* Notes (if available) */}
-                    {driver.notes && (
-                      <div className="text-[11px] text-text-muted bg-primary/[0.03] p-2 rounded-lg border border-primary/10 line-clamp-2">
-                        <span className="font-bold text-slate-700 dark:text-slate-300 ml-1">ملاحظة:</span>
-                        {driver.notes}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Card Footer Actions */}
-                  <div className="p-3 bg-slate-50/60 dark:bg-slate-900/40 border-t border-border/50 mt-auto flex items-center justify-between gap-1.5">
+                  {/* Secondary Line: Latest registered route if available */}
+                  {latestResp && (
+                    <div className="px-2 py-1 rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 flex items-center justify-between text-[10px]">
+                      <span className="text-text-muted font-bold flex items-center gap-1 truncate">
+                        <Navigation className="w-2.5 h-2.5 text-primary shrink-0" />
+                        <span className="truncate">آخر حركة: <span className="text-primary font-black">{latestResp.responseType}</span></span>
+                      </span>
+                      <span className="text-[9px] font-mono font-bold text-primary shrink-0">
+                        {driverRespList.length} {driverRespList.length === 1 ? 'رد' : 'ردود'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Card Footer: Simple & Clean Actions */}
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-1.5 mt-auto">
                     <button 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedDriverForDetails(driver);
                       }}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 rounded-xl transition-all text-xs font-black shadow-xs cursor-pointer"
-                      title="الدخول لبطاقة السائق وعرض خيارات نشط / في إجازة / مستبعد وسجل الردود"
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-all text-xs font-black cursor-pointer active:scale-95 shadow-2xs"
+                      title="عرض بطاقة وتفاصيل السائق"
                     >
                       <IdCard className="w-3.5 h-3.5" />
-                      <span>بطاقة السائق</span>
+                      <span>عرض التفاصيل</span>
                     </button>
 
                     {onOpenDriverResponse && (
@@ -993,11 +968,11 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                           e.stopPropagation();
                           onOpenDriverResponse(driver);
                         }}
-                        className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-600 hover:text-white rounded-xl transition-all text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 shrink-0"
-                        title="تسجيل رد وحركة لهذا السائق"
+                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 dark:border-emerald-800 rounded-xl transition-all text-xs font-black cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
+                        title="تسجيل رد أو حركة جديدة"
                       >
                         <Navigation className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">رد</span>
+                        <span>رد</span>
                       </button>
                     )}
 
@@ -1008,7 +983,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                           e.stopPropagation();
                           onEdit(driver);
                         }}
-                        className="p-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-primary border border-border hover:border-primary/30 rounded-xl transition-all text-xs font-bold shadow-xs cursor-pointer"
+                        className="p-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-primary border border-border hover:border-primary/40 rounded-xl transition-all cursor-pointer active:scale-95"
                         title="تعديل بيانات السائق"
                       >
                         <Edit className="w-3.5 h-3.5" />
@@ -1027,10 +1002,10 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                             isAll: false
                           });
                         }}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer active:scale-95"
                         title="حذف السائق"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>

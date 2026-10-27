@@ -808,6 +808,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Signature & Supervision Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 mt-1 border-t border-border/60 px-1">
+              <div className="flex items-center gap-1.5 text-text-muted flex-wrap">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  إشراف ومتابعة إدارة التشغيل:
+                </span>
+                <span 
+                  className="font-handwriting text-base sm:text-lg text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
+                  style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
+                  title="إشراف ومتابعة إدارة التشغيل: الاستاذ عبد الحميد سالمة"
+                >
+                  الاستاذ عبد الحميد سالمة
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <span className="text-[11px] text-text-muted font-bold">إعداد:</span>
+                <span 
+                  className="font-handwriting text-base sm:text-lg text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
+                  style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
+                  title="إعداد: أحمد عبد الجليل"
+                >
+                  أحمد عبد الجليل
+                </span>
+              </div>
+            </div>
           </motion.div>
         </div>
 

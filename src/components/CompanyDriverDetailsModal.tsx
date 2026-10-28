@@ -30,7 +30,8 @@ import {
   FileText,
   FileSpreadsheet,
   Download,
-  Briefcase
+  Briefcase,
+  Printer
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType, Worker } from '../types';
 import { copyDriverResponsesToGoogleSheetsClipboard, exportDriverResponsesToExcel } from '../lib/excelService';
@@ -48,6 +49,7 @@ interface CompanyDriverDetailsModalProps {
   driverResponses?: DriverResponse[];
   onAddResponse?: (driver: CompanyDriver) => void;
   onDeleteResponse?: (responseId: string) => Promise<void>;
+  onPrintCard?: (driver: CompanyDriver) => void;
 }
 
 export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps> = ({
@@ -61,7 +63,8 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
   onStatusChange,
   driverResponses = [],
   onAddResponse,
-  onDeleteResponse
+  onDeleteResponse,
+  onPrintCard
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'responses'>('info');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -361,13 +364,27 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="p-2 text-text-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
-                title="إغلاق البطاقة"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {onPrintCard && (
+                  <button
+                    type="button"
+                    onClick={() => onPrintCard(driver)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                    title="طباعة بطاقة السائق الرسمية"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">طباعة البطاقة</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={onClose}
+                  className="p-2 text-text-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
+                  title="إغلاق البطاقة"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Tabs: بيانات السائق / ردود السائق */}

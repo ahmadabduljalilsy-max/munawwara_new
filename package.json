@@ -21,10 +21,12 @@
     "dotenv": "^17.2.3",
     "firebase": "^12.12.1",
     "html2canvas": "^1.4.1",
+    "jsbarcode": "^3.12.3",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.8.1",
@@ -33,5 +35,9 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/jsbarcode": "^3.11.4",
+    "@types/qrcode": "^1.5.6"
   }
 }

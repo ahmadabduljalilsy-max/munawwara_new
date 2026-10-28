@@ -35,13 +35,15 @@ import {
   Briefcase,
   MessageCircle,
   LayoutGrid,
-  ListFilter
+  ListFilter,
+  Printer
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompanyDriverDetailsModal } from './CompanyDriverDetailsModal';
 import { DriverResponseLinkModal } from './DriverResponseLinkModal';
+import { DriverCardPrintModal } from './DriverCardPrintModal';
 import { downloadCompanyDriversTemplate, exportDriverResponsesToExcel } from '../lib/excelService';
 
 interface CompanyDriversListProps {
@@ -89,6 +91,8 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [updatingDriverId, setUpdatingDriverId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDriverForDetails, setSelectedDriverForDetails] = useState<CompanyDriver | null>(null);
+  const [isPrintCardModalOpen, setIsPrintCardModalOpen] = useState(false);
+  const [cardModalInitialDriver, setCardModalInitialDriver] = useState<CompanyDriver | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
   const itemsPerPage = 36;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -421,6 +425,20 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <span className="hidden sm:inline">تحميل النموذج</span>
             </button>
           )}
+
+          {/* Print Driver Card Modal Trigger Button */}
+          <button 
+            type="button"
+            onClick={() => {
+              setCardModalInitialDriver(null);
+              setIsPrintCardModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-600/20 cursor-pointer active:scale-95"
+            title="طباعة بطاقة السائق الرسمية أو طباعة 6 بطاقات مجتمعة"
+          >
+            <Printer className="w-4 h-4 text-amber-300" />
+            <span>طباعة بطاقة السائق</span>
+          </button>
 
           {isAdmin && onAdd && (
             <button 
@@ -961,6 +979,19 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                       <span>عرض التفاصيل</span>
                     </button>
 
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCardModalInitialDriver(driver);
+                        setIsPrintCardModalOpen(true);
+                      }}
+                      className="p-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl transition-all cursor-pointer active:scale-95 shrink-0"
+                      title="طباعة بطاقة السائق الرسمية"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                    </button>
+
                     {onOpenDriverResponse && (
                       <button 
                         type="button"
@@ -1135,6 +1166,10 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
           }
         }}
         onDeleteResponse={onDeleteDriverResponse}
+        onPrintCard={(d) => {
+          setCardModalInitialDriver(d);
+          setIsPrintCardModalOpen(true);
+        }}
       />
 
       {/* Driver Response Link & Google Sheets Integration Modal */}
@@ -1144,6 +1179,18 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         driverResponses={driverResponses}
         drivers={drivers}
         onOpenPublicPageDirectly={onOpenPublicResponsePage}
+      />
+
+      {/* Driver Card Print Modal (Single or 6 Cards Batch with QR & Barcode) */}
+      <DriverCardPrintModal 
+        isOpen={isPrintCardModalOpen}
+        onClose={() => {
+          setIsPrintCardModalOpen(false);
+          setCardModalInitialDriver(null);
+        }}
+        drivers={drivers}
+        workers={workers}
+        initialSelectedDriver={cardModalInitialDriver}
       />
     </div>
   );

@@ -105,6 +105,12 @@ export const generatePdf = async (elementId: string, filename: string) => {
             }
           });
 
+          // Remove external stylesheets in clonedDoc to prevent unparsed oklch rules
+          const linkEls = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
+          linkEls.forEach(link => {
+            try { link.remove(); } catch {}
+          });
+
           // Match original DOM nodes to cloned nodes and sanitize computed styles
           const origNodes = [origElement, ...Array.from(origElement.querySelectorAll('*'))];
           const clonedNodes = [clonedEl, ...Array.from(clonedEl.querySelectorAll('*'))];

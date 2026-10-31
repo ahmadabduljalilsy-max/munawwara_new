@@ -88,6 +88,12 @@ export function getDriverClassification(
   }
 
   const raw = (driver.driverClassification || driver.workplace || '').trim();
+  if (raw.includes('سوريا') || raw.includes('سورية') || raw === 'النقل الدولي سوريا') {
+    return 'النقل الدولي سوريا';
+  }
+  if (raw.includes('اليمن') || raw === 'النقل الدولي اليمن') {
+    return 'النقل الدولي اليمن';
+  }
   if (raw.includes('عمرة') || raw.includes('عمره')) {
     return 'عمرة';
   }

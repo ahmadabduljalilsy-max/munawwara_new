@@ -1032,7 +1032,8 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               companyDrivers={companyDrivers}
               onOpenResponsePage={onOpenPublicResponsePage}
               onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
-              onNavigateToDrivers={isSuperAdmin ? () => setActiveTab('drivers') : undefined}
+              onNavigateToDrivers={() => setActiveTab('drivers')}
+              onNavigateToFleet={() => setActiveTab('fleet')}
             />
           )}
           {activeTab === 'fleet' && (

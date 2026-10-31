@@ -32,7 +32,12 @@ import {
   Award,
   UserCheck,
   Sparkles,
-  Clock
+  Clock,
+  Globe,
+  Briefcase,
+  Layers,
+  Building2,
+  UserX
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -50,7 +55,7 @@ import {
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDriver } from '../types';
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
-import { resolveDriverType, getDriverClassification } from '../lib/driverUtils';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring } from '../lib/driverUtils';
 import { DmtcLogo } from './DmtcLogo';
 
 interface DashboardProps {
@@ -63,6 +68,7 @@ interface DashboardProps {
   onOpenResponsePage?: () => void;
   onOpenAnnouncement?: () => void;
   onNavigateToDrivers?: () => void;
+  onNavigateToFleet?: () => void;
 }
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
@@ -76,7 +82,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   companyDrivers = [],
   onOpenResponsePage,
   onOpenAnnouncement,
-  onNavigateToDrivers
+  onNavigateToDrivers,
+  onNavigateToFleet
 }) => {
   const totalBuses = buses.length;
   const [copiedResponseLink, setCopiedResponseLink] = useState(false);
@@ -128,37 +135,70 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { name: 'تحت الصيانة / متوقفة', value: opStatusCounts.maintenance, color: '#f43f5e', shortName: 'صيانة', id: 'maintenance' },
   ], [opStatusCounts]);
 
-  // Driver statistics: مقيم - موسمي - نقل عمال - عمرة - في إجازة
+  // Driver statistics: مقيم - موسمي - نقل عمال - عمرة - دولي سوريا - دولي اليمن - نشط - في إجازة - مستبعد - بالرقابة
   const driverStats = React.useMemo(() => {
     let resident = 0;
     let seasonal = 0;
-    let laborTransport = 0;
-    let umrah = 0;
+    const laborTransport = { total: 0, resident: 0, seasonal: 0 };
+    const umrah = { total: 0, resident: 0, seasonal: 0 };
+    const intlSyria = { total: 0, resident: 0, seasonal: 0 };
+    const intlYemen = { total: 0, resident: 0, seasonal: 0 };
+    let active = 0;
     let onLeave = 0;
+    let excluded = 0;
+    let activeInMonitoring = 0;
+    let assignedBuses = 0;
     const total = companyDrivers.length;
 
     companyDrivers.forEach(d => {
       // 1. Legal Document / Type (مقيم / موسمي)
       const effType = resolveDriverType(d);
-      if (effType === 'موسمي') {
+      const isSeasonal = effType === 'موسمي';
+      if (isSeasonal) {
         seasonal++;
       } else {
         resident++;
       }
 
-      // 2. Operational Classification (نقل عمال / عمرة)
+      // 2. Operational Classification (نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
       // Automatically resolves to 'نقل عمال' if driver is active in monitoring (الرقابة والمتابعة)
       const classification = getDriverClassification(d, workers);
       if (classification === 'عمرة') {
-        umrah++;
+        umrah.total++;
+        if (isSeasonal) umrah.seasonal++;
+        else umrah.resident++;
+      } else if (classification === 'النقل الدولي سوريا') {
+        intlSyria.total++;
+        if (isSeasonal) intlSyria.seasonal++;
+        else intlSyria.resident++;
+      } else if (classification === 'النقل الدولي اليمن') {
+        intlYemen.total++;
+        if (isSeasonal) intlYemen.seasonal++;
+        else intlYemen.resident++;
       } else {
-        laborTransport++;
+        laborTransport.total++;
+        if (isSeasonal) laborTransport.seasonal++;
+        else laborTransport.resident++;
       }
 
-      // 3. Status (في إجازة)
-      const st = (d.status || '').trim();
+      // 3. Status (نشط / في إجازة / مستبعد)
+      const st = (d.status || 'نشط').trim();
       if (st === 'في إجازة' || st.includes('إجازة') || st.includes('اجازة')) {
         onLeave++;
+      } else if (st === 'مستبعد' || st.includes('مستبعد')) {
+        excluded++;
+      } else {
+        active++;
+      }
+
+      // 4. Monitoring match
+      if (isDriverActiveInMonitoring(d, workers)) {
+        activeInMonitoring++;
+      }
+
+      // 5. Assigned bus
+      if (d.busNumber && d.busNumber.trim()) {
+        assignedBuses++;
       }
     });
 
@@ -168,9 +208,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       seasonal,
       laborTransport,
       umrah,
-      onLeave
+      intlSyria,
+      intlYemen,
+      active,
+      onLeave,
+      excluded,
+      activeInMonitoring,
+      assignedBuses
     };
   }, [companyDrivers, workers]);
+
+
 
   const [activeStatusKey, setActiveStatusKey] = useState<string | null>(null);
 
@@ -558,329 +606,88 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </motion.div>
       )}
 
-      {/* Malwarebytes Style: Operations Hub & Operational Readiness Advisor */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (8 cols): SECURITY / FLEET OPERATIONS GRID */}
-        <div className="lg:col-span-8 flex flex-col gap-4">
-          <div className="flex items-center justify-between px-1 flex-wrap gap-2">
-            <span className="text-[11px] font-black text-text-muted uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span>مركز العمليات والمراقبة اللحظية • درة المنورة</span>
-            </span>
-            <div className="flex items-center gap-2">
+      {/* 1. Operations Hub & Readiness Summary Top Bar */}
+      <motion.div 
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ backgroundColor: '#091427' }}
+        className="p-5 sm:p-6 bg-gradient-to-r from-[#060D1A] via-[#0C1D38] to-[#132A52] text-white rounded-3xl shadow-xl border-2 border-blue-950/80 overflow-hidden relative"
+      >
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-6 relative z-10">
+          {/* Right/Main Info */}
+          <div className="flex-1 text-right space-y-3 w-full">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-black text-sky-200 uppercase tracking-wider flex items-center gap-2 bg-sky-950/90 px-3.5 py-1.5 rounded-full border border-sky-500/40 shadow-xs">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0 shadow-sm shadow-emerald-400" />
+                <span>مركز العمليات والمراقبة اللحظية • شركة درة المنورة للنقليات</span>
+              </span>
               {onOpenAnnouncement && (
                 <button
                   type="button"
                   onClick={onOpenAnnouncement}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl text-[11px] font-black transition-all cursor-pointer shadow-2xs active:scale-95"
-                  title="عرض بيان وتوجيهات مدير التشغيل الأستاذ عبد الحميد سالمة"
+                  className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md shadow-amber-400/25 active:scale-95 border border-amber-300"
+                  title="عرض توجيهات وبيان إدارة مكتب التشغيل"
                 >
-                  <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <Award className="w-4 h-4 text-slate-950" />
                   <span>بيان إدارة مكتب التشغيل</span>
                 </button>
               )}
-              <span className="text-[11px] font-bold text-primary">نظام الفحص والمتابعة المباشر</span>
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-3">
+              <span className="w-2 h-7 bg-primary rounded-full inline-block" />
+              <span>لوحة القيادة والمتابعة التشغيلية الشاملة</span>
+            </h2>
+
+            <p className="text-xs sm:text-sm text-slate-100 font-bold leading-relaxed max-w-3xl">
+              نظام الفحص والتحليل الميداني المباشر لإدارة أسطول الحافلات وتوزيع الكوادر والسائقين المعتمدين عبر مسارات نقل العمال، والعمرة، والنقل الدولي (سوريا واليمن).
+            </p>
+
+            {/* Quick Live Stats Pills */}
+            <div className="flex flex-wrap items-center gap-2.5 pt-1.5 text-xs">
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-sky-500/40 text-slate-100 shadow-sm">
+                <Bus className="w-4 h-4 text-sky-400" />
+                <span className="font-bold text-sky-200">الأسطول:</span>
+                <span className="font-mono font-black text-white bg-sky-950 px-2 py-0.5 rounded-md border border-sky-600/40">{totalBuses} حافلة</span>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-indigo-500/40 text-slate-100 shadow-sm">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span className="font-bold text-indigo-200">السائقين:</span>
+                <span className="font-mono font-black text-white bg-indigo-950 px-2 py-0.5 rounded-md border border-indigo-600/40">{driverStats.total} سائق</span>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-amber-500/40 text-slate-100 shadow-sm">
+                <MapPin className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-amber-200">مواقع العمل:</span>
+                <span className="font-mono font-black text-white bg-amber-950 px-2 py-0.5 rounded-md border border-amber-600/40">{Object.keys(locationCounts).length} موقع</span>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 font-black shadow-sm shadow-emerald-500/20">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                <span>الربط الميداني 100% متزامن</span>
+              </div>
             </div>
           </div>
 
-          {/* Subcard 1: Fleet Scanner (Icon + Status + Scan Button) */}
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="soft-panel p-5 flex items-center justify-between gap-4 relative overflow-hidden"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800 flex items-center justify-center text-primary shrink-0 shadow-2xs">
-                <Activity className="w-6 h-6 animate-pulse" />
-              </div>
-              <div className="text-right">
-                <h4 className="text-sm font-black text-text-main leading-tight">فحص الأسطول والجاهزية الفنية</h4>
-                <p className="text-xs text-text-muted font-bold mt-1">
-                  آخر فحص شامل: <span className="text-primary font-black">اليوم ({activeBusesCount} حافلة جاهزة للعمل)</span>
-                </p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setIsExportModalOpen(true)}
-              className="soft-btn-primary px-6 py-2.5 text-xs font-black shrink-0 flex items-center gap-2 cursor-pointer shadow-md"
-            >
-              <span>فحص فوري</span>
-            </button>
-          </motion.div>
-
-          {/* Subcard 2: Detection & Operational History */}
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="soft-panel p-5 flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 flex items-center justify-center text-sky-600 shrink-0 shadow-2xs">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div className="text-right">
-                <h4 className="text-sm font-black text-text-main leading-tight">سجل التشغيل ومواقع العمل</h4>
-                <p className="text-xs text-text-muted font-bold mt-1">
-                  متابعة {workers.length} سائق وموظف موزعين على {Object.keys(locationCounts).length} موقع عمل
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-black text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/50 px-3 py-1 rounded-full border border-sky-200/60">
-              محدث دورياً
-            </span>
-          </motion.div>
-
-          {/* Subcard 3: Real-Time Fleet Protection / Dispatch */}
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="soft-panel p-5 flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800 flex items-center justify-center text-emerald-600 shrink-0 shadow-2xs">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <div className="text-right">
-                <h4 className="text-sm font-black text-text-main leading-tight">الربط الميداني اللحظي</h4>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span className="text-xs text-emerald-600 font-black">نشط ومباشر</span>
-                  <span className="text-xs text-text-muted font-bold">• ربط الحافلات بالسائقين والعملاء</span>
-                </div>
-              </div>
-            </div>
-            <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/60">
-              100% متزامن
-            </span>
-          </motion.div>
-
-          {/* Subcard 4: أسطول وسائقي الشركة (إحصائية السائقين: مقيم - موسمي - نقل عمال - عمرة - في إجازة) */}
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="soft-panel p-5 flex flex-col gap-3.5 relative overflow-hidden"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-text-main leading-tight">إحصائية أسطول السائقين</h4>
-                    <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
-                      تحديث فوري
-                    </span>
-                  </div>
-                  <p className="text-xs text-text-muted font-bold mt-0.5">
-                    تصنيف الوثيقة (مقيم / موسمي) ونوع التشغيل (نقل عمال / عمرة) وحالة الإجازات
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {onNavigateToDrivers && (
-                  <button
-                    type="button"
-                    onClick={onNavigateToDrivers}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-primary hover:text-primary-hover hover:bg-primary/5 bg-primary/5 rounded-xl border border-primary/20 transition-all cursor-pointer active:scale-95 shadow-2xs"
-                    title="فتح سجل أسطول السائقين بالكامل"
-                  >
-                    <span>سجل السائقين</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <div className="text-center bg-muted/40 dark:bg-muted/20 px-3.5 py-1 rounded-xl border border-border/70">
-                  <span className="text-[10px] text-text-muted font-black block leading-tight">الإجمالي</span>
-                  <span className="text-base font-black text-text-main leading-none">{driverStats.total}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 5 Stats Cards Grid: مقيم - موسمي - نقل عمال - عمرة - في إجازة */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {/* 1. مقيم */}
-              <div 
-                onClick={onNavigateToDrivers}
-                className={`p-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-emerald-300 cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-emerald-800 dark:text-emerald-300">مقيم</span>
-                  <div className="w-7 h-7 rounded-xl bg-emerald-100/90 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-700 dark:text-emerald-300">
-                    <UserCheck className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300 leading-none">
-                    {driverStats.resident}
-                  </div>
-                  <span className="text-[10px] text-emerald-600/90 dark:text-emerald-400 font-bold block mt-1">
-                    إقامة نظامية
-                  </span>
-                </div>
-              </div>
-
-              {/* 2. موسمي */}
-              <div 
-                onClick={onNavigateToDrivers}
-                className={`p-3 rounded-2xl bg-purple-50/80 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-purple-300 cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-purple-800 dark:text-purple-300">موسمي</span>
-                  <div className="w-7 h-7 rounded-xl bg-purple-100/90 dark:bg-purple-900/60 flex items-center justify-center text-purple-700 dark:text-purple-300">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-purple-700 dark:text-purple-300 leading-none">
-                    {driverStats.seasonal}
-                  </div>
-                  <span className="text-[10px] text-purple-600/90 dark:text-purple-400 font-bold block mt-1">
-                    رقم حدود / موسم
-                  </span>
-                </div>
-              </div>
-
-              {/* 3. نقل عمال */}
-              <div 
-                onClick={onNavigateToDrivers}
-                className={`p-3 rounded-2xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-sky-300 cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-sky-800 dark:text-sky-300">نقل عمال</span>
-                  <div className="w-7 h-7 rounded-xl bg-sky-100/90 dark:bg-sky-900/60 flex items-center justify-center text-sky-700 dark:text-sky-300">
-                    <Bus className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-sky-700 dark:text-sky-300 leading-none">
-                    {driverStats.laborTransport}
-                  </div>
-                  <span className="text-[10px] text-sky-600/90 dark:text-sky-400 font-bold block mt-1">
-                    عقود وتشغيل
-                  </span>
-                </div>
-              </div>
-
-              {/* 4. عمرة */}
-              <div 
-                onClick={onNavigateToDrivers}
-                className={`p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-amber-300 cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-amber-800 dark:text-amber-300">عمرة</span>
-                  <div className="w-7 h-7 rounded-xl bg-amber-100/90 dark:bg-amber-900/60 flex items-center justify-center text-amber-700 dark:text-amber-300">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-amber-700 dark:text-amber-300 leading-none">
-                    {driverStats.umrah}
-                  </div>
-                  <span className="text-[10px] text-amber-600/90 dark:text-amber-400 font-bold block mt-1">
-                    رحلات المعتمرين
-                  </span>
-                </div>
-              </div>
-
-              {/* 5. في إجازة */}
-              <div 
-                onClick={onNavigateToDrivers}
-                className={`col-span-2 sm:col-span-1 p-3 rounded-2xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 flex flex-col justify-between gap-2 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:scale-102 hover:border-rose-300 cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-rose-800 dark:text-rose-300">في إجازة</span>
-                  <div className="w-7 h-7 rounded-xl bg-rose-100/90 dark:bg-rose-900/60 flex items-center justify-center text-rose-700 dark:text-rose-300">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black text-rose-700 dark:text-rose-300 leading-none">
-                    {driverStats.onLeave}
-                  </div>
-                  <span className="text-[10px] text-rose-600/90 dark:text-rose-400 font-bold block mt-1">
-                    إجازة رسمية
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Signature & Supervision Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 mt-1 border-t border-border/60 px-1">
-              <div className="flex items-center gap-1.5 text-text-muted flex-wrap">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  إشراف ومتابعة إدارة التشغيل:
-                </span>
-                <span 
-                  className="font-handwriting text-base sm:text-lg text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
-                  style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
-                  title="إشراف ومتابعة إدارة التشغيل: الاستاذ عبد الحميد سالمة"
-                >
-                  الاستاذ عبد الحميد سالمة
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                <span className="text-[11px] text-text-muted font-bold">إعداد:</span>
-                <span 
-                  className="font-handwriting text-base sm:text-lg text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
-                  style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
-                  title="إعداد: أحمد عبد الجليل"
-                >
-                  أحمد عبد الجليل
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Right Column (4 cols): TRUSTED ADVISOR (Readiness Score Arc Gauge) */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="px-1">
-            <span className="text-[11px] font-black text-text-muted uppercase tracking-wider">
-              مؤشر الجاهزية التشغيلية (TRUSTED ADVISOR)
-            </span>
-          </div>
-
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="soft-panel p-6 flex flex-col items-center justify-between text-center relative overflow-hidden h-full shadow-md"
-          >
-            {/* Circular Gauge Inspired by Malwarebytes Image 1 */}
-            <div className="relative w-48 h-48 my-2 flex items-center justify-center">
+          {/* Left Arc Gauge: Readiness Score */}
+          <div className="flex items-center gap-5 shrink-0 bg-slate-950/90 p-4 sm:p-5 rounded-2xl border-2 border-blue-900/60 shadow-xl">
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center shrink-0">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
-                {/* Background Track */}
                 <circle
                   cx="60"
                   cy="60"
                   r="48"
-                  className="stroke-blue-100/70 dark:stroke-slate-800"
-                  strokeWidth="11"
+                  className="stroke-slate-800"
+                  strokeWidth="10"
                   fill="transparent"
                   strokeDasharray="301.59"
-                  strokeDashoffset="75.4" // ~270 degree arc
+                  strokeDashoffset="75.4"
                   strokeLinecap="round"
                 />
-                {/* Gradient Definition */}
-                <defs>
-                  <linearGradient id="score-arc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#00BCD4" />
-                    <stop offset="60%" stopColor="#0066F6" />
-                    <stop offset="100%" stopColor="#10B981" />
-                  </linearGradient>
-                </defs>
-                {/* Active Colored Arc */}
                 <circle
                   cx="60"
                   cy="60"
                   r="48"
-                  stroke="url(#score-arc-grad)"
-                  strokeWidth="11"
+                  stroke="#10B981"
+                  strokeWidth="10"
                   fill="transparent"
                   strokeDasharray="301.59"
                   strokeDashoffset={301.59 - ((readinessScore * 0.75) / 100) * 301.59}
@@ -888,69 +695,426 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="transition-all duration-1000 ease-out"
                 />
               </svg>
-
-              {/* Inside Score Content */}
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-[10px] font-black text-text-muted uppercase tracking-wider mb-0.5">
-                  معدل الجاهزية
+                <span className="text-2xl sm:text-3xl font-black font-sans text-white leading-none">
+                  %{readinessScore}
                 </span>
-                <span className="text-4xl font-black font-sans text-text-main tracking-tight">
-                  {readinessScore}
-                </span>
-                <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {readinessScore >= 95 ? 'ممتاز (جاهزية قصوى)' : readinessScore >= 80 ? 'جيد جداً' : 'يحتاج صيانة'}
+                <span className="text-[10px] font-black text-emerald-400 mt-1 uppercase">
+                  جاهزية الأسطول
                 </span>
               </div>
             </div>
 
-            {/* See details pill button */}
-            <button
-              onClick={() => setIsExportModalOpen(true)}
-              className="mt-2 px-6 py-2 bg-blue-50/80 hover:bg-blue-100/90 text-primary border border-blue-200/80 rounded-full text-xs font-black transition-all cursor-pointer shadow-2xs hover:scale-102 active:scale-98"
-            >
-              عرض تقرير الجاهزية الشامل
-            </button>
-
-            {/* Bottom Info Banner */}
-            <div className="mt-5 pt-4 border-t border-border/80 w-full flex flex-col items-center text-center">
-              <div className="flex items-center justify-center gap-2 mb-1.5">
-                <DmtcLogo size="xs" variant="horizontal" />
+            <div className="space-y-2 text-right">
+              <span className="text-xs font-black text-slate-200 block">
+                مؤشر الجاهزية الفنية:
+              </span>
+              <span className="text-xs font-black px-3 py-1 rounded-full inline-block bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/25">
+                {readinessScore >= 95 ? 'ممتاز (جاهزية قصوى)' : readinessScore >= 80 ? 'جيد جداً للعمل' : 'يحتاج فحص وصيانة'}
+              </span>
+              <div className="pt-1 flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-md shadow-blue-600/30 text-center active:scale-95"
+                >
+                  فحص فوري وتصدير
+                </button>
               </div>
-              <p className="text-[10px] text-text-muted font-bold leading-relaxed">
-                موثوقية عالية وتشغيل معتمد لأسطول نقل الحجاج والمعتمرين والكوادر الميدانية.
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ============================================================== */}
+      {/* 2. القسم الأول: إحصائية وتصنيفات أسطول السائقين                */}
+      {/* ============================================================== */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="soft-panel p-5 sm:p-6 bg-surface rounded-3xl border-2 border-indigo-100 dark:border-indigo-950/60 shadow-sm space-y-6"
+      >
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/80">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                  إحصائية وتصنيفات أسطول السائقين
+                </h3>
+                <span className="text-xs font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+                  كافة الكوادر المسجلة
+                </span>
+              </div>
+              <p className="text-xs text-text-muted font-bold mt-0.5">
+                توضيح شامل لكوادر وسائقي الشركة بحسب الوثيقة النظامية، ونوع العمل والتشغيل الميداني، والجاهزية الوظيفية
               </p>
             </div>
-          </motion.div>
-        </div>
-      </div>
+          </div>
 
-      {/* Metrics Summary Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4.5">
-        {statsCards.map((card, idx) => (
-          <motion.div
-            key={card.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05 }}
-            className="soft-panel p-4.5 flex flex-col justify-between gap-3 relative overflow-hidden group hover:border-primary/50 transition-all shadow-xs"
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            {onNavigateToDrivers && (
+              <button
+                type="button"
+                onClick={onNavigateToDrivers}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm shadow-indigo-600/20 cursor-pointer active:scale-95"
+                title="فتح سجل وإدارة سائقين الشركة بالكامل"
+              >
+                <span>فتح سجل السائقين</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <div className="text-center bg-indigo-50 dark:bg-indigo-950/40 px-3.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800">
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-bold block leading-tight">إجمالي السائقين</span>
+              <span className="text-xl font-black text-indigo-900 dark:text-indigo-200 font-mono leading-none">{driverStats.total}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Group 1: تصنيف الوثيقة والصفة النظامية */}
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-800 dark:text-slate-200">
+            <span className="w-1.5 h-4 rounded-full bg-emerald-500" />
+            <span>أولاً: تصنيف الصفة والوثيقة النظامية (الوثائق الرسمية)</span>
+            <span className="text-[10px] text-text-muted font-normal">(مقيم بإقامة نظامية دائمة / موسمي برقم حدود)</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* مقيم */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-4 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-emerald-400 hover:shadow-xs cursor-pointer' : ''}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-black text-emerald-900 dark:text-emerald-200">
+                    سائق مقيم (إقامة نظامية)
+                  </div>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold mt-0.5">
+                    سائقون مسجلون بإقامة نظامية سارية المفعول على كفالة أو عقود عمل مستمرة
+                  </p>
+                </div>
+              </div>
+              <div className="text-left shrink-0">
+                <span className="text-3xl font-black text-emerald-700 dark:text-emerald-300 font-mono leading-none block">
+                  {driverStats.resident}
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                  سائق مقيم
+                </span>
+              </div>
+            </div>
+
+            {/* موسمي */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 flex items-center justify-between gap-4 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-purple-400 hover:shadow-xs cursor-pointer' : ''}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-black text-purple-900 dark:text-purple-200">
+                    سائق موسمي (رقم حدود)
+                  </div>
+                  <p className="text-[11px] text-purple-700 dark:text-purple-400 font-semibold mt-0.5">
+                    سائقون مستقدمون بتأشيرات موسمية برقم حدود لتشغيل مواسم الحج والعمرة والذروة
+                  </p>
+                </div>
+              </div>
+              <div className="text-left shrink-0">
+                <span className="text-3xl font-black text-purple-700 dark:text-purple-300 font-mono leading-none block">
+                  {driverStats.seasonal}
+                </span>
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
+                  سائق موسمي
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Group 2: تصنيف نوع العمل والتشغيل الميداني */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-800 dark:text-slate-200">
+              <span className="w-1.5 h-4 rounded-full bg-blue-500" />
+              <span>ثانياً: تصنيف نوع العمل والتشغيل الميداني (مسارات العمل)</span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-border">
+              توزيع الكوادر: المقيمين • الموسمين • المجموع الكامل
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* 1. نقل عمال */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-sky-50/80 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-sky-400 hover:scale-102 cursor-pointer' : ''}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-sky-950 dark:text-sky-200">نقل عمال</span>
+                  <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 flex items-center justify-center">
+                    <Bus className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-sky-800 dark:text-sky-300/80 font-medium leading-snug">
+                  عقود تشغيل المصانع ونقل الكوادر والشركات (أمكور، رابغ، نيوم...)
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-sky-200/70 dark:border-sky-800/60">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
+                  <span className="text-2xl font-black text-sky-700 dark:text-sky-300 font-mono">
+                    {driverStats.laborTransport.total}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-sky-200/80 dark:border-sky-800/60">
+                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
+                    <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
+                      {driverStats.laborTransport.resident}
+                    </span>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
+                    <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
+                      {driverStats.laborTransport.seasonal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. عمرة */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-amber-400 hover:scale-102 cursor-pointer' : ''}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-amber-950 dark:text-amber-200">عمرة</span>
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300/80 font-medium leading-snug">
+                  رحلات ضيوف الرحمن، مسارات مكة والمدينة المنورة والمطارات والمزارات
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-amber-200/70 dark:border-amber-800/60">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
+                  <span className="text-2xl font-black text-amber-700 dark:text-amber-300 font-mono">
+                    {driverStats.umrah.total}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-amber-200/80 dark:border-amber-800/60">
+                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
+                    <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
+                      {driverStats.umrah.resident}
+                    </span>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
+                    <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
+                      {driverStats.umrah.seasonal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. النقل الدولي سوريا */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-teal-50/80 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-teal-400 hover:scale-102 cursor-pointer' : ''}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-teal-950 dark:text-teal-200">النقل الدولي سوريا</span>
+                  <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 flex items-center justify-center">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-teal-800 dark:text-teal-300/80 font-medium leading-snug">
+                  خطوط الشام والنقل الدولي الخارجي المباشر لنقل الركاب والمعتمرين
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-teal-200/70 dark:border-teal-800/60">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
+                  <span className="text-2xl font-black text-teal-700 dark:text-teal-300 font-mono">
+                    {driverStats.intlSyria.total}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-teal-200/80 dark:border-teal-800/60">
+                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
+                    <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
+                      {driverStats.intlSyria.resident}
+                    </span>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
+                    <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
+                      {driverStats.intlSyria.seasonal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. النقل الدولي اليمن */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-purple-50/80 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-purple-400 hover:scale-102 cursor-pointer' : ''}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-purple-950 dark:text-purple-200">النقل الدولي اليمن</span>
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-purple-800 dark:text-purple-300/80 font-medium leading-snug">
+                  خطوط ومسارات منفذ الوديعة البري والمدن اليمنية لنقل الركاب والزوار
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-purple-200/70 dark:border-purple-800/60">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
+                  <span className="text-2xl font-black text-purple-700 dark:text-purple-300 font-mono">
+                    {driverStats.intlYemen.total}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-purple-200/80 dark:border-purple-800/60">
+                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
+                    <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
+                      {driverStats.intlYemen.resident}
+                    </span>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
+                    <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
+                      {driverStats.intlYemen.seasonal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Group 3: تصنيف الحالة الوظيفية والجاهزية */}
+        <div className="space-y-2.5 pt-2 border-t border-border/60">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-800 dark:text-slate-200">
+            <span className="w-1.5 h-4 rounded-full bg-slate-500" />
+            <span>ثالثاً: تصنيف الحالة التشغيلية والجاهزية الميدانية</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div 
+              onClick={onNavigateToDrivers}
+              className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border flex items-center justify-between cursor-pointer hover:border-emerald-400 transition-all"
+            >
+              <div>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 block">سائق نشط</span>
+                <span className="text-[10px] text-text-muted">متاح وجاهز للتشغيل</span>
+              </div>
+              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{driverStats.active}</span>
+            </div>
+
+            <div 
+              onClick={onNavigateToDrivers}
+              className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border flex items-center justify-between cursor-pointer hover:border-amber-400 transition-all"
+            >
+              <div>
+                <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block">في إجازة</span>
+                <span className="text-[10px] text-text-muted">إجازة دورية / سنوية</span>
+              </div>
+              <span className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">{driverStats.onLeave}</span>
+            </div>
+
+            <div 
+              onClick={onNavigateToDrivers}
+              className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border flex items-center justify-between cursor-pointer hover:border-rose-400 transition-all"
+            >
+              <div>
+                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 block">مستبعد / موقوف</span>
+                <span className="text-[10px] text-text-muted">خارج الخدمة حالياً</span>
+              </div>
+              <span className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">{driverStats.excluded}</span>
+            </div>
+
+            <div 
+              onClick={onNavigateToDrivers}
+              className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border flex items-center justify-between cursor-pointer hover:border-cyan-400 transition-all"
+            >
+              <div>
+                <span className="text-[11px] font-bold text-cyan-700 dark:text-cyan-400 block">بالرقابة والمتابعة</span>
+                <span className="text-[10px] text-text-muted">مطابق لسجل نشط</span>
+              </div>
+              <span className="text-xl font-black text-cyan-600 dark:text-cyan-400 font-mono">{driverStats.activeInMonitoring}</span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+
+
+      {/* ============================================================== */}
+      {/* 4. شريط الإشراف والمتابعة والتوقيع اليدوي الرسمي                */}
+      {/* ============================================================== */}
+      <motion.div 
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="soft-panel p-4 bg-surface rounded-2xl border border-border shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5"
+      >
+        <div className="flex items-center gap-2 text-text-muted flex-wrap">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            إشراف ومتابعة إدارة التشغيل:
+          </span>
+          <span 
+            className="font-handwriting text-lg sm:text-xl text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
+            style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
+            title="إشراف ومتابعة إدارة التشغيل: الاستاذ عبد الحميد سالمة"
           >
-            <div className="flex justify-between items-start relative z-10">
-              <div className="text-right">
-                <p className="text-xs font-bold text-text-muted mb-1.5">{card.label}</p>
-                <h3 className={`text-3xl font-extrabold ${card.valueColor} leading-none tracking-tight`}>{card.value}</h3>
-              </div>
-              <div className={`${card.bg} p-2.5 rounded-2xl group-hover:scale-105 transition-transform shadow-2xs`}>
-                <card.icon className={`${card.color} w-5 h-5`} />
-              </div>
-            </div>
-            <div className="text-[10px] font-semibold mt-auto pt-2 border-t border-border/40 flex items-center gap-1.5">
-               <span className={`px-2 py-0.5 rounded-md truncate font-bold ${card.trendColor}`}>
-                 {card.trend}
-               </span>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+            الاستاذ عبد الحميد سالمة
+          </span>
+        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <span className="text-xs text-text-muted font-bold">إعداد وتدقيق:</span>
+          <span 
+            className="font-handwriting text-lg sm:text-xl text-primary font-bold tracking-normal select-none inline-block drop-shadow-2xs hover:scale-105 transition-transform"
+            style={{ fontFamily: "'Aref Ruqaa', cursive", transform: 'rotate(-1.5deg)' }}
+            title="إعداد وتدقيق: أحمد عبد الجليل"
+          >
+            أحمد عبد الجليل
+          </span>
+        </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Model Distribution by Location Filter Card */}

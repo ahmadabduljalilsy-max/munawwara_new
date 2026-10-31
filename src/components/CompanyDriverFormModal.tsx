@@ -563,14 +563,14 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <span className="text-red-500 font-bold">*</span>
                     </label>
                     <span className="text-[10px] text-text-muted font-bold">
-                      (نقل عمال / عمرة)
+                      (نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'نقل عمال', workplace: 'نقل عمال' }))}
-                      className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
                         formData.driverClassification === 'نقل عمال'
                           ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
@@ -585,7 +585,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'عمرة', workplace: 'عمرة' }))}
-                      className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
                         formData.driverClassification === 'عمرة'
                           ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 text-amber-800 dark:text-amber-200 ring-2 ring-amber-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
@@ -595,6 +595,36 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <span>عمرة</span>
                       {formData.driverClassification === 'عمرة' && (
                         <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'النقل الدولي سوريا', workplace: 'النقل الدولي سوريا' }))}
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                        formData.driverClassification === 'النقل الدولي سوريا'
+                          ? 'bg-teal-50 dark:bg-teal-950/50 border-teal-500 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
+                      }`}
+                    >
+                      <Globe className="w-4 h-4 text-teal-600" />
+                      <span>النقل الدولي سوريا</span>
+                      {formData.driverClassification === 'النقل الدولي سوريا' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'النقل الدولي اليمن', workplace: 'النقل الدولي اليمن' }))}
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                        formData.driverClassification === 'النقل الدولي اليمن'
+                          ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-500 text-purple-800 dark:text-purple-200 ring-2 ring-purple-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
+                      }`}
+                    >
+                      <Globe className="w-4 h-4 text-purple-600" />
+                      <span>النقل الدولي اليمن</span>
+                      {formData.driverClassification === 'النقل الدولي اليمن' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
                       )}
                     </button>
                   </div>

@@ -110,7 +110,7 @@ export interface AppSettings {
 export type DriverType = 'مقيم' | 'مؤقت' | 'موسمي';
 export type DriverStatus = 'نشط' | 'في إجازة' | 'مستبعد';
 export type DriverResponseType = 'محايل عسير' | 'ينبع' | 'القصيم' | 'الرياض' | 'الترددية';
-export type DriverClassification = 'نقل عمال' | 'عمرة';
+export type DriverClassification = 'نقل عمال' | 'عمرة' | 'النقل الدولي سوريا' | 'النقل الدولي اليمن';
 
 export interface CompanyDriver {
   id: string;

@@ -195,16 +195,18 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     const onLeave = drivers.filter(d => d.status === 'في إجازة').length;
     const excluded = drivers.filter(d => d.status === 'مستبعد').length;
 
-    // Driver Classification: نقل عمال / عمرة (auto 'نقل عمال' if active in monitoring)
+    // Driver Classification: نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن (auto 'نقل عمال' if active in monitoring)
     const laborTransport = drivers.filter(d => getDriverClassification(d, workers) === 'نقل عمال').length;
     const umrah = drivers.filter(d => getDriverClassification(d, workers) === 'عمرة').length;
+    const intlSyria = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي سوريا').length;
+    const intlYemen = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي اليمن').length;
 
     // Active in Monitoring count (الرقابة والمتابعة - غير منتهي عمله)
     const activeInMonitoring = drivers.filter(d => isDriverActiveInMonitoring(d, workers)).length;
 
     const uniqueNationalities = Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).length;
 
-    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, umrah, activeInMonitoring, uniqueNationalities };
+    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, umrah, intlSyria, intlYemen, activeInMonitoring, uniqueNationalities };
   }, [drivers, workers]);
 
   const nationalities = useMemo(() => {
@@ -743,9 +745,11 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     onChange={(e) => setSelectedClassification(e.target.value)}
                     className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
                   >
-                    <option value="">كافة التصنيفات (نقل عمال / عمرة)</option>
+                    <option value="">كافة التصنيفات</option>
                     <option value="نقل عمال">🚌 نقل عمال ({stats.laborTransport})</option>
                     <option value="عمرة">🕌 عمرة ({stats.umrah})</option>
+                    <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا ({stats.intlSyria})</option>
+                    <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن ({stats.intlYemen})</option>
                   </select>
                 </div>
                 {(selectedStatus !== 'all' || selectedNationality || selectedType !== 'all' || selectedClassification || searchTerm) && (
@@ -845,14 +849,18 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
                     {/* Operational Tags (Classification, Monitoring, Bus, Nationality) */}
                     <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
-                      {/* Classification Badge (نقل عمال / عمرة) */}
+                      {/* Classification Badge */}
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-bold ${
                         classification === 'عمرة'
                           ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                          : classification === 'النقل الدولي سوريا'
+                          ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                          : classification === 'النقل الدولي اليمن'
+                          ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                           : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                       }`}>
                         <Briefcase className="w-2.5 h-2.5" />
-                        <span>{classification === 'عمرة' ? 'عمرة' : 'نقل عمال'}</span>
+                        <span>{classification}</span>
                       </span>
 
                       {/* Active in Monitoring Live Ping */}

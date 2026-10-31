@@ -55,6 +55,7 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
   const [sheetSelectedIds, setSheetSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [filterClassification, setFilterClassification] = useState<string>('all');
   
   // Color scheme: 'color' (official DMTC colors) vs 'mono' (high-contrast black & white for scanners)
   const [printColorScheme, setPrintColorScheme] = useState<'color' | 'mono'>('color');
@@ -158,10 +159,13 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
     return sortedDrivers.filter(d => {
       const effType = resolveDriverType(d);
       if (filterType !== 'all' && effType !== filterType) return false;
+      const classif = getDriverClassification(d, workers);
+      if (filterClassification !== 'all' && classif !== filterClassification) return false;
       if (!searchTerm.trim()) return true;
       const term = searchTerm.toLowerCase().trim();
       return (
         d.fullName.toLowerCase().includes(term) ||
+        classif.toLowerCase().includes(term) ||
         String(d.serialNumber || '').includes(term) ||
         (d.iqamaNumber && d.iqamaNumber.includes(term)) ||
         (d.borderNumber && d.borderNumber.includes(term)) ||
@@ -169,7 +173,7 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
         (d.nationality && d.nationality.toLowerCase().includes(term))
       );
     });
-  }, [sortedDrivers, searchTerm, filterType]);
+  }, [sortedDrivers, searchTerm, filterType, filterClassification, workers]);
 
   // Toggle selection for 6-card sheet
   const toggleSheetDriver = (id: string) => {
@@ -473,6 +477,44 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
   // Selected drivers for sheet mode (up to 6)
   const currentSheetDrivers = sortedDrivers.filter(d => sheetSelectedIds.includes(d.id));
 
+  // Helper for card classification colors
+  const getClassificationCardStyle = (classification: string, isMonoMode: boolean) => {
+    if (isMonoMode) {
+      return {
+        backgroundColor: '#FFFFFF',
+        color: '#000000',
+        border: '1.5px solid #000000'
+      };
+    }
+    switch (classification) {
+      case 'عمرة':
+        return {
+          backgroundColor: '#FEF3C7',
+          color: '#92400E',
+          border: '1.5px solid #FDE68A'
+        };
+      case 'النقل الدولي سوريا':
+        return {
+          backgroundColor: '#ECFDF5',
+          color: '#065F46',
+          border: '1.5px solid #A7F3D0'
+        };
+      case 'النقل الدولي اليمن':
+        return {
+          backgroundColor: '#FAF5FF',
+          color: '#6B21A8',
+          border: '1.5px solid #E9D5FF'
+        };
+      case 'نقل عمال':
+      default:
+        return {
+          backgroundColor: '#EFF6FF',
+          color: '#1E40AF',
+          border: '1.5px solid #BFDBFE'
+        };
+    }
+  };
+
   // Render a single driver badge component with explicit RGB/HEX inline styles
   const renderDriverCard = (driver: CompanyDriver, indexNumber?: number) => {
     const effType = resolveDriverType(driver);
@@ -483,6 +525,7 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
     const rawId = (isResident ? driver.iqamaNumber : driver.borderNumber) || driver.iqamaNumber || driver.borderNumber || '';
     const idValue = rawId || '—';
     const isMono = printColorScheme === 'mono';
+    const classifCardStyle = getClassificationCardStyle(classif, isMono);
 
     return (
       <div 
@@ -779,15 +822,16 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                   {effType}
                 </span>
                 <span style={{
-                  padding: '1.5px 6px',
+                  padding: '1.5px 5.5px',
                   borderRadius: '4px',
-                  fontSize: '8.5px',
+                  fontSize: '8px',
                   fontWeight: 800,
-                  backgroundColor: isMono ? '#FFFFFF' : '#EFF6FF',
-                  color: isMono ? '#000000' : '#1E40AF',
-                  border: isMono ? '1.5px solid #000000' : '1.5px solid #BFDBFE',
+                  backgroundColor: classifCardStyle.backgroundColor,
+                  color: classifCardStyle.color,
+                  border: classifCardStyle.border,
                   fontFamily: "'Tajawal', Tahoma, sans-serif",
-                  display: 'inline-block'
+                  display: 'inline-block',
+                  whiteSpace: 'nowrap'
                 }}>
                   {classif}
                 </span>
@@ -1128,11 +1172,14 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                     }}
                     className="w-full p-2.5 bg-surface border border-border rounded-xl text-xs font-bold outline-none focus:border-primary shadow-xs"
                   >
-                    {sortedDrivers.map(d => (
-                      <option key={d.id} value={d.id}>
-                        #{d.serialNumber || 1} - {d.fullName} ({resolveDriverType(d)})
-                      </option>
-                    ))}
+                    {sortedDrivers.map(d => {
+                      const cl = getDriverClassification(d, workers);
+                      return (
+                        <option key={d.id} value={d.id}>
+                          #{d.serialNumber || 1} - {d.fullName} ({resolveDriverType(d)} • {cl})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1155,7 +1202,17 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                       </div>
                       <div className="text-[11px] text-text-muted flex items-center justify-between">
                         <span>التصنيف:</span>
-                        <span className="font-bold text-emerald-600">{getDriverClassification(currentSingleDriver, workers)}</span>
+                        <span className={`font-bold ${
+                          getDriverClassification(currentSingleDriver, workers) === 'عمرة'
+                            ? 'text-amber-600'
+                            : getDriverClassification(currentSingleDriver, workers) === 'النقل الدولي سوريا'
+                            ? 'text-teal-600'
+                            : getDriverClassification(currentSingleDriver, workers) === 'النقل الدولي اليمن'
+                            ? 'text-purple-600'
+                            : 'text-blue-600'
+                        }`}>
+                          {getDriverClassification(currentSingleDriver, workers)}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -1201,22 +1258,36 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                   </div>
                 </div>
 
-                {/* Search in list */}
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                  <input 
-                    type="text"
-                    placeholder="ابحث بالاسم أو الرقم..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pr-8 pl-3 py-2 bg-surface border border-border rounded-xl text-xs outline-none"
-                  />
+                {/* Search & Filter in list */}
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input 
+                      type="text"
+                      placeholder="ابحث بالاسم، الرقم، أو التصنيف..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pr-8 pl-3 py-2 bg-surface border border-border rounded-xl text-xs outline-none"
+                    />
+                  </div>
+                  <select
+                    value={filterClassification}
+                    onChange={(e) => setFilterClassification(e.target.value)}
+                    className="w-full p-2 bg-surface border border-border rounded-xl text-xs font-bold outline-none shadow-2xs"
+                  >
+                    <option value="all">كافة التصنيفات (الكل)</option>
+                    <option value="نقل عمال">🚌 نقل عمال</option>
+                    <option value="عمرة">🕌 عمرة</option>
+                    <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا</option>
+                    <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن</option>
+                  </select>
                 </div>
 
                 {/* Driver Checkbox List */}
                 <div className="flex-1 max-h-[300px] overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar">
                   {filteredList.map(driver => {
                     const isChecked = sheetSelectedIds.includes(driver.id);
+                    const driverClass = getDriverClassification(driver, workers);
                     return (
                       <div
                         key={driver.id}
@@ -1238,9 +1309,22 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                           </span>
                           <span className="truncate">{driver.fullName}</span>
                         </div>
-                        <span className="text-[10px] text-text-muted shrink-0">
-                          {resolveDriverType(driver)}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold ${
+                            driverClass === 'عمرة'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : driverClass === 'النقل الدولي سوريا'
+                              ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300'
+                              : driverClass === 'النقل الدولي اليمن'
+                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                          }`}>
+                            {driverClass}
+                          </span>
+                          <span className="text-[10px] text-text-muted">
+                            {resolveDriverType(driver)}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}

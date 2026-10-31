@@ -352,10 +352,14 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                       classification === 'عمرة'
                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                        : classification === 'النقل الدولي سوريا'
+                        ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-300 dark:border-teal-700'
+                        : classification === 'النقل الدولي اليمن'
+                        ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700'
                         : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                     }`}>
                       <Briefcase className="w-3 h-3" />
-                      <span>{classification === 'عمرة' ? 'عمرة' : 'نقل عمال'}</span>
+                      <span>{classification}</span>
                     </span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-snug">
@@ -600,11 +604,20 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${
                           classification === 'عمرة'
                             ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                            : classification === 'النقل الدولي سوريا'
+                            ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-300 dark:border-teal-700'
+                            : classification === 'النقل الدولي اليمن'
+                            ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700'
                             : inMonitoring
                               ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
                               : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                         }`}>
-                          <span>{classification === 'عمرة' ? '🕌 عمرة' : '🚌 نقل عمال'}</span>
+                          <span>
+                            {classification === 'عمرة' ? '🕌 عمرة' : 
+                             classification === 'النقل الدولي سوريا' ? '🌍 النقل الدولي سوريا' : 
+                             classification === 'النقل الدولي اليمن' ? '🌍 النقل الدولي اليمن' : 
+                             '🚌 نقل عمال'}
+                          </span>
                         </span>
                         {inMonitoring && (
                           <span className="text-[10px] font-bold bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-200 px-2 py-0.5 rounded-md border border-cyan-300 dark:border-cyan-700 flex items-center gap-1" title="نشط حالياً في الرقابة والمتابعة">

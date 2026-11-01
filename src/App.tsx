@@ -28,7 +28,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
 import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
 import { generatePdf } from './lib/pdfService';
-import { isDriverActiveInMonitoring, getDriverClassification, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama, isSchoolTransportLocation } from './lib/driverUtils';
+import { isDriverActiveInMonitoring, isDriverEndedInMonitoring, getDriverClassification, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama, isSchoolTransportLocation } from './lib/driverUtils';
 import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResponse } from './types';
 
 function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
@@ -203,6 +203,56 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       setActiveTab('dashboard');
     }
   }, [activeTab, isBusSupervisor, isReadOnly, isSuperAdmin]);
+
+  // مزامنة تلقائية لحظية ومستمرة بين الرقابة والمتابعة وأسطول السائقين:
+  // عندما ينتهي عمل السائق في الرقابة والمتابعة (endDate < today) يصنف تلقائياً "عمرة"
+  // وعندما يضاف أو يكون نشطاً في النقل المدرسي -> "النقل المدرسي"، وفي غيره -> "نقل عمال"
+  useEffect(() => {
+    if (!companyDrivers.length || !workers.length || !canEdit) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const staleDrivers: Array<{ id: string; data: Record<string, any> }> = [];
+
+    companyDrivers.forEach(driver => {
+      const targetClass = getDriverClassification(driver, workers, today);
+      const matchedWorker = getMatchingWorkerByIqama<Worker>(driver, workers);
+
+      const needsClassUpdate = driver.driverClassification !== targetClass;
+      let needsWorkplaceUpdate = false;
+      let targetWorkplace = driver.workplace;
+
+      if (matchedWorker) {
+        const isEnded = Boolean(matchedWorker.endDate && matchedWorker.endDate.trim() && matchedWorker.endDate < today);
+        if (isEnded) {
+          if (!driver.workplace || driver.workplace.includes('نقل عمال') || driver.workplace.includes('مدرسي')) {
+            targetWorkplace = 'عمرة';
+            needsWorkplaceUpdate = true;
+          }
+        }
+      }
+
+      if (needsClassUpdate || needsWorkplaceUpdate) {
+        staleDrivers.push({
+          id: driver.id,
+          data: {
+            driverClassification: targetClass,
+            ...(needsWorkplaceUpdate ? { workplace: targetWorkplace } : {}),
+            updatedAt: serverTimestamp()
+          }
+        });
+      }
+    });
+
+    if (staleDrivers.length > 0) {
+      const batch = writeBatch(db);
+      staleDrivers.slice(0, 100).forEach(item => {
+        batch.update(doc(db, 'company_drivers', item.id), item.data);
+      });
+      batch.commit().catch(err => {
+        console.warn('Auto-sync drivers with monitoring notice:', err);
+      });
+    }
+  }, [companyDrivers, workers, canEdit]);
 
   const activeWorkersCount = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -397,6 +447,52 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         });
       }
 
+      // 4. التحديث اللحظي بين الرقابة والمتابعة وأسطول السائقين:
+      // عند إضافة أو تعديل سائق في الرقابة والمتابعة يتم تحديث تصنيفه ومكان عمله في أسطول السائقين فورياً
+      const today = new Date().toISOString().split('T')[0];
+      const isEnded = Boolean(cleaned.endDate && String(cleaned.endDate).trim() && String(cleaned.endDate) < today);
+
+      let targetClass: string;
+      let targetWorkplace: string;
+
+      if (isEnded) {
+        // قاعدة العمل الأساسية: عندما ينتهي عمل السائق بالرقابة والمتابعة يصنف تلقائياً عمرة
+        targetClass = 'عمرة';
+        targetWorkplace = 'عمرة';
+      } else {
+        const isSchool = isSchoolTransportLocation(cleaned.workplace) || isSchoolTransportLocation(cleaned.clientName);
+        targetClass = isSchool ? 'النقل المدرسي' : 'نقل عمال';
+        targetWorkplace = cleaned.workplace || cleaned.clientName || (isSchool ? 'النقل المدرسي' : 'نقل عمال');
+      }
+
+      const matchedCompanyDrivers = companyDrivers.filter(d => {
+        const dIqama = (d.iqamaNumber || '').trim();
+        const dBorder = (d.borderNumber || '').trim();
+        return (
+          (cleanIqama && (dIqama === cleanIqama || dBorder === cleanIqama)) ||
+          (cleanNationalId && (dIqama === cleanNationalId || dBorder === cleanNationalId))
+        );
+      });
+
+      matchedCompanyDrivers.forEach(matchedDriver => {
+        const driverUpdates: Record<string, any> = {
+          driverClassification: targetClass,
+          workplace: targetWorkplace,
+          updatedAt: serverTimestamp()
+        };
+
+        if (cleaned.mobileNumber && !matchedDriver.mobileNumber) {
+          driverUpdates.mobileNumber = cleaned.mobileNumber;
+        }
+
+        const workerBus = cleaned.assignedBusOperationalNumber || cleaned.assignedBusPlateNumber;
+        if (workerBus) {
+          driverUpdates.busNumber = workerBus;
+        }
+
+        batch.update(doc(db, 'company_drivers', matchedDriver.id), driverUpdates);
+      });
+
       await batch.commit();
       setIsWorkerFormOpen(false);
       setEditingWorker(null);
@@ -450,8 +546,34 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
   const handleDeleteWorker = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'workers', id));
-      alert('تم حذف بيانات العامل بنجاح.');
+      const deletedWorker = workers.find(w => w.id === id);
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'workers', id));
+
+      if (deletedWorker) {
+        const cleanIqama = (deletedWorker.iqamaNumber || '').trim();
+        const cleanNationalId = (deletedWorker.nationalId || '').trim();
+
+        const matchedDrivers = companyDrivers.filter(d => {
+          const dIqama = (d.iqamaNumber || '').trim();
+          const dBorder = (d.borderNumber || '').trim();
+          return (
+            (cleanIqama && (dIqama === cleanIqama || dBorder === cleanIqama)) ||
+            (cleanNationalId && (dIqama === cleanNationalId || dBorder === cleanNationalId))
+          );
+        });
+
+        matchedDrivers.forEach(d => {
+          batch.update(doc(db, 'company_drivers', d.id), {
+            driverClassification: 'عمرة',
+            workplace: 'عمرة',
+            updatedAt: serverTimestamp()
+          });
+        });
+      }
+
+      await batch.commit();
+      alert('تم حذف بيانات العامل بنجاح وتحديث تصنيف السائق المرتبط إلى عمرة.');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `workers/${id}`);
     }
@@ -818,16 +940,18 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       let updatedCount = 0;
       let schoolCount = 0;
       let laborCount = 0;
+      let umrahCount = 0;
+      const today = new Date().toISOString().split('T')[0];
       const updates: Array<{ id: string; data: Record<string, any> }> = [];
 
       for (const driver of companyDrivers) {
         const matchedWorker = getMatchingWorkerByIqama<Worker>(driver, workers);
-        const resolvedClass = getDriverClassification(driver, workers);
+        const resolvedClass = getDriverClassification(driver, workers, today);
         
         let driverChanged = false;
         const driverUpdates: Record<string, any> = {};
 
-        // 1. Classification update (نقل مدرسي vs نقل عمال vs عمرة vs دولي)
+        // 1. Classification update (عمرة if work ended, نقل مدرسي vs نقل عمال vs دولي)
         if (driver.driverClassification !== resolvedClass) {
           driverUpdates.driverClassification = resolvedClass;
           driverChanged = true;
@@ -835,8 +959,10 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
         // 2. Monitoring worker specific updates if matched
         if (matchedWorker) {
-          if (matchedWorker.workplace && driver.workplace !== matchedWorker.workplace) {
-            driverUpdates.workplace = matchedWorker.workplace;
+          const isEnded = Boolean(matchedWorker.endDate && matchedWorker.endDate.trim() && matchedWorker.endDate < today);
+          const targetWp = isEnded ? 'عمرة' : (matchedWorker.workplace || resolvedClass);
+          if (driver.workplace !== targetWp) {
+            driverUpdates.workplace = targetWp;
             driverChanged = true;
           }
           const busNum = matchedWorker.assignedBusOperationalNumber || matchedWorker.assignedBusPlateNumber;
@@ -862,7 +988,8 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           driverUpdates.updatedAt = serverTimestamp();
           updates.push({ id: driver.id, data: driverUpdates });
           if (resolvedClass === 'النقل المدرسي') schoolCount++;
-          if (resolvedClass === 'نقل عمال') laborCount++;
+          else if (resolvedClass === 'نقل عمال') laborCount++;
+          else if (resolvedClass === 'عمرة') umrahCount++;
           updatedCount++;
         }
       }
@@ -879,6 +1006,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         }
         alert(`تمت مزامنة وتحديث بيانات السائقين بنجاح!
 • إجمالي السائقين المحدثين: ${updatedCount} سائق
+• تصنيف العمرة (منتهي عمله بالرقابة / عمرة): ${umrahCount}
 • تصنيف النقل المدرسي (ينبع - محايل عسير - القصيم): ${schoolCount}
 • تصنيف نقل العمال: ${laborCount}`);
       } else {

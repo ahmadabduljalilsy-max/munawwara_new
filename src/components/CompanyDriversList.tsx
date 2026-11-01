@@ -40,7 +40,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
-import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompanyDriverDetailsModal } from './CompanyDriverDetailsModal';
 import { DriverResponseLinkModal } from './DriverResponseLinkModal';
@@ -816,6 +816,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               const statusBadge = getStatusBadge(driver.status);
               const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
               const inMonitoring = Boolean(inMonitoringWorker);
+              const isEndedInMonitoring = isDriverEndedInMonitoring(driver, workers);
               const classification = getDriverClassification(driver, workers);
               const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
               const driverRespList = driverResponses.filter(
@@ -901,6 +902,14 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 font-bold" title="نشط حالياً بنظام الرقابة والمتابعة وعمليات نقل العمال">
                           <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
                           <span>بالرقابة</span>
+                        </span>
+                      )}
+
+                      {/* Ended in Monitoring Tag */}
+                      {isEndedInMonitoring && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300/60 font-bold" title="انتهى عمل السائق في الرقابة والمتابعة وصُنّف تلقائياً عمرة">
+                          <Clock className="w-2.5 h-2.5 text-amber-600" />
+                          <span>منتهي بالرقابة</span>
                         </span>
                       )}
 

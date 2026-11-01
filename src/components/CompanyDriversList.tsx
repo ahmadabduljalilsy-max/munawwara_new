@@ -36,7 +36,8 @@ import {
   MessageCircle,
   LayoutGrid,
   ListFilter,
-  Printer
+  Printer,
+  GraduationCap
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
@@ -61,6 +62,7 @@ interface CompanyDriversListProps {
   onDeleteDriverResponse?: (responseId: string) => Promise<void>;
   onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onExport: (data: CompanyDriver[]) => void;
+  onSyncWithMonitoring?: () => Promise<void> | void;
 }
 
 export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
@@ -77,7 +79,8 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   onOpenPublicResponsePage,
   onDeleteDriverResponse,
   onImport,
-  onExport
+  onExport,
+  onSyncWithMonitoring
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -94,6 +97,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [isPrintCardModalOpen, setIsPrintCardModalOpen] = useState(false);
   const [cardModalInitialDriver, setCardModalInitialDriver] = useState<CompanyDriver | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
+  const [isSyncingMonitoring, setIsSyncingMonitoring] = useState(false);
   const itemsPerPage = 36;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -195,8 +199,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     const onLeave = drivers.filter(d => d.status === 'في إجازة').length;
     const excluded = drivers.filter(d => d.status === 'مستبعد').length;
 
-    // Driver Classification: نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن (auto 'نقل عمال' if active in monitoring)
+    // Driver Classification: نقل عمال / النقل المدرسي / عمرة / النقل الدولي سوريا / النقل الدولي اليمن
     const laborTransport = drivers.filter(d => getDriverClassification(d, workers) === 'نقل عمال').length;
+    const schoolTransport = drivers.filter(d => getDriverClassification(d, workers) === 'النقل المدرسي').length;
     const umrah = drivers.filter(d => getDriverClassification(d, workers) === 'عمرة').length;
     const intlSyria = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي سوريا').length;
     const intlYemen = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي اليمن').length;
@@ -206,7 +211,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
     const uniqueNationalities = Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).length;
 
-    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, umrah, intlSyria, intlYemen, activeInMonitoring, uniqueNationalities };
+    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, schoolTransport, umrah, intlSyria, intlYemen, activeInMonitoring, uniqueNationalities };
   }, [drivers, workers]);
 
   const nationalities = useMemo(() => {
@@ -425,6 +430,27 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4 text-primary" />
               <span className="hidden sm:inline">تحميل النموذج</span>
+            </button>
+          )}
+
+          {/* Sync Drivers with Monitoring */}
+          {isAdmin && onSyncWithMonitoring && (
+            <button 
+              type="button"
+              disabled={isSyncingMonitoring}
+              onClick={async () => {
+                try {
+                  setIsSyncingMonitoring(true);
+                  await onSyncWithMonitoring();
+                } finally {
+                  setIsSyncingMonitoring(false);
+                }
+              }}
+              className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50"
+              title="مزامنة وتحديث بيانات وتصنيفات السائقين ومواقع عملهم وحافلاتهم استناداً إلى سجلات الرقابة والمتابعة والنقل المدرسي"
+            >
+              <RefreshCw className={`w-4 h-4 text-emerald-200 ${isSyncingMonitoring ? 'animate-spin' : ''}`} />
+              <span>{isSyncingMonitoring ? 'جارٍ التحديث...' : 'تحديث من الرقابة والمتابعة'}</span>
             </button>
           )}
 
@@ -747,6 +773,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                   >
                     <option value="">كافة التصنيفات</option>
                     <option value="نقل عمال">🚌 نقل عمال ({stats.laborTransport})</option>
+                    <option value="النقل المدرسي">🏫 النقل المدرسي ({stats.schoolTransport})</option>
                     <option value="عمرة">🕌 عمرة ({stats.umrah})</option>
                     <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا ({stats.intlSyria})</option>
                     <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن ({stats.intlYemen})</option>
@@ -857,9 +884,15 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                           ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
                           : classification === 'النقل الدولي اليمن'
                           ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                          : classification === 'النقل المدرسي'
+                          ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
                           : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                       }`}>
-                        <Briefcase className="w-2.5 h-2.5" />
+                        {classification === 'النقل المدرسي' ? (
+                          <GraduationCap className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300" />
+                        ) : (
+                          <Briefcase className="w-2.5 h-2.5" />
+                        )}
                         <span>{classification}</span>
                       </span>
 

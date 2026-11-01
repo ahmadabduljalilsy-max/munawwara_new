@@ -31,7 +31,8 @@ import {
   FileSpreadsheet,
   Download,
   Briefcase,
-  Printer
+  Printer,
+  GraduationCap
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType, Worker } from '../types';
 import { copyDriverResponsesToGoogleSheetsClipboard, exportDriverResponsesToExcel } from '../lib/excelService';
@@ -608,6 +609,8 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                             ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-300 dark:border-teal-700'
                             : classification === 'النقل الدولي اليمن'
                             ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700'
+                            : classification === 'النقل المدرسي'
+                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-400 dark:border-amber-600 shadow-2xs'
                             : inMonitoring
                               ? 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
                               : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
@@ -616,6 +619,7 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                             {classification === 'عمرة' ? '🕌 عمرة' : 
                              classification === 'النقل الدولي سوريا' ? '🌍 النقل الدولي سوريا' : 
                              classification === 'النقل الدولي اليمن' ? '🌍 النقل الدولي اليمن' : 
+                             classification === 'النقل المدرسي' ? '🏫 النقل المدرسي (ينبع - محايل عسير - القصيم)' :
                              '🚌 نقل عمال'}
                           </span>
                         </span>

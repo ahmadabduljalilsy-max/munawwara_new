@@ -13,10 +13,11 @@ import {
   MapPin, 
   Bus,
   AlertCircle,
-  Briefcase
+  Briefcase,
+  GraduationCap
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverClassification, Bus as BusType, Worker } from '../types';
-import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker, isSchoolTransportLocation } from '../lib/driverUtils';
 import { Activity, UserX, Clock, Calendar } from 'lucide-react';
 
 interface CompanyDriverFormModalProps {
@@ -510,13 +511,17 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                     value={formData.iqamaNumber}
                     onChange={(e) => {
                       const val = e.target.value;
-                      const inMonitoring = isDriverActiveInMonitoring({ iqamaNumber: val }, workers);
+                      const matchedWorker = getMatchingActiveMonitoringWorker({ iqamaNumber: val }, workers);
+                      const inMonitoring = Boolean(matchedWorker);
+                      const autoClass = matchedWorker
+                        ? (isSchoolTransportLocation(matchedWorker.workplace) || isSchoolTransportLocation(matchedWorker.clientName) ? 'النقل المدرسي' : 'نقل عمال')
+                        : undefined;
                       setFormData(prev => ({
                         ...prev,
                         iqamaNumber: val,
                         driverType: val.trim() ? 'مقيم' : (prev.borderNumber.trim() ? 'موسمي' : prev.driverType),
-                        driverClassification: inMonitoring ? 'نقل عمال' : prev.driverClassification,
-                        workplace: inMonitoring ? 'نقل عمال' : prev.workplace
+                        driverClassification: inMonitoring && autoClass ? autoClass : prev.driverClassification,
+                        workplace: inMonitoring ? (matchedWorker?.workplace || autoClass || '') : prev.workplace
                       }));
                     }}
                     className="w-full px-4 py-3 bg-background border border-border focus:border-primary rounded-2xl outline-none text-sm font-bold text-text-main shadow-2xs transition-all text-right font-mono"
@@ -553,7 +558,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                 </div>
               </div>
 
-              {/* Replaced Workplace with Driver Classification (نقل عمال / عمرة) & Bus Number */}
+              {/* Driver Classification (نقل عمال / النقل المدرسي / عمرة / دولي) & Bus Number */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -563,51 +568,69 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <span className="text-red-500 font-bold">*</span>
                     </label>
                     <span className="text-[10px] text-text-muted font-bold">
-                      (نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
+                      (نقل عمال / مدرسي / عمرة / دولي)
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'نقل عمال', workplace: 'نقل عمال' }))}
-                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold text-xs ${
                         formData.driverClassification === 'نقل عمال'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-800 dark:text-emerald-200 ring-2 ring-emerald-500/20 shadow-xs'
+                          ? 'bg-sky-50 dark:bg-sky-950/50 border-sky-500 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
                       }`}
                     >
-                      <Bus className="w-4 h-4 text-emerald-600" />
+                      <Bus className="w-4 h-4 text-sky-600" />
                       <span>نقل عمال</span>
                       {formData.driverClassification === 'نقل عمال' && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" />
                       )}
                     </button>
                     <button
                       type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'النقل المدرسي', workplace: prev.workplace && isSchoolTransportLocation(prev.workplace) ? prev.workplace : 'النقل المدرسي (ينبع / محايل عسير / القصيم)' }))}
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 font-bold text-xs ${
+                        formData.driverClassification === 'النقل المدرسي'
+                          ? 'bg-amber-100 dark:bg-amber-950/70 border-amber-500 text-amber-900 dark:text-amber-200 ring-2 ring-amber-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <GraduationCap className="w-4 h-4 text-amber-700 dark:text-amber-300" />
+                        <span>النقل المدرسي</span>
+                        {formData.driverClassification === 'النقل المدرسي' && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
+                        )}
+                      </div>
+                      <span className="text-[9px] text-amber-800/80 dark:text-amber-300/80 font-medium">ينبع • محايل عسير • القصيم</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'عمرة', workplace: 'عمرة' }))}
-                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold text-xs ${
                         formData.driverClassification === 'عمرة'
-                          ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 text-amber-800 dark:text-amber-200 ring-2 ring-amber-500/20 shadow-xs'
+                          ? 'bg-orange-50 dark:bg-orange-950/50 border-orange-500 text-orange-800 dark:text-orange-200 ring-2 ring-orange-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
                       }`}
                     >
                       <span className="text-base leading-none">🕌</span>
                       <span>عمرة</span>
                       {formData.driverClassification === 'عمرة' && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-orange-600" />
                       )}
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'النقل الدولي سوريا', workplace: 'النقل الدولي سوريا' }))}
-                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold text-xs ${
                         formData.driverClassification === 'النقل الدولي سوريا'
                           ? 'bg-teal-50 dark:bg-teal-950/50 border-teal-500 text-teal-800 dark:text-teal-200 ring-2 ring-teal-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
                       }`}
                     >
                       <Globe className="w-4 h-4 text-teal-600" />
-                      <span>النقل الدولي سوريا</span>
+                      <span>دولي سوريا</span>
                       {formData.driverClassification === 'النقل الدولي سوريا' && (
                         <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
                       )}
@@ -615,14 +638,14 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, driverClassification: 'النقل الدولي اليمن', workplace: 'النقل الدولي اليمن' }))}
-                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-2 font-bold text-xs ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold text-xs ${
                         formData.driverClassification === 'النقل الدولي اليمن'
                           ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-500 text-purple-800 dark:text-purple-200 ring-2 ring-purple-500/20 shadow-xs'
                           : 'bg-background border-border hover:border-slate-300 dark:hover:border-slate-700 text-text-muted'
                       }`}
                     >
                       <Globe className="w-4 h-4 text-purple-600" />
-                      <span>النقل الدولي اليمن</span>
+                      <span>دولي اليمن</span>
                       {formData.driverClassification === 'النقل الدولي اليمن' && (
                         <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
                       )}
@@ -632,12 +655,18 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                   {/* Active monitoring notice if applicable */}
                   {(() => {
                     const matchedWorker = getMatchingActiveMonitoringWorker({ iqamaNumber: formData.iqamaNumber }, workers);
-                    return matchedWorker ? (
+                    if (!matchedWorker) return null;
+                    const isSchool = isSchoolTransportLocation(matchedWorker.workplace) || isSchoolTransportLocation(matchedWorker.clientName);
+                    return (
                       <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800 text-[11px] text-cyan-800 dark:text-cyan-200 flex items-center gap-2 font-bold mt-2">
                         <ShieldCheck className="w-4 h-4 text-cyan-600 shrink-0" />
-                        <span>تم التصنيف تلقائياً «نقل عمال» لتطابق السائق مع سجل نشط بالرقابة والمتابعة ({matchedWorker.name} - {matchedWorker.clientName || matchedWorker.workplace || 'نشط'})</span>
+                        <span>
+                          {isSchool
+                            ? `تم التصنيف تلقائياً «النقل المدرسي» لمطابقة السائق مع موقع مدرسي بالرقابة والمتابعة (${matchedWorker.workplace || matchedWorker.clientName})`
+                            : `تم التصنيف تلقائياً «نقل عمال» لتطابق السائق مع سجل نشط بالرقابة والمتابعة (${matchedWorker.name} - ${matchedWorker.clientName || matchedWorker.workplace || 'نشط'})`}
+                        </span>
                       </div>
-                    ) : null;
+                    );
                   })()}
                 </div>
 

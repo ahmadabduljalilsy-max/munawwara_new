@@ -13,9 +13,44 @@ export function isWorkerActiveInMonitoring(
 }
 
 /**
+ * Finds matching worker in monitoring (الرقابة والمتابعة) by Iqama / National ID number
+ */
+export function getMatchingWorkerByIqama<T extends { 
+  iqamaNumber?: string; 
+  nationalId?: string; 
+  endDate?: string;
+  workplace?: string;
+  clientName?: string;
+  assignedBusOperationalNumber?: string;
+  assignedBusPlateNumber?: string;
+  mobileNumber?: string;
+} = Worker>(
+  driver: { iqamaNumber?: string },
+  workers?: T[]
+): T | undefined {
+  const driverIqama = (driver.iqamaNumber || '').trim();
+  if (!driverIqama || !workers || workers.length === 0) return undefined;
+
+  return workers.find(w => {
+    const workerIqama = (w.iqamaNumber || '').trim();
+    const workerNational = (w.nationalId || '').trim();
+    return (workerIqama && workerIqama === driverIqama) || (workerNational && workerNational === driverIqama);
+  });
+}
+
+/**
  * Finds the matching active worker in monitoring (الرقابة والمتابعة) by Iqama number
  */
-export function getMatchingActiveMonitoringWorker<T extends { iqamaNumber?: string; nationalId?: string; endDate?: string }>(
+export function getMatchingActiveMonitoringWorker<T extends { 
+  iqamaNumber?: string; 
+  nationalId?: string; 
+  endDate?: string;
+  workplace?: string;
+  clientName?: string;
+  assignedBusOperationalNumber?: string;
+  assignedBusPlateNumber?: string;
+  mobileNumber?: string;
+} = Worker>(
   driver: { iqamaNumber?: string },
   workers?: T[],
   todayStr?: string
@@ -70,32 +105,149 @@ export function resolveDriverType(driver: {
 }
 
 /**
+ * Checks if a location or text corresponds to School Transport (النقل المدرسي)
+ * School transport locations per company operations: ينبع - القصيم - محايل عسير
+ */
+export function isSchoolTransportLocation(text?: string): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  return (
+    t.includes('ينبع') ||
+    t.includes('القصيم') ||
+    t.includes('محايل') ||
+    t.includes('عسير') ||
+    t.includes('بريدة') ||
+    t.includes('عنيزة') ||
+    t.includes('مدرسي') ||
+    t.includes('مدارس') ||
+    t.includes('تعليم') ||
+    t.includes('النقل المدرسي')
+  );
+}
+
+/**
  * Resolves driver operation classification:
- * - If driver is also present in monitoring (الرقابة والمتابعة) with matching Iqama and is active (غير منتهي عمله) -> automatically 'نقل عمال'
- * - Otherwise 'عمرة' or 'نقل عمال' based on stored value
+ * - Links Company Drivers and Monitoring by Iqama Number:
+ *   If driver exists in monitoring by Iqama:
+ *     - If in School Transport locations (ينبع - القصيم - محايل عسير) -> 'النقل المدرسي'
+ *     - Otherwise -> 'نقل عمال'
+ * - If not in monitoring:
+ *     - If school transport location -> 'النقل المدرسي'
+ *     - If Syria -> 'النقل الدولي سوريا'
+ *     - If Yemen -> 'النقل الدولي اليمن'
+ *     - If Umrah -> 'عمرة'
+ *     - Otherwise -> 'نقل عمال'
  */
 export function getDriverClassification(
   driver: {
     iqamaNumber?: string;
     driverClassification?: DriverClassification | string;
     workplace?: string;
+    responseType?: string;
+    notes?: string;
   },
-  workers?: { iqamaNumber?: string; nationalId?: string; endDate?: string }[]
+  workers?: { iqamaNumber?: string; nationalId?: string; endDate?: string; workplace?: string; clientName?: string }[]
 ): DriverClassification {
-  // If driver exists in monitoring (الرقابة والمتابعة) and is active (non-expired) -> auto 'نقل عمال'
-  if (workers && isDriverActiveInMonitoring(driver, workers)) {
+  const driverExplicitClass = (driver.driverClassification || '').trim();
+  const driverWorkplace = (driver.workplace || '').trim();
+  const driverResponse = (driver.responseType || '').trim();
+  const driverNotes = (driver.notes || '').trim();
+
+  // 1. Find matched worker in monitoring by Iqama number
+  const matchedWorker = workers ? getMatchingWorkerByIqama(driver, workers) : undefined;
+  const workerWorkplace = (matchedWorker?.workplace || '').trim();
+  const workerClient = (matchedWorker?.clientName || '').trim();
+
+  // 2. School Transport check (ينبع - القصيم - محايل عسير)
+  if (
+    isSchoolTransportLocation(workerWorkplace) ||
+    isSchoolTransportLocation(workerClient) ||
+    driverExplicitClass === 'النقل المدرسي' ||
+    isSchoolTransportLocation(driverWorkplace) ||
+    isSchoolTransportLocation(driverResponse) ||
+    isSchoolTransportLocation(driverNotes)
+  ) {
+    return 'النقل المدرسي';
+  }
+
+  // 3. If driver exists in monitoring by Iqama number -> classified as 'نقل عمال'
+  if (matchedWorker) {
     return 'نقل عمال';
   }
 
-  const raw = (driver.driverClassification || driver.workplace || '').trim();
-  if (raw.includes('سوريا') || raw.includes('سورية') || raw === 'النقل الدولي سوريا') {
+  // 4. Check for Syria International Transport
+  const combinedDriverText = `${driverExplicitClass} ${driverWorkplace} ${driverNotes}`;
+  if (combinedDriverText.includes('سوريا') || combinedDriverText.includes('سورية') || driverExplicitClass === 'النقل الدولي سوريا') {
     return 'النقل الدولي سوريا';
   }
-  if (raw.includes('اليمن') || raw === 'النقل الدولي اليمن') {
+
+  // 5. Check for Yemen International Transport
+  if (combinedDriverText.includes('اليمن') || driverExplicitClass === 'النقل الدولي اليمن') {
     return 'النقل الدولي اليمن';
   }
-  if (raw.includes('عمرة') || raw.includes('عمره')) {
+
+  // 6. Check for Umrah
+  if (combinedDriverText.includes('عمرة') || combinedDriverText.includes('عمره') || driverExplicitClass === 'عمرة') {
     return 'عمرة';
   }
+
   return 'نقل عمال';
+}
+
+/**
+ * Computes fields that should be updated for a driver based on their active monitoring worker record:
+ * - Workplace
+ * - Classification (النقل المدرسي vs نقل عمال)
+ * - Assigned bus number (if missing in driver record)
+ * - Mobile number (if missing in driver record)
+ */
+export function getMonitoringUpdatesForDriver(
+  driver: {
+    id: string;
+    iqamaNumber?: string;
+    driverClassification?: string;
+    workplace?: string;
+    busNumber?: string;
+    mobileNumber?: string;
+  },
+  matchedWorker: {
+    workplace?: string;
+    clientName?: string;
+    assignedBusOperationalNumber?: string;
+    assignedBusPlateNumber?: string;
+    mobileNumber?: string;
+  }
+): {
+  hasChanges: boolean;
+  updates: Record<string, any>;
+} {
+  const updates: Record<string, any> = {};
+  let hasChanges = false;
+
+  const targetClass = isSchoolTransportLocation(matchedWorker.workplace) || isSchoolTransportLocation(matchedWorker.clientName)
+    ? 'النقل المدرسي'
+    : 'نقل عمال';
+
+  if (driver.driverClassification !== targetClass) {
+    updates.driverClassification = targetClass;
+    hasChanges = true;
+  }
+
+  if (matchedWorker.workplace && driver.workplace !== matchedWorker.workplace) {
+    updates.workplace = matchedWorker.workplace;
+    hasChanges = true;
+  }
+
+  const workerBus = matchedWorker.assignedBusOperationalNumber || matchedWorker.assignedBusPlateNumber;
+  if (workerBus && !driver.busNumber) {
+    updates.busNumber = workerBus;
+    hasChanges = true;
+  }
+
+  if (matchedWorker.mobileNumber && !driver.mobileNumber) {
+    updates.mobileNumber = matchedWorker.mobileNumber;
+    hasChanges = true;
+  }
+
+  return { hasChanges, updates };
 }

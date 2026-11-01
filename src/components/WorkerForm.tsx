@@ -19,19 +19,33 @@ import {
   Edit2,
   Archive,
   CheckCircle2,
-  Clock
+  Clock,
+  Sparkles,
+  Hash,
+  Search,
+  Users,
+  RefreshCw
 } from 'lucide-react';
-import { Worker, Bus, WorkerPreviousWork } from '../types';
+import { Worker, Bus, WorkerPreviousWork, CompanyDriver } from '../types';
+import { isSchoolTransportLocation } from '../lib/driverUtils';
 
 interface WorkerFormProps {
   worker: Worker | null;
   allWorkers: Worker[];
   buses: Bus[];
-  onSave: (workerData: Omit<Worker, 'id'>) => void;
+  companyDrivers?: CompanyDriver[];
+  onSave: (workerData: Omit<Worker, 'id'>, targetWorkerId?: string) => void;
   onClose: () => void;
 }
 
-export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buses, onSave, onClose }) => {
+export const WorkerForm: React.FC<WorkerFormProps> = ({ 
+  worker, 
+  allWorkers, 
+  buses, 
+  companyDrivers = [], 
+  onSave, 
+  onClose 
+}) => {
   const [formData, setFormData] = useState<Omit<Worker, 'id'>>({
     workerNumber: '',
     name: '',
@@ -55,6 +69,13 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState<Omit<Worker, 'id'> | null>(null);
 
+  // Track if this worker was linked to an existing worker in allWorkers
+  const [activeWorkerToUpdate, setActiveWorkerToUpdate] = useState<Worker | null>(worker);
+
+  useEffect(() => {
+    setActiveWorkerToUpdate(worker);
+  }, [worker]);
+
   // State for adding/editing a historical work record
   const [isAddingHistory, setIsAddingHistory] = useState(false);
   const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
@@ -66,6 +87,147 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
     role: '',
     notes: ''
   });
+
+  // States for importing fleet driver by serial number or selection
+  const [selectedSerialInput, setSelectedSerialInput] = useState('');
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [importedDriver, setImportedDriver] = useState<CompanyDriver | null>(null);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleFetchDriverData = (overrideDriver?: CompanyDriver) => {
+    let target = overrideDriver;
+    if (!target) {
+      const cleanInput = selectedSerialInput.trim();
+      const numOnly = cleanInput.replace(/[^0-9]/g, '');
+      if (numOnly) {
+        target = companyDrivers.find(d => String(d.serialNumber) === numOnly);
+      }
+      if (!target && selectedDriverId) {
+        target = companyDrivers.find(d => d.id === selectedDriverId);
+      }
+      if (!target && cleanInput) {
+        target = companyDrivers.find(d => 
+          d.fullName.toLowerCase().includes(cleanInput.toLowerCase()) ||
+          (d.iqamaNumber && d.iqamaNumber.trim() === cleanInput) ||
+          (d.borderNumber && d.borderNumber.trim() === cleanInput)
+        );
+      }
+    }
+
+    if (!target) {
+      setImportMessage({
+        type: 'error',
+        text: `لم يتم العثور على أي سائق بالرقم التسلسلي (${selectedSerialInput || 'فارغ'}). تأكد من الرقم أو اختر السائق من القائمة.`
+      });
+      setImportedDriver(null);
+      return;
+    }
+
+    // Match bus if driver has busNumber
+    const driverBusNum = (target.busNumber || '').trim();
+    let assignedBusId = '';
+    let assignedBusPlate = '';
+    let assignedBusOp = driverBusNum;
+
+    if (driverBusNum) {
+      const matchedBus = buses.find(b => 
+        b.operationalNumber === driverBusNum || 
+        b.plateNumber === driverBusNum ||
+        b.id === driverBusNum
+      );
+      if (matchedBus) {
+        assignedBusId = matchedBus.id;
+        assignedBusOp = matchedBus.operationalNumber;
+        assignedBusPlate = matchedBus.plateNumber;
+      }
+    }
+
+    // Determine School Transport location (ينبع - القصيم - محايل عسير)
+    const isSchool = isSchoolTransportLocation(target.workplace) || 
+                    isSchoolTransportLocation(target.notes) || 
+                    target.driverClassification === 'النقل المدرسي';
+
+    let defaultWorkplace = target.workplace || '';
+    let defaultClient = '';
+    if (isSchool) {
+      if (target.workplace?.includes('ينبع')) defaultWorkplace = 'ينبع - النقل المدرسي';
+      else if (target.workplace?.includes('القصيم')) defaultWorkplace = 'القصيم - النقل المدرسي';
+      else if (target.workplace?.includes('محايل') || target.workplace?.includes('عسير')) defaultWorkplace = 'محايل عسير - النقل المدرسي';
+      else defaultWorkplace = 'النقل المدرسي (ينبع / القصيم / محايل عسير)';
+      defaultClient = 'النقل المدرسي';
+    } else {
+      defaultWorkplace = target.workplace || 'نقل عمال';
+      defaultClient = target.workplace || 'نقل عمال';
+    }
+
+    const newIqama = target.iqamaNumber ? target.iqamaNumber.trim() : '';
+    const newBorder = target.borderNumber ? target.borderNumber.trim() : '';
+
+    // Check if this driver already has a record in allWorkers by Iqama or Border number
+    const existingWorkerMatch = allWorkers.find(w => {
+      const wIqama = (w.iqamaNumber || '').trim();
+      const wNational = (w.nationalId || '').trim();
+      return (
+        (newIqama && (wIqama === newIqama || wNational === newIqama)) ||
+        (newBorder && (wIqama === newBorder || wNational === newBorder))
+      );
+    });
+
+    if (existingWorkerMatch) {
+      setActiveWorkerToUpdate(existingWorkerMatch);
+      setFormData(prev => ({
+        ...prev,
+        workerNumber: existingWorkerMatch.workerNumber,
+        name: target.fullName || existingWorkerMatch.name,
+        mobileNumber: target.mobileNumber || existingWorkerMatch.mobileNumber || prev.mobileNumber,
+        iqamaNumber: newIqama || existingWorkerMatch.iqamaNumber,
+        nationalId: newBorder || existingWorkerMatch.nationalId || prev.nationalId,
+        workplace: defaultWorkplace || existingWorkerMatch.workplace || prev.workplace,
+        clientName: defaultClient || existingWorkerMatch.clientName || prev.clientName,
+        assignedBusId: assignedBusId || existingWorkerMatch.assignedBusId || prev.assignedBusId,
+        assignedBusOperationalNumber: assignedBusOp || existingWorkerMatch.assignedBusOperationalNumber || prev.assignedBusOperationalNumber,
+        assignedBusPlateNumber: assignedBusPlate || existingWorkerMatch.assignedBusPlateNumber || prev.assignedBusPlateNumber,
+        recruitmentCompany: prev.recruitmentCompany || existingWorkerMatch.recruitmentCompany || (target.driverType === 'موسمي' ? 'موسم 1448 هـ' : 'سائقي أسطول الشركة المعتمدين'),
+        workHistory: existingWorkerMatch.workHistory || prev.workHistory || [],
+        notes: existingWorkerMatch.notes || prev.notes || `سائق معتمد بالأسطول رقم متسلسل #${target.serialNumber || ''}`
+      }));
+
+      setSelectedSerialInput(String(target.serialNumber || ''));
+      setSelectedDriverId(target.id);
+      setImportedDriver(target);
+      setImportMessage({
+        type: 'success',
+        text: `تم بنجاح جلب بيانات السائق "${target.fullName}". العامل مسجل بالفعل برقم العامل (#${existingWorkerMatch.workerNumber})، تم ربطه بملفه ويمكنك إكمال تعديل كافة البيانات ثم الحفظ.`
+      });
+      return;
+    }
+
+    setActiveWorkerToUpdate(null);
+    setFormData(prev => ({
+      ...prev,
+      name: target.fullName,
+      mobileNumber: target.mobileNumber || prev.mobileNumber,
+      iqamaNumber: newIqama,
+      nationalId: newBorder || prev.nationalId,
+      workplace: defaultWorkplace || prev.workplace,
+      clientName: defaultClient || prev.clientName,
+      assignedBusId: assignedBusId || prev.assignedBusId,
+      assignedBusOperationalNumber: assignedBusOp || prev.assignedBusOperationalNumber,
+      assignedBusPlateNumber: assignedBusPlate || prev.assignedBusPlateNumber,
+      recruitmentCompany: prev.recruitmentCompany || (target.driverType === 'موسمي' ? 'موسم 1448 هـ' : 'سائقي أسطول الشركة المعتمدين'),
+      notes: prev.notes 
+        ? `${prev.notes}\n[تم جلب البيانات من سائق الأسطول رقم متسلسل #${target.serialNumber || ''}]` 
+        : `سائق معتمد بالأسطول رقم متسلسل #${target.serialNumber || ''}`
+    }));
+
+    setSelectedSerialInput(String(target.serialNumber || ''));
+    setSelectedDriverId(target.id);
+    setImportedDriver(target);
+    setImportMessage({
+      type: 'success',
+      text: `تم بنجاح جلب وتعبئة بيانات السائق: "${target.fullName}" (رقم متسلسل #${target.serialNumber || '—'}). يمكنك تعديل باقي البيانات ثم الحفظ.`
+    });
+  };
 
   useEffect(() => {
     if (worker) {
@@ -111,9 +273,11 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
 
     if (!cleanIqama && !cleanNationalId) return null;
 
+    const activeId = activeWorkerToUpdate?.id || worker?.id;
+
     return allWorkers.find(w => {
-      // Exclude current worker if editing
-      if (worker && w.id === worker.id) return false;
+      // Exclude current worker if editing or if linked to existing worker
+      if (activeId && w.id === activeId) return false;
 
       const wIqama = w.iqamaNumber ? w.iqamaNumber.trim() : '';
       const wNational = w.nationalId ? w.nationalId.trim() : '';
@@ -126,7 +290,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
       }
       return false;
     }) || null;
-  }, [formData.iqamaNumber, formData.nationalId, allWorkers, worker]);
+  }, [formData.iqamaNumber, formData.nationalId, allWorkers, worker, activeWorkerToUpdate]);
 
   // Handle adding or updating a work history item
   const handleSaveHistoryItem = (e: React.FormEvent) => {
@@ -275,17 +439,19 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
       workHistory: formData.workHistory || []
     };
 
+    const activeTargetId = activeWorkerToUpdate?.id || worker?.id;
     if (isReassignment) {
       setPendingSaveData(saveData);
       setShowConfirmModal(true);
     } else {
-      onSave(saveData);
+      onSave(saveData, activeTargetId);
     }
   };
 
   const handleConfirmSave = () => {
+    const activeTargetId = activeWorkerToUpdate?.id || worker?.id;
     if (pendingSaveData) {
-      onSave(pendingSaveData);
+      onSave(pendingSaveData, activeTargetId);
     }
     setShowConfirmModal(false);
   };
@@ -331,7 +497,153 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
 
         {/* Scrollable Body */}
         <div className="p-8 overflow-y-auto flex-1">
-          <form id="worker-form" onSubmit={handleSubmit} className="space-y-8">
+          <form 
+            id="worker-form" 
+            onSubmit={handleSubmit} 
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+                e.preventDefault();
+              }
+            }}
+            className="space-y-8"
+          >
+            {/* Quick Driver Auto-Fill from Company Drivers Fleet */}
+            {companyDrivers.length > 0 && (
+              <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-emerald-50/80 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-emerald-950/30 border-2 border-indigo-200 dark:border-indigo-800/60 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                        <span>إضافة أحد سائقي الأسطول بالرقم التسلسلي</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold">
+                          {companyDrivers.length} سائق مسجل بالأسطول
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-text-muted font-medium mt-0.5">
+                        أدخل الرقم التسلسلي للسائق أو اختره من القائمة لجلب الاسم، رقم الهاتف، ورقم الإقامة أو الحدود، ورقم الحافلة فورياً
+                      </p>
+                    </div>
+                  </div>
+
+                  {importedDriver && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportedDriver(null);
+                        setSelectedSerialInput('');
+                        setSelectedDriverId('');
+                        setImportMessage(null);
+                      }}
+                      className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      إلغاء التحديد
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 pt-1">
+                  {/* Serial Number Input */}
+                  <div className="md:col-span-4 relative">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none text-indigo-600 dark:text-indigo-400 font-mono font-black text-xs">
+                      <Hash className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="الرقم التسلسلي (مثال: 1, 15, 89)..."
+                      value={selectedSerialInput}
+                      onChange={(e) => setSelectedSerialInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleFetchDriverData();
+                        }
+                      }}
+                      className="w-full pr-8 pl-3 py-2.5 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold text-slate-900 dark:text-white shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Drivers Dropdown Selector */}
+                  <div className="md:col-span-5">
+                    <select
+                      value={selectedDriverId}
+                      onChange={(e) => {
+                        const drvId = e.target.value;
+                        setSelectedDriverId(drvId);
+                        if (drvId) {
+                          const drv = companyDrivers.find(d => d.id === drvId);
+                          if (drv) {
+                            setSelectedSerialInput(String(drv.serialNumber || ''));
+                            handleFetchDriverData(drv);
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold text-slate-900 dark:text-white shadow-2xs"
+                    >
+                      <option value="">-- أو اختر السائق من قائمة الأسطول --</option>
+                      {companyDrivers
+                        .slice()
+                        .sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0))
+                        .map(d => (
+                          <option key={d.id} value={d.id}>
+                            #{d.serialNumber || '—'} - {d.fullName} ({d.iqamaNumber ? `إقامة: ${d.iqamaNumber}` : `حدود: ${d.borderNumber || '—'}`})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Fetch Button */}
+                  <div className="md:col-span-3">
+                    <button
+                      type="button"
+                      onClick={() => handleFetchDriverData()}
+                      className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-indigo-600/30 cursor-pointer active:scale-95"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>جلب وتعبئة البيانات</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status and Feedback Messages */}
+                {importMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-2.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 border ${
+                      importMessage.type === 'success'
+                        ? 'bg-emerald-100/80 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
+                        : 'bg-rose-100/80 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200 border-rose-300 dark:border-rose-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {importMessage.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span>{importMessage.text}</span>
+                    </div>
+
+                    {importedDriver && (
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/30 font-mono">
+                          {importedDriver.iqamaNumber ? `إقامة: ${importedDriver.iqamaNumber}` : `حدود: ${importedDriver.borderNumber}`}
+                        </span>
+                        {importedDriver.busNumber && (
+                          <span className="px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/30 font-mono">
+                            حافلة #{importedDriver.busNumber}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Worker Identity */}
               <div className="space-y-4">
@@ -848,7 +1160,11 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({ worker, allWorkers, buse
             }`}
           >
             <Save className="w-5 h-5" />
-            {duplicateWorker ? 'لا يمكن الحفظ (عامل مكرر)' : 'حفظ بيانات وملف العامل'}
+            {duplicateWorker 
+              ? 'لا يمكن الحفظ (عامل مكرر)' 
+              : (activeWorkerToUpdate || worker)
+                ? `حفظ وتحديث بيانات العامل (#${activeWorkerToUpdate?.workerNumber || worker?.workerNumber || formData.workerNumber})` 
+                : 'حفظ بيانات وملف العامل الجديد'}
           </button>
           <button 
             type="button" 

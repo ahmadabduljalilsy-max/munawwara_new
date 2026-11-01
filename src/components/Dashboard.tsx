@@ -37,6 +37,7 @@ import {
   Briefcase,
   Layers,
   Building2,
+  GraduationCap,
   UserX
 } from 'lucide-react';
 import { 
@@ -73,6 +74,35 @@ interface DashboardProps {
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
 
+const NATIONALITY_METADATA: Record<string, { flag: string; color: string }> = {
+  'مصري': { flag: '🇪🇬', color: '#0284c7' },
+  'مصر': { flag: '🇪🇬', color: '#0284c7' },
+  'هندي': { flag: '🇮🇳', color: '#10b981' },
+  'الهند': { flag: '🇮🇳', color: '#10b981' },
+  'باكستاني': { flag: '🇵🇰', color: '#f59e0b' },
+  'باكستان': { flag: '🇵🇰', color: '#f59e0b' },
+  'سوري': { flag: '🇸🇾', color: '#8b5cf6' },
+  'سوريا': { flag: '🇸🇾', color: '#8b5cf6' },
+  'يمني': { flag: '🇾🇪', color: '#ef4444' },
+  'اليمن': { flag: '🇾🇪', color: '#ef4444' },
+  'سوداني': { flag: '🇸🇩', color: '#06b6d4' },
+  'السودان': { flag: '🇸🇩', color: '#06b6d4' },
+  'بنغلاديشي': { flag: '🇧🇩', color: '#14b8a6' },
+  'بنغلاديش': { flag: '🇧🇩', color: '#14b8a6' },
+  'سعودي': { flag: '🇸🇦', color: '#15803d' },
+  'السعودية': { flag: '🇸🇦', color: '#15803d' },
+  'نيبالي': { flag: '🇳🇵', color: '#ec4899' },
+  'نيبال': { flag: '🇳🇵', color: '#ec4899' },
+  'أردني': { flag: '🇯🇴', color: '#6366f1' },
+  'الأردن': { flag: '🇯🇴', color: '#6366f1' },
+  'غير محدد': { flag: '🌐', color: '#64748b' },
+};
+
+const DEFAULT_CHART_COLORS = [
+  '#0284c7', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', 
+  '#06b6d4', '#14b8a6', '#ec4899', '#6366f1', '#64748b'
+];
+
 export const Dashboard: React.FC<DashboardProps> = ({ 
   buses, 
   workers = [], 
@@ -103,43 +133,136 @@ export const Dashboard: React.FC<DashboardProps> = ({
     exportLocationModelStatsToExcel(buses, workers, locFilter);
   };
 
-  // Stats by Operational Status (متاحة، صيانة، في الخدمة)
-  const assignedBusIds = React.useMemo(() => {
-    return new Set(
-      workers.map(w => w.assignedBusId).filter(Boolean)
-    );
-  }, [workers]);
+  // ── Driver Distribution by Nationality & Field Operation ────────────────
+  const [driverOpChartFilter, setDriverOpChartFilter] = useState<'all' | 'نقل عمال' | 'عمرة' | 'النقل المدرسي' | 'النقل الدولي سوريا' | 'النقل الدولي اليمن'>('all');
+  const [driverNationalityChartMode, setDriverNationalityChartMode] = useState<'bar' | 'donut'>('bar');
+  const [selectedNationalityKey, setSelectedNationalityKey] = useState<string | null>(null);
 
-  const opStatusCounts = React.useMemo(() => {
-    let available = 0;
-    let maintenance = 0;
-    let inService = 0;
+  const driverNationalityData = React.useMemo(() => {
+    const opMap: Record<string, {
+      total: number;
+      residents: number;
+      seasonals: number;
+      nationalities: Record<string, { count: number; resident: number; seasonal: number }>;
+    }> = {
+      'نقل عمال': { total: 0, residents: 0, seasonals: 0, nationalities: {} },
+      'عمرة': { total: 0, residents: 0, seasonals: 0, nationalities: {} },
+      'النقل المدرسي': { total: 0, residents: 0, seasonals: 0, nationalities: {} },
+      'النقل الدولي سوريا': { total: 0, residents: 0, seasonals: 0, nationalities: {} },
+      'النقل الدولي اليمن': { total: 0, residents: 0, seasonals: 0, nationalities: {} },
+    };
 
-    buses.forEach(bus => {
-      const isUnderMaintenance = bus.technicalStatus === 'تحت الصيانة' || bus.technicalStatus === 'متوقف';
-      if (isUnderMaintenance) {
-        maintenance++;
-      } else if (assignedBusIds.has(bus.id)) {
-        inService++;
-      } else {
-        available++;
+    const overallMap: Record<string, {
+      count: number;
+      resident: number;
+      seasonal: number;
+      byOp: Record<string, number>;
+    }> = {};
+
+    let totalAll = 0;
+    let totalResidents = 0;
+    let totalSeasonals = 0;
+
+    companyDrivers.forEach(d => {
+      const classification = getDriverClassification(d, workers);
+      const effType = resolveDriverType(d);
+      const isSeasonal = effType === 'موسمي';
+      const nat = (d.nationality || '').trim() || 'غير محدد';
+
+      totalAll++;
+      if (isSeasonal) totalSeasonals++;
+      else totalResidents++;
+
+      if (!opMap[classification]) {
+        opMap[classification] = { total: 0, residents: 0, seasonals: 0, nationalities: {} };
       }
+      const opEntry = opMap[classification];
+      opEntry.total++;
+      if (isSeasonal) opEntry.seasonals++;
+      else opEntry.residents++;
+
+      if (!opEntry.nationalities[nat]) {
+        opEntry.nationalities[nat] = { count: 0, resident: 0, seasonal: 0 };
+      }
+      opEntry.nationalities[nat].count++;
+      if (isSeasonal) opEntry.nationalities[nat].seasonal++;
+      else opEntry.nationalities[nat].resident++;
+
+      if (!overallMap[nat]) {
+        overallMap[nat] = { count: 0, resident: 0, seasonal: 0, byOp: {} };
+      }
+      overallMap[nat].count++;
+      if (isSeasonal) overallMap[nat].seasonal++;
+      else overallMap[nat].resident++;
+      overallMap[nat].byOp[classification] = (overallMap[nat].byOp[classification] || 0) + 1;
     });
 
-    return { available, maintenance, inService };
-  }, [buses, assignedBusIds]);
+    return { opMap, overallMap, totalAll, totalResidents, totalSeasonals };
+  }, [companyDrivers, workers]);
 
-  const opStatusChartData = React.useMemo(() => [
-    { name: 'متاحة للتشغيل', value: opStatusCounts.available, color: '#10b981', shortName: 'متاحة', id: 'available' },
-    { name: 'في الخدمة', value: opStatusCounts.inService, color: '#6366f1', shortName: 'في الخدمة', id: 'inService' },
-    { name: 'تحت الصيانة / متوقفة', value: opStatusCounts.maintenance, color: '#f43f5e', shortName: 'صيانة', id: 'maintenance' },
-  ], [opStatusCounts]);
+  const currentNationalityList = React.useMemo(() => {
+    interface NationalityDataRecord {
+      count: number;
+      resident: number;
+      seasonal: number;
+      byOp?: Record<string, number>;
+    }
+
+    if (driverOpChartFilter === 'all') {
+      const total = driverNationalityData.totalAll;
+      const entries = Object.entries(driverNationalityData.overallMap) as [string, NationalityDataRecord][];
+      return entries
+        .map(([nationality, data], idx) => {
+          const meta = NATIONALITY_METADATA[nationality] || {
+            flag: '🌐',
+            color: DEFAULT_CHART_COLORS[idx % DEFAULT_CHART_COLORS.length]
+          };
+          return {
+            nationality,
+            count: data.count,
+            resident: data.resident,
+            seasonal: data.seasonal,
+            percentage: total > 0 ? (data.count / total) * 100 : 0,
+            color: meta.color,
+            flag: meta.flag,
+            byOp: data.byOp
+          };
+        })
+        .sort((a, b) => b.count - a.count);
+    } else {
+      const opEntry = driverNationalityData.opMap[driverOpChartFilter] || { total: 0, nationalities: {} };
+      const total = opEntry.total;
+      const entries = Object.entries(opEntry.nationalities) as [string, NationalityDataRecord][];
+      return entries
+        .map(([nationality, data], idx) => {
+          const meta = NATIONALITY_METADATA[nationality] || {
+            flag: '🌐',
+            color: DEFAULT_CHART_COLORS[idx % DEFAULT_CHART_COLORS.length]
+          };
+          return {
+            nationality,
+            count: data.count,
+            resident: data.resident,
+            seasonal: data.seasonal,
+            percentage: total > 0 ? (data.count / total) * 100 : 0,
+            color: meta.color,
+            flag: meta.flag
+          };
+        })
+        .sort((a, b) => b.count - a.count);
+    }
+  }, [driverNationalityData, driverOpChartFilter]);
+
+  const activeFilterTotal = driverOpChartFilter === 'all'
+    ? driverNationalityData.totalAll
+    : (driverNationalityData.opMap[driverOpChartFilter]?.total || 0);
 
   // Driver statistics: مقيم - موسمي - نقل عمال - عمرة - دولي سوريا - دولي اليمن - نشط - في إجازة - مستبعد - بالرقابة
   const driverStats = React.useMemo(() => {
     let resident = 0;
     let seasonal = 0;
     const laborTransport = { total: 0, resident: 0, seasonal: 0 };
+    const schoolTransport = { total: 0, resident: 0, seasonal: 0 };
     const umrah = { total: 0, resident: 0, seasonal: 0 };
     const intlSyria = { total: 0, resident: 0, seasonal: 0 };
     const intlYemen = { total: 0, resident: 0, seasonal: 0 };
@@ -160,10 +283,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         resident++;
       }
 
-      // 2. Operational Classification (نقل عمال / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
-      // Automatically resolves to 'نقل عمال' if driver is active in monitoring (الرقابة والمتابعة)
+      // 2. Operational Classification (نقل عمال / النقل المدرسي / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
       const classification = getDriverClassification(d, workers);
-      if (classification === 'عمرة') {
+      if (classification === 'النقل المدرسي') {
+        schoolTransport.total++;
+        if (isSeasonal) schoolTransport.seasonal++;
+        else schoolTransport.resident++;
+      } else if (classification === 'عمرة') {
         umrah.total++;
         if (isSeasonal) umrah.seasonal++;
         else umrah.resident++;
@@ -207,6 +333,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       resident,
       seasonal,
       laborTransport,
+      schoolTransport,
       umrah,
       intlSyria,
       intlYemen,
@@ -220,46 +347,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
 
-  const [activeStatusKey, setActiveStatusKey] = useState<string | null>(null);
-
-  const statusLocationBreakdown = React.useMemo(() => {
-    const breakdown: {
-      available: { name: string; count: number }[];
-      inService: { name: string; count: number }[];
-      maintenance: { name: string; count: number }[];
-    } = { available: [], inService: [], maintenance: [] };
-
-    const avMap: { [key: string]: number } = {};
-    const isMap: { [key: string]: number } = {};
-    const mtMap: { [key: string]: number } = {};
-
-    buses.forEach(bus => {
-      const isUnderMaintenance = bus.technicalStatus === 'تحت الصيانة' || bus.technicalStatus === 'متوقف';
-      const loc = normalizeBusLocation(bus.location);
-      if (isUnderMaintenance) {
-        mtMap[loc] = (mtMap[loc] || 0) + 1;
-      } else if (assignedBusIds.has(bus.id)) {
-        isMap[loc] = (isMap[loc] || 0) + 1;
-      } else {
-        avMap[loc] = (avMap[loc] || 0) + 1;
-      }
-    });
-
-    breakdown.available = Object.entries(avMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    breakdown.inService = Object.entries(isMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    breakdown.maintenance = Object.entries(mtMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    return breakdown;
-  }, [buses, assignedBusIds]);
-  
   // Stats by Location
   const locationCounts = React.useMemo(() => {
     return buses.reduce((acc: any, bus) => {
@@ -280,7 +367,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [locSearch, setLocSearch] = useState('');
   const [locSort, setLocSort] = useState<'value' | 'name'>('value');
   const [locationViewMode, setLocationViewMode] = useState<'grid' | 'barChart' | 'pieChart'>('grid');
-  const [technicalStatusViewMode, setTechnicalStatusViewMode] = useState<'donut' | 'bar'>('donut');
 
   const filteredLocationData = React.useMemo(() => {
     return locationData
@@ -854,7 +940,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
             {/* 1. نقل عمال */}
             <div 
               onClick={onNavigateToDrivers}
@@ -881,13 +967,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-sky-200/80 dark:border-sky-800/60">
-                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
                       {driverStats.laborTransport.resident}
                     </span>
                   </div>
-                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
                       {driverStats.laborTransport.seasonal}
@@ -897,39 +983,86 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* 2. عمرة */}
+            {/* 2. النقل المدرسي (ينبع - محايل عسير - القصيم) */}
             <div 
               onClick={onNavigateToDrivers}
-              className={`p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-amber-400 hover:scale-102 cursor-pointer' : ''}`}
+              className={`p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700/80 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-amber-500 hover:scale-102 cursor-pointer' : ''}`}
             >
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-black text-amber-950 dark:text-amber-200">عمرة</span>
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center">
-                    <MapPin className="w-4 h-4" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-black text-amber-950 dark:text-amber-200">النقل المدرسي</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-200/70 dark:bg-amber-900 text-amber-900 dark:text-amber-200">
+                      مدارس
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-amber-200/80 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 flex items-center justify-center">
+                    <GraduationCap className="w-4 h-4" />
                   </div>
                 </div>
-                <p className="text-[11px] text-amber-800 dark:text-amber-300/80 font-medium leading-snug">
-                  رحلات ضيوف الرحمن، مسارات مكة والمدينة المنورة والمطارات والمزارات
+                <p className="text-[11px] text-amber-900 dark:text-amber-300/90 font-bold leading-snug">
+                  مسارات وعقود المدارس والتعليم (ينبع - محايل عسير - القصيم)
                 </p>
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-amber-200/70 dark:border-amber-800/60">
+              <div className="space-y-2 pt-2 border-t border-amber-300/70 dark:border-amber-800/60">
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
-                  <span className="text-2xl font-black text-amber-700 dark:text-amber-300 font-mono">
+                  <span className="text-2xl font-black text-amber-800 dark:text-amber-300 font-mono">
+                    {driverStats.schoolTransport.total}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-amber-300/80 dark:border-amber-800/60">
+                  <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
+                    <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
+                      {driverStats.schoolTransport.resident}
+                    </span>
+                  </div>
+                  <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
+                    <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
+                      {driverStats.schoolTransport.seasonal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. عمرة */}
+            <div 
+              onClick={onNavigateToDrivers}
+              className={`p-4 rounded-2xl bg-orange-50/80 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-orange-400 hover:scale-102 cursor-pointer' : ''}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-black text-orange-950 dark:text-orange-200">عمرة</span>
+                  <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/60 text-orange-700 dark:text-orange-300 flex items-center justify-center">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-orange-800 dark:text-orange-300/80 font-medium leading-snug">
+                  رحلات ضيوف الرحمن، مسارات مكة والمدينة والمطارات والمزارات
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-orange-200/70 dark:border-orange-800/60">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
+                  <span className="text-2xl font-black text-orange-700 dark:text-orange-300 font-mono">
                     {driverStats.umrah.total}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-amber-200/80 dark:border-amber-800/60">
-                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-orange-200/80 dark:border-orange-800/60">
+                  <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
                       {driverStats.umrah.resident}
                     </span>
                   </div>
-                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
                       {driverStats.umrah.seasonal}
@@ -939,7 +1072,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* 3. النقل الدولي سوريا */}
+            {/* 4. النقل الدولي سوريا */}
             <div 
               onClick={onNavigateToDrivers}
               className={`p-4 rounded-2xl bg-teal-50/80 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-teal-400 hover:scale-102 cursor-pointer' : ''}`}
@@ -965,13 +1098,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-teal-200/80 dark:border-teal-800/60">
-                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
                       {driverStats.intlSyria.resident}
                     </span>
                   </div>
-                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
                       {driverStats.intlSyria.seasonal}
@@ -981,7 +1114,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* 4. النقل الدولي اليمن */}
+            {/* 5. النقل الدولي اليمن */}
             <div 
               onClick={onNavigateToDrivers}
               className={`p-4 rounded-2xl bg-purple-50/80 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 flex flex-col justify-between gap-3 transition-all shadow-2xs ${onNavigateToDrivers ? 'hover:border-purple-400 hover:scale-102 cursor-pointer' : ''}`}
@@ -1007,13 +1140,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-dashed border-purple-200/80 dark:border-purple-800/60">
-                  <div className="px-2.5 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
                       {driverStats.intlYemen.resident}
                     </span>
                   </div>
-                  <div className="px-2.5 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
+                  <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
                       {driverStats.intlYemen.seasonal}
@@ -1259,40 +1392,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </motion.div>
 
-        {/* Operational Status (متاحة، صيانة، في الخدمة) Donut/Bar Chart */}
+        {/* ============================================================== */}
+        {/* Driver Nationality by Operation Chart (توزيع السائقين حسب الجنسية ونوع العمل) */}
+        {/* ============================================================== */}
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-xs min-h-[400px] h-auto flex flex-col justify-between"
+          className="lg:col-span-8 bg-surface p-6 rounded-2xl border border-border shadow-xs min-h-[440px] h-auto flex flex-col justify-between"
         >
+          {/* Card Header & Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-border pb-4">
              <div className="text-right">
-               <h3 className="text-sm font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-                 <Activity className="w-4.5 h-4.5 text-emerald-700 dark:text-emerald-400" />
-                 <span>توزيع الحافلات حسب حالة التشغيل</span>
+               <h3 className="text-sm sm:text-base font-extrabold flex items-center gap-2 text-slate-900 dark:text-white">
+                 <Globe className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                 <span>توزيع السائقين حسب الجنسية ونوع العمل الميداني</span>
                </h3>
-               <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-0.5">انقر على أي حالة أدناه أو بالرسم البياني لتفصيل توزيع الحافلات في المواقع الميدانية</p>
+               <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-0.5">
+                 مخطط تحليلي لجنسيات السائقين وأعدادهم في نقل العمال، العمرة، النقل المدرسي، والنقل الدولي
+               </p>
              </div>
              
-             {/* Chart Type Toggle */}
-             <div className="flex items-center gap-2">
+             {/* Chart Type Toggle (Bar / Pie) */}
+             <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                <div className="flex bg-[#FAF9F6] dark:bg-background p-1 rounded-xl border border-border">
                  <button
-                   onClick={() => setTechnicalStatusViewMode('donut')}
+                   onClick={() => setDriverNationalityChartMode('bar')}
                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                     technicalStatusViewMode === 'donut'
-                       ? 'bg-surface text-primary shadow-xs border border-border'
-                       : 'text-text-muted hover:text-text-main'
-                   }`}
-                   title="عرض دائري مجوف (Donut Chart)"
-                 >
-                   <PieChartIcon className="w-3.5 h-3.5" />
-                   <span>دائري (Pie)</span>
-                 </button>
-                 <button
-                   onClick={() => setTechnicalStatusViewMode('bar')}
-                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                     technicalStatusViewMode === 'bar'
+                     driverNationalityChartMode === 'bar'
                        ? 'bg-surface text-primary shadow-xs border border-border'
                        : 'text-text-muted hover:text-text-main'
                    }`}
@@ -1301,44 +1427,192 @@ export const Dashboard: React.FC<DashboardProps> = ({
                    <BarChart3 className="w-3.5 h-3.5" />
                    <span>أعمدة (Bar)</span>
                  </button>
+                 <button
+                   onClick={() => setDriverNationalityChartMode('donut')}
+                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                     driverNationalityChartMode === 'donut'
+                       ? 'bg-surface text-primary shadow-xs border border-border'
+                       : 'text-text-muted hover:text-text-main'
+                   }`}
+                   title="عرض دائري مجوف (Donut Chart)"
+                 >
+                   <PieChartIcon className="w-3.5 h-3.5" />
+                   <span>دائري (Pie)</span>
+                 </button>
                </div>
              </div>
           </div>
-          
-          <div className="flex-1 flex flex-col md:flex-row items-center md:items-start justify-around gap-6 mt-4">
-            {/* The Chart (Pie or Bar) */}
-            <div className="relative w-full md:w-1/2 h-[230px] flex-shrink-0 flex items-center justify-center">
-              {technicalStatusViewMode === 'donut' ? (
+
+          {/* Operation Filter Buttons / Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none" dir="rtl">
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('all');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'all'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <span>جميع المسارات</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.totalAll}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('نقل عمال');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'نقل عمال'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Bus className="w-3.5 h-3.5" />
+              <span>نقل عمال</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'نقل عمال' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.opMap['نقل عمال']?.total || 0}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('عمرة');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'عمرة'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>عمرة</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'عمرة' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.opMap['عمرة']?.total || 0}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('النقل المدرسي');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'النقل المدرسي'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>النقل المدرسي</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'النقل المدرسي' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.opMap['النقل المدرسي']?.total || 0}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('النقل الدولي سوريا');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'النقل الدولي سوريا'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>دولي سوريا</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'النقل الدولي سوريا' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.opMap['النقل الدولي سوريا']?.total || 0}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setDriverOpChartFilter('النقل الدولي اليمن');
+                setSelectedNationalityKey(null);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                driverOpChartFilter === 'النقل الدولي اليمن'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>دولي اليمن</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                driverOpChartFilter === 'النقل الدولي اليمن' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700'
+              }`}>
+                {driverNationalityData.opMap['النقل الدولي اليمن']?.total || 0}
+              </span>
+            </button>
+          </div>
+
+          {/* Main Chart + Nationalities List Body */}
+          <div className="flex-1 flex flex-col md:flex-row items-center md:items-start justify-between gap-6 mt-2">
+            {/* Chart Area */}
+            <div className="relative w-full md:w-1/2 h-[260px] flex-shrink-0 flex items-center justify-center">
+              {currentNationalityList.length === 0 ? (
+                <div className="text-center p-8 text-text-muted">
+                  <Users className="w-10 h-10 mx-auto mb-2 opacity-40 text-indigo-500" />
+                  <p className="text-xs font-bold">لا يوجد سائقين مسجلين في هذا المسار حالياً</p>
+                </div>
+              ) : driverNationalityChartMode === 'donut' ? (
                 <>
                   <div className="absolute inset-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={opStatusChartData}
+                          data={currentNationalityList}
                           cx="50%"
                           cy="50%"
                           innerRadius={65}
-                          outerRadius={88}
-                          paddingAngle={4}
-                          dataKey="value"
+                          outerRadius={92}
+                          paddingAngle={3}
+                          dataKey="count"
+                          nameKey="nationality"
                         >
-                          {opStatusChartData.map((entry, index) => (
+                          {currentNationalityList.map((entry, index) => (
                             <Cell 
-                              key={`cell-${index}`} 
+                              key={`nat-cell-${index}`} 
                               fill={entry.color} 
                               className="outline-none"
                               style={{ 
                                 cursor: 'pointer', 
-                                filter: activeStatusKey === entry.id ? 'brightness(1.05)' : activeStatusKey ? 'opacity(0.4)' : 'none',
+                                filter: selectedNationalityKey === entry.nationality ? 'brightness(1.1) drop-shadow(0 0 6px rgba(0,0,0,0.3))' : selectedNationalityKey ? 'opacity(0.35)' : 'none',
                                 transition: 'all 0.2s ease-in-out'
                               }}
                               onClick={() => {
-                                setActiveStatusKey(activeStatusKey === entry.id ? null : entry.id);
+                                setSelectedNationalityKey(selectedNationalityKey === entry.nationality ? null : entry.nationality);
                               }}
                             />
                           ))}
                         </Pie>
                         <Tooltip 
+                          formatter={(value: any, name: any, item: any) => {
+                            const p = item.payload;
+                            return [
+                              `${value} سائق (${p.percentage.toFixed(1)}%) • مقيم: ${p.resident} | موسمي: ${p.seasonal}`,
+                              `${p.flag} ${name}`
+                            ];
+                          }}
                           contentStyle={{ 
                             borderRadius: '12px', 
                             border: '1px solid #E8E5DF', 
@@ -1352,39 +1626,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  {/* Central text displaying total number of buses */}
+                  {/* Central Text displaying Total */}
                   <div className="absolute pointer-events-none text-center">
-                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white leading-none block">{totalBuses}</span>
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1 block">إجمالي الحافلات</span>
+                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white leading-none block font-mono">
+                      {activeFilterTotal}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1 block">
+                      {driverOpChartFilter === 'all' ? 'إجمالي السائقين' : `سائقي ${driverOpChartFilter}`}
+                    </span>
                   </div>
                 </>
               ) : (
                 <div className="w-full h-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart 
-                      data={opStatusChartData}
+                      data={currentNationalityList}
                       layout="vertical"
-                      margin={{ top: 10, right: 30, left: 10, bottom: 5 }}
+                      margin={{ top: 5, right: 35, left: 10, bottom: 5 }}
                       onClick={(state: any) => {
                         if (state && state.activePayload && state.activePayload.length > 0) {
-                          const clickedId = state.activePayload[0].payload.id;
-                          setActiveStatusKey(activeStatusKey === clickedId ? null : clickedId);
+                          const clickedName = state.activePayload[0].payload.nationality;
+                          setSelectedNationalityKey(selectedNationalityKey === clickedName ? null : clickedName);
                         }
                       }}
                     >
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E8E5DF" opacity={0.6} />
                       <XAxis type="number" fontSize={11} fontWeight={700} tickLine={false} axisLine={false} stroke="#334155" />
                       <YAxis 
-                        dataKey="shortName" 
+                        dataKey="nationality" 
                         type="category" 
                         fontSize={11} 
-                        fontWeight={700} 
+                        fontWeight={800} 
                         tickLine={false} 
                         axisLine={false} 
                         stroke="#334155"
-                        width={65}
+                        width={75}
+                        tickFormatter={(val) => {
+                          const item = currentNationalityList.find(x => x.nationality === val);
+                          return item ? `${item.flag} ${val}` : val;
+                        }}
                       />
                       <Tooltip 
+                        formatter={(value: any, name: any, item: any) => {
+                          const p = item.payload;
+                          return [
+                            `${value} سائق (${p.percentage.toFixed(1)}%) • مقيم: ${p.resident} | موسمي: ${p.seasonal}`,
+                            `${p.flag} ${p.nationality}`
+                          ];
+                        }}
                         contentStyle={{ 
                           borderRadius: '12px', 
                           border: '1px solid #E8E5DF', 
@@ -1396,26 +1685,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         itemStyle={{ fontWeight: 700 }}
                       />
                       <Bar 
-                        dataKey="value" 
+                        dataKey="count" 
                         radius={[0, 6, 6, 0]} 
-                        barSize={32}
+                        barSize={24}
                         className="cursor-pointer"
                       >
-                        {opStatusChartData.map((entry, index) => (
+                        {currentNationalityList.map((entry, index) => (
                           <Cell 
-                            key={`bar-cell-${index}`} 
+                            key={`nat-bar-${index}`} 
                             fill={entry.color}
                             style={{
-                              opacity: activeStatusKey && activeStatusKey !== entry.id ? 0.4 : 1,
+                              opacity: selectedNationalityKey && selectedNationalityKey !== entry.nationality ? 0.35 : 1,
                               transition: 'all 0.2s ease-in-out'
                             }}
                           />
                         ))}
                         <LabelList 
-                          dataKey="value" 
+                          dataKey="count" 
                           position="right" 
-                          offset={10}
-                          style={{ fontSize: 12, fontWeight: 800, fill: '#090D16' }}
+                          offset={8}
+                          formatter={(val: any) => `${val}`}
+                          style={{ fontSize: 11, fontWeight: 800, fill: '#090D16' }}
                         />
                       </Bar>
                     </BarChart>
@@ -1424,88 +1714,80 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            {/* Explanatory Legend / Details Cards */}
-            <div className="w-full md:w-1/2 flex flex-col gap-2.5">
-              {opStatusChartData.map((item) => {
-                const percentage = totalBuses > 0 ? (item.value / totalBuses) * 100 : 0;
-                const isSelected = activeStatusKey === item.id;
-                const locationsForStatus = statusLocationBreakdown[item.id as 'available' | 'inService' | 'maintenance'] || [];
+            {/* Nationalities Breakdown Cards / Details Panel */}
+            <div className="w-full md:w-1/2 flex flex-col gap-2 max-h-[270px] overflow-y-auto pr-1 custom-scrollbar">
+              {currentNationalityList.map((item) => {
+                const isSelected = selectedNationalityKey === item.nationality;
 
                 return (
                   <div 
-                    key={item.name} 
-                    onClick={() => setActiveStatusKey(isSelected ? null : item.id)}
-                    className={`p-3 bg-[#FAF9F6] dark:bg-background rounded-xl border transition-all cursor-pointer flex flex-col group ${
+                    key={item.nationality} 
+                    onClick={() => setSelectedNationalityKey(isSelected ? null : item.nationality)}
+                    className={`p-2.5 bg-[#FAF9F6] dark:bg-background rounded-xl border transition-all cursor-pointer flex flex-col group ${
                       isSelected 
-                        ? 'border-emerald-700 ring-2 ring-emerald-700/10 shadow-xs'
-                        : activeStatusKey 
-                          ? 'border-border/40 opacity-60 hover:opacity-100 hover:border-border'
-                          : 'border-border hover:border-primary/40 hover:shadow-xs'
+                        ? 'border-indigo-600 ring-2 ring-indigo-600/15 shadow-xs'
+                        : selectedNationalityKey 
+                          ? 'border-border/40 opacity-50 hover:opacity-100 hover:border-border'
+                          : 'border-border hover:border-primary/40 hover:shadow-2xs'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full shrink-0 flex items-center justify-center relative" style={{ backgroundColor: item.color }}>
-                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-                        </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl shrink-0" role="img" aria-label={item.nationality}>
+                          {item.flag}
+                        </span>
                         <div className="text-right">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            {item.name}
-                            {isSelected ? (
-                              <ChevronUp className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-text-muted shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" />
-                            )}
+                          <p className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>{item.nationality}</span>
+                            <span className="text-[10px] text-text-muted font-normal">
+                              ({item.percentage.toFixed(1)}%)
+                            </span>
                           </p>
-                          <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-0.5">{percentage.toFixed(1)}% من إجمالي الأسطول</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-bold">
+                            <span className="text-emerald-700 dark:text-emerald-400">مقيم: {item.resident}</span>
+                            <span className="text-slate-300 dark:text-slate-600">•</span>
+                            <span className="text-purple-700 dark:text-purple-400">موسمي: {item.seasonal}</span>
+                          </div>
                         </div>
                       </div>
+
                       <div className="text-left shrink-0">
-                        <span className="text-base font-extrabold text-slate-900 dark:text-white block leading-none">{item.value}</span>
-                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 block mt-1">حافلة</span>
+                        <span className="text-base font-black text-slate-900 dark:text-white block leading-none font-mono">
+                          {item.count}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500 block mt-0.5">سائق</span>
                       </div>
                     </div>
 
-                    {/* Expandable Location Breakdown */}
-                    {isSelected && (
+                    {/* Progress bar */}
+                    <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2">
                       <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.percentage}%` }}
+                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                        className="h-full rounded-full" 
+                        style={{ backgroundColor: item.color }} 
+                      />
+                    </div>
+
+                    {/* If selected or in "all" mode with sub-operations */}
+                    {item.byOp && isSelected && (
+                      <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-4 pt-3 border-t border-border/50 text-right space-y-2.5"
-                        onClick={(e) => e.stopPropagation()} // Prevent closing card when clicking inside
+                        className="mt-2.5 pt-2 border-t border-border/60 text-right space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex justify-between items-center text-[10px] font-bold text-text-muted">
-                          <span>توزع الفئة في المواقع الفعالة</span>
-                          <span>عدد الحافلات ({item.value})</span>
-                        </div>
-                        <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 custom-scrollbar" dir="rtl">
-                          {locationsForStatus.map((loc, idx) => {
-                            const locPercent = item.value > 0 ? (loc.count / item.value) * 100 : 0;
-                            return (
-                              <div key={loc.name} className="flex flex-col gap-1.5 bg-slate-50/70 p-2 rounded-lg border border-border/35 hover:bg-slate-50 transition-colors">
-                                <div className="flex justify-between items-center text-[10px] font-black text-text-main leading-none">
-                                  <span className="flex items-center gap-1.5">
-                                    <MapPin className="w-3 h-3 text-red-500 shrink-0" />
-                                    <span className="truncate max-w-[150px]" title={loc.name}>{loc.name}</span>
-                                  </span>
-                                  <span className="font-extrabold text-primary shrink-0">{loc.count} حافلة ({locPercent.toFixed(0)}%)</span>
-                                </div>
-                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${locPercent}%` }}
-                                    transition={{ duration: 0.5, ease: 'easeOut' }}
-                                    className="h-full rounded-full" 
-                                    style={{ backgroundColor: item.color }} 
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {locationsForStatus.length === 0 && (
-                            <p className="text-[10px] text-text-muted text-center py-4">لا توجد حافلات مسجلة في هذا الموقع لهذه الحالة</p>
-                          )}
+                        <span className="text-[10px] font-bold text-text-muted block">
+                          توزيع جنسية ({item.nationality}) على مسارات العمل:
+                        </span>
+                        <div className="grid grid-cols-2 gap-1 text-[10px]">
+                          {Object.entries(item.byOp).map(([opName, opCount]) => (
+                            <div key={opName} className="flex justify-between items-center bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-border/50">
+                              <span className="text-text-main font-semibold truncate">{opName}:</span>
+                              <span className="font-mono font-black text-primary">{opCount}</span>
+                            </div>
+                          ))}
                         </div>
                       </motion.div>
                     )}
@@ -1513,6 +1795,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 );
               })}
             </div>
+          </div>
+
+          {/* Footer Insights */}
+          <div className="mt-4 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>
+                المسار المختار: <strong className="text-slate-900 dark:text-white">{driverOpChartFilter === 'all' ? 'كافة مسارات العمل' : driverOpChartFilter}</strong>
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <span>
+                عدد الجنسيات: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">{currentNationalityList.length}</strong>
+              </span>
+            </div>
+
+            {currentNationalityList[0] && (
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg">
+                <span className="text-text-muted">الأكثر عدداً:</span>
+                <span className="font-extrabold text-slate-900 dark:text-white">
+                  {currentNationalityList[0].flag} {currentNationalityList[0].nationality} ({currentNationalityList[0].count} سائق)
+                </span>
+              </div>
+            )}
           </div>
         </motion.div>
 

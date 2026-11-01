@@ -28,7 +28,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
 import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
 import { generatePdf } from './lib/pdfService';
-import { isDriverActiveInMonitoring } from './lib/driverUtils';
+import { isDriverActiveInMonitoring, getDriverClassification, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama, isSchoolTransportLocation } from './lib/driverUtils';
 import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResponse } from './types';
 
 function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
@@ -257,12 +257,15 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     }
   };
 
-  const handleSaveWorker = async (data: Omit<Worker, 'id'>) => {
+  const handleSaveWorker = async (data: Omit<Worker, 'id'>, targetWorkerId?: string) => {
     try {
       const cleaned = cleanData(data);
       const batch = writeBatch(db);
       
-      const oldBusId = editingWorker?.assignedBusId;
+      const activeWorkerId = targetWorkerId || editingWorker?.id;
+      const targetWorkerRecord = activeWorkerId ? workers.find(w => w.id === activeWorkerId) || editingWorker : editingWorker;
+
+      const oldBusId = targetWorkerRecord?.assignedBusId;
       const newBusId = cleaned.assignedBusId;
 
       // 1. Handle old bus unlinking
@@ -280,7 +283,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       if (newBusId) {
         // First, unassign other workers from this bus
         const otherWorkersWithSameBus = workers.filter(w => 
-          w.assignedBusId === newBusId && w.id !== (editingWorker?.id || '')
+          w.assignedBusId === newBusId && w.id !== (activeWorkerId || '')
         );
 
         for (const other of otherWorkersWithSameBus) {
@@ -332,7 +335,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
       if (cleanIqama) {
         const existingIqamaWorker = workers.find(w => 
-          w.id !== (editingWorker?.id || '') && 
+          w.id !== (activeWorkerId || '') && 
           ((w.iqamaNumber && String(w.iqamaNumber).trim() === cleanIqama) || (w.nationalId && String(w.nationalId).trim() === cleanIqama))
         );
         if (existingIqamaWorker) {
@@ -343,7 +346,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
       if (cleanNationalId) {
         const existingNationalWorker = workers.find(w => 
-          w.id !== (editingWorker?.id || '') && 
+          w.id !== (activeWorkerId || '') && 
           ((w.iqamaNumber && String(w.iqamaNumber).trim() === cleanNationalId) || (w.nationalId && String(w.nationalId).trim() === cleanNationalId))
         );
         if (existingNationalWorker) {
@@ -352,23 +355,23 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         }
       }
 
-      // 3. Save the worker
-      if (editingWorker) {
+      // 3. Save or Update the worker
+      if (activeWorkerId) {
         // Enforce no duplicates for workerNumber
-        const duplicate = workers.find(w => w.workerNumber === cleaned.workerNumber && w.id !== editingWorker.id);
+        const duplicate = workers.find(w => w.workerNumber === cleaned.workerNumber && w.id !== activeWorkerId);
         if (duplicate) {
           alert(`خطأ: رقم العامل ${cleaned.workerNumber} مكرر ومسجل بالفعل لعامل آخر باسم (${duplicate.name})`);
           return;
         }
 
-        batch.update(doc(db, 'workers', editingWorker.id), {
+        batch.update(doc(db, 'workers', activeWorkerId), {
           ...cleaned,
           updatedAt: serverTimestamp()
         });
 
         // If the worker number changed, update all corresponding salary records
-        if (editingWorker.workerNumber !== cleaned.workerNumber) {
-          const assocSalaries = salaries.filter(s => s.workerId === editingWorker.id);
+        if (targetWorkerRecord && targetWorkerRecord.workerNumber !== cleaned.workerNumber) {
+          const assocSalaries = salaries.filter(s => s.workerId === activeWorkerId);
           assocSalaries.forEach(salary => {
             batch.update(doc(db, 'salaries', salary.id), {
               workerNumber: cleaned.workerNumber,
@@ -754,15 +757,22 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       const finalStatus = cleaned.status || 'نشط';
       const finalStatusDate = cleaned.statusUpdatedAt || nowIso;
 
-      // Auto classify as 'نقل عمال' if driver is active in monitoring (الرقابة والمتابعة)
-      const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber: cleanIqama }, workers);
-      const finalClassification = isMonitoringActive ? 'نقل عمال' : (cleaned.driverClassification || 'نقل عمال');
+      // Auto classify based on monitoring match and operational location (School Transport vs Labor Transport vs Syria/Yemen/Umrah)
+      const finalClassification = getDriverClassification({
+        iqamaNumber: cleanIqama,
+        driverClassification: cleaned.driverClassification,
+        workplace: cleaned.workplace,
+        responseType: cleaned.responseType,
+        notes: cleaned.notes
+      }, workers);
+
+      const finalWorkplace = cleaned.workplace || (finalClassification === 'النقل المدرسي' ? 'النقل المدرسي (ينبع / محايل عسير / القصيم)' : finalClassification);
 
       if (editingCompanyDriver) {
         await updateDoc(doc(db, 'company_drivers', editingCompanyDriver.id), {
           ...cleaned,
           driverClassification: finalClassification,
-          workplace: finalClassification,
+          workplace: finalWorkplace,
           serialNumber: editingCompanyDriver.serialNumber || (companyDrivers.findIndex(d => d.id === editingCompanyDriver.id) + 1),
           status: finalStatus,
           statusUpdatedAt: finalStatusDate,
@@ -779,7 +789,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         await addDoc(collection(db, 'company_drivers'), {
           ...cleaned,
           driverClassification: finalClassification,
-          workplace: finalClassification,
+          workplace: finalWorkplace,
           serialNumber: nextSerial,
           status: finalStatus,
           statusUpdatedAt: finalStatusDate,
@@ -794,7 +804,89 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       if (error instanceof Error && error.message.includes('مسجل مسبقاً')) {
         throw error;
       }
-      handleFirestoreError(error, editingCompanyDriver ? OperationType.UPDATE : OperationType.CREATE, 'company_drivers');
+      handleFirestoreError(error, OperationType.WRITE, 'company_drivers');
+    }
+  };
+
+  const handleSyncCompanyDriversWithMonitoring = async () => {
+    try {
+      if (!companyDrivers.length || !workers.length) {
+        alert('لا توجد بيانات كافية للمزامنة (تأكد من وجود سجلات للسائقين وسجلات في الرقابة والمتابعة).');
+        return;
+      }
+
+      let updatedCount = 0;
+      let schoolCount = 0;
+      let laborCount = 0;
+      const updates: Array<{ id: string; data: Record<string, any> }> = [];
+
+      for (const driver of companyDrivers) {
+        const matchedWorker = getMatchingWorkerByIqama<Worker>(driver, workers);
+        const resolvedClass = getDriverClassification(driver, workers);
+        
+        let driverChanged = false;
+        const driverUpdates: Record<string, any> = {};
+
+        // 1. Classification update (نقل مدرسي vs نقل عمال vs عمرة vs دولي)
+        if (driver.driverClassification !== resolvedClass) {
+          driverUpdates.driverClassification = resolvedClass;
+          driverChanged = true;
+        }
+
+        // 2. Monitoring worker specific updates if matched
+        if (matchedWorker) {
+          if (matchedWorker.workplace && driver.workplace !== matchedWorker.workplace) {
+            driverUpdates.workplace = matchedWorker.workplace;
+            driverChanged = true;
+          }
+          const busNum = matchedWorker.assignedBusOperationalNumber || matchedWorker.assignedBusPlateNumber;
+          if (busNum && !driver.busNumber) {
+            driverUpdates.busNumber = busNum;
+            driverChanged = true;
+          }
+          if (matchedWorker.mobileNumber && !driver.mobileNumber) {
+            driverUpdates.mobileNumber = matchedWorker.mobileNumber;
+            driverChanged = true;
+          }
+        } else {
+          // For drivers not in monitoring but located in School Transport areas
+          if (isSchoolTransportLocation(driver.workplace) || isSchoolTransportLocation(driver.notes)) {
+            if (driver.driverClassification !== 'النقل المدرسي') {
+              driverUpdates.driverClassification = 'النقل المدرسي';
+              driverChanged = true;
+            }
+          }
+        }
+
+        if (driverChanged) {
+          driverUpdates.updatedAt = serverTimestamp();
+          updates.push({ id: driver.id, data: driverUpdates });
+          if (resolvedClass === 'النقل المدرسي') schoolCount++;
+          if (resolvedClass === 'نقل عمال') laborCount++;
+          updatedCount++;
+        }
+      }
+
+      if (updates.length > 0) {
+        const CHUNK_SIZE = 250;
+        for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+          const chunk = updates.slice(i, i + CHUNK_SIZE);
+          const chunkBatch = writeBatch(db);
+          for (const item of chunk) {
+            chunkBatch.update(doc(db, 'company_drivers', item.id), item.data);
+          }
+          await chunkBatch.commit();
+        }
+        alert(`تمت مزامنة وتحديث بيانات السائقين بنجاح!
+• إجمالي السائقين المحدثين: ${updatedCount} سائق
+• تصنيف النقل المدرسي (ينبع - محايل عسير - القصيم): ${schoolCount}
+• تصنيف نقل العمال: ${laborCount}`);
+      } else {
+        alert('كافة بيانات السائقين متزامنة ومطابقة تماماً لسجلات الرقابة والمتابعة ومواقع النقل المدرسي، لا توجد تحديثات جديدة مطلوبة.');
+      }
+    } catch (error) {
+      console.error('Error syncing company drivers with monitoring:', error);
+      alert('حدث خطأ أثناء مزامنة السائقين مع الرقابة والمتابعة: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -1085,6 +1177,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               onStatusChange={handleUpdateCompanyDriverStatus}
               onImport={handleImportCompanyDriversExcel}
               onExport={(data) => exportCompanyDriversToExcel(data, workers)}
+              onSyncWithMonitoring={handleSyncCompanyDriversWithMonitoring}
             />
           )}
 
@@ -1119,6 +1212,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           worker={editingWorker}
           allWorkers={workers}
           buses={buses}
+          companyDrivers={companyDrivers}
           onSave={handleSaveWorker}
           onClose={() => { setIsWorkerFormOpen(false); setEditingWorker(null); }}
         />

@@ -487,6 +487,12 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
       };
     }
     switch (classification) {
+      case 'النقل المدرسي':
+        return {
+          backgroundColor: '#FEF9C3',
+          color: '#854D0E',
+          border: '1.5px solid #FACC15'
+        };
       case 'عمرة':
         return {
           backgroundColor: '#FEF3C7',
@@ -1277,6 +1283,7 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
                   >
                     <option value="all">كافة التصنيفات (الكل)</option>
                     <option value="نقل عمال">🚌 نقل عمال</option>
+                    <option value="النقل المدرسي">🏫 النقل المدرسي</option>
                     <option value="عمرة">🕌 عمرة</option>
                     <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا</option>
                     <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن</option>

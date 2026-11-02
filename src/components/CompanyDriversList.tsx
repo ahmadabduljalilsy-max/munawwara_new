@@ -37,7 +37,8 @@ import {
   LayoutGrid,
   ListFilter,
   Printer,
-  GraduationCap
+  GraduationCap,
+  RotateCcw
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
@@ -247,6 +248,39 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
       return matchesSearch && matchesType && matchesStatus && matchesNationality && matchesClassification;
     });
   }, [drivers, workers, searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
+
+  // Filtered stats for live driver count display
+  const filteredStats = useMemo(() => {
+    let resident = 0;
+    let seasonal = 0;
+    let temporary = 0;
+    let active = 0;
+    filteredDrivers.forEach(d => {
+      const type = resolveDriverType(d);
+      if (type === 'مقيم') resident++;
+      else if (type === 'موسمي') seasonal++;
+      else temporary++;
+
+      if (!d.status || d.status === 'نشط') active++;
+    });
+    const isFiltered = Boolean(
+      selectedStatus !== 'all' || 
+      selectedNationality || 
+      selectedType !== 'all' || 
+      selectedClassification || 
+      searchTerm.trim()
+    );
+    const percentage = drivers.length > 0 ? Math.round((filteredDrivers.length / drivers.length) * 100) : 0;
+    return {
+      count: filteredDrivers.length,
+      resident,
+      seasonal,
+      temporary,
+      active,
+      isFiltered,
+      percentage
+    };
+  }, [filteredDrivers, drivers.length, selectedStatus, selectedNationality, selectedType, selectedClassification, searchTerm]);
 
   // Reset page when filtering
   React.useEffect(() => {
@@ -751,25 +785,28 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                 </div>
               </div>
 
-              {/* Dropdowns & Reset */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Dropdowns & Driver Count Tab & Reset */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                {/* 1. تصفية حسب الجنسية */}
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-text-muted mr-1">تصفية حسب الجنسية</label>
                   <select 
                     value={selectedNationality}
                     onChange={(e) => setSelectedNationality(e.target.value)}
-                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
+                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm font-medium"
                   >
                     <option value="">كافة الجنسيات</option>
                     {nationalities.map(n => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
+
+                {/* 2. تصنيف السائق (نوع العمل) */}
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-text-muted mr-1">تصنيف السائق (نوع العمل)</label>
                   <select 
                     value={selectedClassification}
                     onChange={(e) => setSelectedClassification(e.target.value)}
-                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm"
+                    className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm font-medium"
                   >
                     <option value="">كافة التصنيفات</option>
                     <option value="نقل عمال">🚌 نقل عمال ({stats.laborTransport})</option>
@@ -779,8 +816,53 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن ({stats.intlYemen})</option>
                   </select>
                 </div>
-                {(selectedStatus !== 'all' || selectedNationality || selectedType !== 'all' || selectedClassification || searchTerm) && (
-                  <div className="col-span-1 md:col-span-2 lg:col-span-2 flex items-end justify-end">
+
+                {/* 3. تبويب عدد السائقين عند الفلترة */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-text-muted mr-1">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-primary" />
+                      <span>عدد السائقين (المطابقين):</span>
+                    </span>
+                    {filteredStats.isFiltered && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.2 rounded-full border border-emerald-200 dark:border-emerald-800">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        مفلتر ({filteredStats.percentage}%)
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className={`h-[38px] px-3 rounded-lg border flex items-center justify-between transition-all ${
+                      filteredStats.isFiltered
+                        ? 'bg-primary/5 dark:bg-primary/15 border-primary/50 ring-1 ring-primary/20 shadow-xs'
+                        : 'bg-background border-border shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-xl font-black text-primary font-mono leading-none">
+                        {filteredStats.count}
+                      </span>
+                      <span className="text-[11px] text-text-muted font-bold">
+                        من {drivers.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                        مقيم: {filteredStats.resident}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                        موسمي: {filteredStats.seasonal}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. زر إعادة ضبط الفلاتر أو مؤشر الحالة */}
+                <div className="space-y-1">
+                  <div className="text-[11px] font-bold text-text-muted mr-1 invisible">
+                    إجراء
+                  </div>
+                  {filteredStats.isFiltered ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -790,12 +872,19 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                         setSelectedClassification('');
                         setSearchTerm('');
                       }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-text-muted hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      className="h-[38px] w-full px-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.98]"
+                      title="إلغاء التصفية وإظهار كافة السائقين"
                     >
-                      إعادة ضبط جميع الفلاتر
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>إعادة ضبط جميع الفلاتر</span>
                     </button>
-                  </div>
-                )}
+                  ) : (
+                    <div className="h-[38px] px-3 bg-slate-50 dark:bg-slate-900/40 border border-dashed border-border rounded-lg flex items-center justify-center gap-1.5 text-xs text-text-muted font-medium">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>كامل الأسطول ظاهر ({drivers.length})</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}

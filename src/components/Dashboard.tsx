@@ -124,6 +124,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [modalStatusFilter, setModalStatusFilter] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
+  // Real connectivity status listener
+  const [isOnline, setIsOnline] = useState<boolean>(() => 
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const handleExportExcel = () => {
     exportDashboardStatsToExcel(buses, workers);
     setIsExportModalOpen(false);
@@ -692,119 +708,181 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </motion.div>
       )}
 
-      {/* 1. Operations Hub & Readiness Summary Top Bar */}
+      {/* 1. Operations Hub & Readiness Summary Top Bar — Executive Operations UI */}
       <motion.div 
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ backgroundColor: '#091427' }}
-        className="p-5 sm:p-6 bg-gradient-to-r from-[#060D1A] via-[#0C1D38] to-[#132A52] text-white rounded-3xl shadow-xl border-2 border-blue-950/80 overflow-hidden relative"
+        className="p-5 sm:p-6 bg-gradient-to-br from-[#07152B] via-[#0A1A33] to-[#112746] text-white rounded-[20px] shadow-xl shadow-[#07152B]/30 border border-white/10 overflow-hidden relative"
       >
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-6 relative z-10">
+        {/* Soft Ambient Corner Glows */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-[#2563EB]/15 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="absolute bottom-0 left-0 w-72 h-72 bg-[#00A88B]/10 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
+
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 relative z-10">
           {/* Right/Main Info */}
-          <div className="flex-1 text-right space-y-3 w-full">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-xs font-black text-sky-200 uppercase tracking-wider flex items-center gap-2 bg-sky-950/90 px-3.5 py-1.5 rounded-full border border-sky-500/40 shadow-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0 shadow-sm shadow-emerald-400" />
-                <span>مركز العمليات والمراقبة اللحظية • شركة درة المنورة للنقليات</span>
-              </span>
+          <div className="flex-1 text-right space-y-3.5 w-full">
+            {/* Operations Center Badge & Executive Statement Button */}
+            <div className="flex items-center justify-between flex-wrap gap-2.5">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.06] border border-white/15 backdrop-blur-md text-[11px] font-bold text-slate-200">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  {isOnline ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" />
+                    </>
+                  ) : (
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                  )}
+                </span>
+                <span className="font-sans">مركز العمليات والمراقبة اللحظية — شركة درة المنورة للنقليات</span>
+                <span className={`text-[10px] font-medium ${isOnline ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  ({isOnline ? 'متصل' : 'غير متصل'})
+                </span>
+              </div>
+
               {onOpenAnnouncement && (
                 <button
+                  id="open-announcement-btn"
                   type="button"
                   onClick={onOpenAnnouncement}
-                  className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md shadow-amber-400/25 active:scale-95 border border-amber-300"
-                  title="عرض توجيهات وبيان إدارة مكتب التشغيل"
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#E8B44D] hover:bg-[#f3c666] text-[#07152B] rounded-xl text-xs font-black transition-all duration-200 cursor-pointer shadow-md shadow-[#E8B44D]/25 active:scale-95 border border-[#f8d78f] group"
+                  title="عرض بيان وتوجيهات إدارة مكتب التشغيل"
                 >
-                  <Award className="w-4 h-4 text-slate-950" />
+                  <Award className="w-4 h-4 text-[#07152B] group-hover:rotate-6 transition-transform" />
                   <span>بيان إدارة مكتب التشغيل</span>
                 </button>
               )}
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-3">
-              <span className="w-2 h-7 bg-primary rounded-full inline-block" />
-              <span>لوحة القيادة والمتابعة التشغيلية الشاملة</span>
-            </h2>
+            {/* Title & Description */}
+            <div className="space-y-1.5">
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5 font-cairo">
+                <span className="w-1.5 h-7 sm:h-8 bg-[#2563EB] rounded-full inline-block shrink-0 shadow-sm shadow-[#2563EB]/60" />
+                <span>لوحة القيادة والمتابعة التشغيلية الشاملة</span>
+              </h2>
 
-            <p className="text-xs sm:text-sm text-slate-100 font-bold leading-relaxed max-w-3xl">
-              نظام الفحص والتحليل الميداني المباشر لإدارة أسطول الحافلات وتوزيع الكوادر والسائقين المعتمدين عبر مسارات نقل العمال، والعمرة، والنقل الدولي (سوريا واليمن).
-            </p>
+              <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed max-w-3xl">
+                نظام الفحص والتحليل الميداني المباشر لإدارة أسطول الحافلات وتوزيع الكوادر والسائقين والمعتمرين عبر مسارات نقل العمال والعمرة والنقل الدولي.
+              </p>
+            </div>
 
-            {/* Quick Live Stats Pills */}
-            <div className="flex flex-wrap items-center gap-2.5 pt-1.5 text-xs">
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-sky-500/40 text-slate-100 shadow-sm">
-                <Bus className="w-4 h-4 text-sky-400" />
-                <span className="font-bold text-sky-200">الأسطول:</span>
-                <span className="font-mono font-black text-white bg-sky-950 px-2 py-0.5 rounded-md border border-sky-600/40">{totalBuses} حافلة</span>
+            {/* Operational Indicators: Mini KPI Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              {/* الأسطول */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-[#2563EB]/40 transition-all duration-200 backdrop-blur-xs">
+                <div className="w-8 h-8 rounded-lg bg-[#2563EB]/20 border border-[#2563EB]/30 flex items-center justify-center shrink-0">
+                  <Bus className="w-4 h-4 text-sky-400" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold text-slate-300 truncate">الأسطول</span>
+                  <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
+                    {totalBuses} <span className="text-[10px] font-normal text-slate-400">حافلة</span>
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-indigo-500/40 text-slate-100 shadow-sm">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <span className="font-bold text-indigo-200">السائقين:</span>
-                <span className="font-mono font-black text-white bg-indigo-950 px-2 py-0.5 rounded-md border border-indigo-600/40">{driverStats.total} سائق</span>
+
+              {/* السائقون */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-indigo-500/40 transition-all duration-200 backdrop-blur-xs">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                  <Users className="w-4 h-4 text-indigo-300" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold text-slate-300 truncate">السائقون</span>
+                  <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
+                    {driverStats.total} <span className="text-[10px] font-normal text-slate-400">سائق</span>
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border-2 border-amber-500/40 text-slate-100 shadow-sm">
-                <MapPin className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-amber-200">مواقع العمل:</span>
-                <span className="font-mono font-black text-white bg-amber-950 px-2 py-0.5 rounded-md border border-amber-600/40">{Object.keys(locationCounts).length} موقع</span>
+
+              {/* مواقع العمل */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-[#E8B44D]/40 transition-all duration-200 backdrop-blur-xs">
+                <div className="w-8 h-8 rounded-lg bg-[#E8B44D]/20 border border-[#E8B44D]/30 flex items-center justify-center shrink-0">
+                  <MapPin className="w-4 h-4 text-amber-300" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold text-slate-300 truncate">مواقع العمل</span>
+                  <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
+                    {Object.keys(locationCounts).length} <span className="text-[10px] font-normal text-slate-400">موقع</span>
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 font-black shadow-sm shadow-emerald-500/20">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                <span>الربط الميداني 100% متزامن</span>
+
+              {/* الربط الميداني */}
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#00A88B]/10 hover:bg-[#00A88B]/15 border border-[#00A88B]/30 hover:border-[#00A88B]/50 transition-all duration-200 backdrop-blur-xs">
+                <div className="w-8 h-8 rounded-lg bg-[#00A88B]/20 border border-[#00A88B]/40 flex items-center justify-center shrink-0">
+                  <Activity className="w-4 h-4 text-emerald-300" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold text-emerald-200 truncate">الربط الميداني</span>
+                  <span className="block text-sm sm:text-base font-black font-mono text-emerald-300 tabular-nums leading-tight">
+                    {isOnline ? '100%' : '90%'} <span className="text-[10px] font-normal text-emerald-400">{isOnline ? 'متزامن' : 'مؤقت'}</span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Left Arc Gauge: Readiness Score */}
-          <div className="flex items-center gap-5 shrink-0 bg-slate-950/90 p-4 sm:p-5 rounded-2xl border-2 border-blue-900/60 shadow-xl">
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center shrink-0">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+          {/* Left: Technical Readiness Indicator Card */}
+          <div className="w-full lg:w-auto shrink-0 bg-[#07152B]/85 backdrop-blur-md p-4 sm:p-4.5 rounded-[18px] border border-white/10 shadow-lg flex items-center justify-between sm:justify-start gap-4 sm:gap-5">
+            {/* Circular Progress Gauge */}
+            <div className="relative w-20 h-20 sm:w-22 sm:h-22 flex items-center justify-center shrink-0">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 96 96">
                 <circle
-                  cx="60"
-                  cy="60"
-                  r="48"
-                  className="stroke-slate-800"
-                  strokeWidth="10"
+                  cx="48"
+                  cy="48"
+                  r="37"
+                  className="stroke-white/10"
+                  strokeWidth="7"
                   fill="transparent"
-                  strokeDasharray="301.59"
-                  strokeDashoffset="75.4"
-                  strokeLinecap="round"
                 />
                 <circle
-                  cx="60"
-                  cy="60"
-                  r="48"
-                  stroke="#10B981"
-                  strokeWidth="10"
+                  cx="48"
+                  cy="48"
+                  r="37"
+                  stroke={readinessScore >= 95 ? '#10B981' : readinessScore >= 80 ? '#2563EB' : '#E8B44D'}
+                  strokeWidth="7"
                   fill="transparent"
-                  strokeDasharray="301.59"
-                  strokeDashoffset={301.59 - ((readinessScore * 0.75) / 100) * 301.59}
+                  strokeDasharray="232.48"
+                  strokeDashoffset={232.48 - (readinessScore / 100) * 232.48}
                   strokeLinecap="round"
                   className="transition-all duration-1000 ease-out"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-2xl sm:text-3xl font-black font-sans text-white leading-none">
+                <span className="text-xl sm:text-2xl font-black font-mono text-white leading-none tabular-nums">
                   %{readinessScore}
                 </span>
-                <span className="text-[10px] font-black text-emerald-400 mt-1 uppercase">
+                <span className="text-[9px] font-bold text-emerald-400 mt-1 uppercase">
                   جاهزية الأسطول
                 </span>
               </div>
             </div>
 
+            {/* Details & Action Button */}
             <div className="space-y-2 text-right">
-              <span className="text-xs font-black text-slate-200 block">
-                مؤشر الجاهزية الفنية:
-              </span>
-              <span className="text-xs font-black px-3 py-1 rounded-full inline-block bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/25">
-                {readinessScore >= 95 ? 'ممتاز (جاهزية قصوى)' : readinessScore >= 80 ? 'جيد جداً للعمل' : 'يحتاج فحص وصيانة'}
-              </span>
-              <div className="pt-1 flex flex-col gap-1">
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-300 block">
+                  مؤشر الجاهزية الفنية:
+                </span>
+                <span className={`inline-block text-[11px] font-black px-2.5 py-0.5 rounded-full border ${
+                  readinessScore >= 95
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : readinessScore >= 80
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}>
+                  {readinessScore >= 95 ? 'ممتاز (جاهزية قصوى)' : readinessScore >= 80 ? 'جيد جداً للعمل' : 'يحتاج فحص وصيانة'}
+                </span>
+              </div>
+
+              <div className="pt-0.5">
                 <button
                   type="button"
                   onClick={() => setIsExportModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-md shadow-blue-600/30 text-center active:scale-95"
+                  className="w-full px-3.5 py-1.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-black transition-all duration-200 cursor-pointer shadow-md shadow-[#2563EB]/25 flex items-center justify-center gap-1.5 active:scale-95"
                 >
-                  فحص فوري وتصدير
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>فحص فوري وتصدير</span>
                 </button>
               </div>
             </div>

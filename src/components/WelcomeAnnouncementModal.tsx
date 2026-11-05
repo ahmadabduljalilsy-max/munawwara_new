@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, 
@@ -6,13 +6,11 @@ import {
   ShieldCheck, 
   Building2, 
   Bus as BusIcon, 
-  Users, 
   Gauge, 
   ArrowLeft,
   X,
   Award
 } from 'lucide-react';
-import { useLogo } from '../lib/LogoContext';
 
 interface WelcomeAnnouncementModalProps {
   forceOpen?: boolean;
@@ -25,8 +23,8 @@ export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> =
   forceOpen = false,
   onClose
 }) => {
-  const { logoURL } = useLogo();
   const [isOpen, setIsOpen] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (forceOpen) {
@@ -56,127 +54,165 @@ export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> =
     }
     setIsOpen(false);
     if (onClose) onClose();
+
+    // Return focus gracefully to trigger button if present
+    setTimeout(() => {
+      const triggerBtn = document.getElementById('open-announcement-btn');
+      if (triggerBtn) {
+        triggerBtn.focus();
+      }
+    }, 100);
   };
+
+  // Keyboard accessibility: Escape to dismiss
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleDismiss();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto" dir="rtl">
-        {/* Backdrop */}
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto" 
+        dir="rtl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="executive-modal-title"
+      >
+        {/* Backdrop with smooth blur */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           onClick={handleDismiss}
-          className="fixed inset-0 bg-slate-950/75 backdrop-blur-md"
+          className="fixed inset-0 bg-[#07152B]/80 backdrop-blur-md"
         />
 
-        {/* Modal Window */}
+        {/* Modal Window — Executive Welcome & Operations Statement Modal */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          ref={modalRef}
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-xl bg-surface border border-border/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col z-10 my-auto text-slate-800 dark:text-slate-100"
+          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="relative w-full max-w-2xl bg-white dark:bg-[#112746] border border-slate-200/90 dark:border-slate-700/80 rounded-[22px] shadow-2xl shadow-[#07152B]/40 overflow-hidden flex flex-col z-10 my-auto text-[#17253C] dark:text-slate-100 max-h-[92vh]"
         >
-          {/* Top Decorative Banner */}
-          <div className="relative h-28 bg-gradient-to-r from-emerald-600 via-teal-600 to-primary p-6 flex items-center justify-between overflow-hidden">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_70%)]" />
-            
-            {/* Background geometric accents */}
-            <div className="absolute -left-6 -bottom-6 w-28 h-28 rounded-full bg-white/10 blur-xl pointer-events-none" />
-            <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-amber-400/20 blur-xl pointer-events-none" />
+          {/* Header: Luxury Gradient (Teal #00A88B -> Blue #2563EB -> Navy #07152B) */}
+          <div className="relative p-5 sm:p-6 bg-gradient-to-r from-[#00A88B] via-[#1D4ED8] to-[#07152B] flex items-center justify-between overflow-hidden shrink-0">
+            {/* Ambient Lighting & Accents */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.22),transparent_70%)] pointer-events-none" />
+            <div className="absolute -left-10 -bottom-10 w-36 h-36 rounded-full bg-white/10 blur-xl pointer-events-none" />
+            <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-[#E8B44D]/20 blur-xl pointer-events-none" />
 
-            <div className="relative z-10 flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center shadow-lg">
-                <Building2 className="w-7 h-7 text-white" />
+            <div className="relative z-10 flex items-center gap-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 text-white flex items-center justify-center shadow-lg shadow-black/10 shrink-0">
+                <Building2 className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
-              <div className="text-white">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-amber-200 text-[11px] font-bold border border-white/20 mb-1">
-                  <Sparkles className="w-3 h-3 text-amber-300" />
+              <div className="text-white space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[#E8B44D] text-[11px] font-black border border-white/25">
+                  <Sparkles className="w-3 h-3 text-[#E8B44D]" />
                   <span>منظومة مكتب التشغيل المعتمدة</span>
                 </div>
-                <h3 className="text-lg font-black tracking-tight text-white drop-shadow-sm">
+                <h3 id="executive-modal-title" className="text-lg sm:text-xl font-black tracking-tight text-white drop-shadow-xs font-cairo">
                   مرحباً بكم في منظومة التشغيل
                 </h3>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={handleDismiss}
-              className="relative z-10 p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-colors cursor-pointer"
+              aria-label="إغلاق النافذة"
+              className="relative z-10 p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white shrink-0"
               title="إغلاق"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Modal Body */}
-          <div className="p-6 sm:p-7 space-y-6">
-            {/* Official Message Quote Card */}
-            <div className="relative p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-primary/10 border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-inner">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
-                  <Award className="w-5 h-5" />
+          {/* Modal Body with internal scrolling */}
+          <div className="p-5 sm:p-7 space-y-5 overflow-y-auto custom-scrollbar">
+            {/* 1. Official Statement Card (بيان إدارة مكتب التشغيل) */}
+            <div className="relative p-5 sm:p-6 rounded-2xl bg-[#F2F6FC] dark:bg-[#07152B]/70 border border-[#00A88B]/35 dark:border-[#00A88B]/45 shadow-xs">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-[#00A88B] text-white flex items-center justify-center shrink-0 shadow-md shadow-[#00A88B]/25">
+                  <Award className="w-5 h-5 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-[11px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>بيان الإدارة ومكتب التشغيل</span>
+                  <div className="text-xs font-black text-[#00A88B] dark:text-[#10B981] flex items-center gap-1.5 font-cairo">
+                    <ShieldCheck className="w-4 h-4 text-[#00A88B] dark:text-[#10B981]" />
+                    <span>بيان إدارة مكتب التشغيل</span>
                   </div>
-                  {/* The exact text requested by user */}
-                  <p className="text-sm sm:text-base font-bold leading-relaxed text-slate-800 dark:text-slate-100 select-text">
+                  {/* The exact official statement text preserved verbatim */}
+                  <p className="text-sm sm:text-[15px] font-bold leading-relaxed text-[#17253C] dark:text-slate-100 select-text">
                     "بفضل الله وتوفيقه وبإشراف مباشر من مدير التشغيل الاستاذ عبد الحميد سالمة تم تصميم هذه المنظومة لتكون شاملة لعمليات مكتب التشغيل، وتهدف إلى تنظيم الأعمال، وتسهيل متابعة السائقين والمركبات، ورفع كفاءة الأداء ودقة المتابعة."
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Strategic Pillars */}
+            {/* 2. System Objectives Cards (بطاقات أهداف المنظومة الثلاث) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3.5 rounded-xl bg-background border border-border flex items-start gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-4 h-4" />
+              {/* البطاقة الأولى: تنظيم الأعمال */}
+              <div className="p-4 rounded-xl bg-[#F2F6FC] dark:bg-white/[0.04] border border-slate-200/80 dark:border-slate-800 hover:border-emerald-500/30 transition-all duration-200 flex flex-col justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900 dark:text-white font-cairo">تنظيم الأعمال</span>
                 </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">تنظيم الأعمال</div>
-                  <div className="text-[11px] text-text-muted mt-0.5">إدارة مركزية لجميع العمليات والردود اليومية</div>
-                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-normal font-medium">
+                  إدارة مركزية لجميع العمليات والردود اليومية
+                </p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-background border border-border flex items-start gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-                  <BusIcon className="w-4 h-4" />
+              {/* البطاقة الثانية: متابعة السائقين والمركبات */}
+              <div className="p-4 rounded-xl bg-[#F2F6FC] dark:bg-white/[0.04] border border-slate-200/80 dark:border-slate-800 hover:border-sky-500/30 transition-all duration-200 flex flex-col justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/25 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                    <BusIcon className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900 dark:text-white font-cairo">متابعة السائقين والمركبات</span>
                 </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">متابعة السائقين والمركبات</div>
-                  <div className="text-[11px] text-text-muted mt-0.5">تحقق دقيق من حافلات الأسطول والسائقين</div>
-                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-normal font-medium">
+                  تحقق دقيق من حافلات الأسطول والسائقين
+                </p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-background border border-border flex items-start gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Gauge className="w-4 h-4" />
+              {/* البطاقة الثالثة: رفع كفاءة الأداء */}
+              <div className="p-4 rounded-xl bg-[#F2F6FC] dark:bg-white/[0.04] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/30 transition-all duration-200 flex flex-col justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-[#E8B44D]/15 border border-[#E8B44D]/25 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Gauge className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900 dark:text-white font-cairo">رفع كفاءة الأداء</span>
                 </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">رفع كفاءة الأداء</div>
-                  <div className="text-[11px] text-text-muted mt-0.5">دقة المتابعة وسرعة الإنجاز والتقارير</div>
-                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-normal font-medium">
+                  دقة المتابعة وسرعة الإنجاز والتقارير
+                </p>
               </div>
             </div>
 
-            {/* Action Bar */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border">
-              <div className="text-xs text-text-muted flex items-center gap-1.5 font-bold">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            {/* 3. Administrative Signature & Action Button */}
+            <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-200/80 dark:border-slate-800">
+              <div className="text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2 font-black">
+                <ShieldCheck className="w-4 h-4 text-[#00A88B] shrink-0" />
                 <span>إشراف مباشر: أ. عبد الحميد سالمة (مدير التشغيل)</span>
               </div>
 
               <button
                 type="button"
                 onClick={handleDismiss}
-                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-[#00A88B] to-[#10B981] hover:from-[#008f75] hover:to-[#059669] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-[#00A88B]/25 hover:shadow-[#00A88B]/35 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00A88B]"
               >
                 <span>دخول المنظومة ومتابعة العمل</span>
                 <ArrowLeft className="w-4 h-4" />
@@ -188,3 +224,4 @@ export const WelcomeAnnouncementModal: React.FC<WelcomeAnnouncementModalProps> =
     </AnimatePresence>
   );
 };
+

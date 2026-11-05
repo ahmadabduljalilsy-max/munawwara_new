@@ -1,8 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Cairo:wght@400;600;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800;900&display=swap');
 @import "tailwindcss";
 
 @utility font-handwriting {
   font-family: 'Aref Ruqaa', 'Tajawal', cursive;
+}
+
+@utility font-cairo {
+  font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+}
+
+@utility font-ibm-arabic {
+  font-family: 'IBM Plex Sans Arabic', 'Tajawal', system-ui, sans-serif;
 }
 
 @theme {
@@ -23,7 +31,18 @@
   --color-dmtc-orange: #FF6D00;
   --color-dmtc-cyan: #00BCD4;
 
-  --font-sans: "Tajawal", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  /* Durrat Al Munawarah — Executive Operations UI Palette */
+  --color-exec-navy-primary: #07152B;
+  --color-exec-navy-secondary: #112746;
+  --color-exec-blue: #2563EB;
+  --color-exec-teal: #00A88B;
+  --color-exec-green: #10B981;
+  --color-exec-gold: #E8B44D;
+  --color-exec-card-light: #F2F6FC;
+  --color-exec-white: #FFFFFF;
+  --color-exec-text-dark: #17253C;
+
+  --font-sans: "Cairo", "Tajawal", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Plus Jakarta Sans", monospace;
 }
 

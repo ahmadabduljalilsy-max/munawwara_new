@@ -21,6 +21,7 @@ import { CompanyDriverFormModal } from './components/CompanyDriverFormModal';
 import { DriverResponseModal } from './components/DriverResponseModal';
 import { PublicDriverResponsePage } from './components/PublicDriverResponsePage';
 import { WelcomeAnnouncementModal } from './components/WelcomeAnnouncementModal';
+import { WorkLocationsDashboard } from './components/WorkLocationsDashboard';
 import { AnimatePresence, motion } from 'motion/react';
 import { db, auth, testConnection } from './lib/firebase';
 import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
@@ -51,6 +52,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   const [editingCompanyDriver, setEditingCompanyDriver] = useState<CompanyDriver|null>(null);
   const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], salaries?: SalaryRecord[], stats: any}|null>(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+  const [selectedLocationForView, setSelectedLocationForView] = useState<string | null>(null);
 
   // Check if current URL is targeting the public driver response page (no auth required)
   const [isPublicResponsePage, setIsPublicResponsePage] = useState(() => {
@@ -195,7 +197,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   // 2. Read-only: allowed Dashboard, Fleet, and Monitoring only. Forbidden from: drivers, salaries, admin.
   // 3. Super Admin: full access to all tabs.
   useEffect(() => {
-    if (isBusSupervisor && activeTab !== 'dashboard') {
+    if (activeTab === 'locations') {
+      setActiveTab('dashboard');
+    } else if (isBusSupervisor && activeTab !== 'dashboard') {
       setActiveTab('dashboard');
     } else if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin' || activeTab === 'drivers')) {
       setActiveTab('dashboard');
@@ -1254,6 +1258,23 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
               onNavigateToDrivers={() => setActiveTab('drivers')}
               onNavigateToFleet={() => setActiveTab('fleet')}
+              onNavigateToLocations={() => { setSelectedLocationForView(null); setActiveTab('locations'); }}
+              onNavigateToLocation={(locName) => { setSelectedLocationForView(locName); setActiveTab('locations'); }}
+            />
+          )}
+          {activeTab === 'locations' && (
+            <WorkLocationsDashboard
+              buses={buses}
+              workers={workers}
+              companyDrivers={companyDrivers}
+              isAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              initialSelectedLocation={selectedLocationForView}
+              onClearInitialLocation={() => setSelectedLocationForView(null)}
+              onAddBus={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
+              onEditBus={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
+              onNavigateToFleet={() => setActiveTab('fleet')}
+              onNavigateToDrivers={() => setActiveTab('drivers')}
             />
           )}
           {activeTab === 'fleet' && (

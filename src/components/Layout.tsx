@@ -61,7 +61,7 @@ export const Layout: React.FC<{ children: React.ReactNode; activeTab: string; se
 
   // Bus Supervisor has access ONLY to the Dashboard (الصفحة الرئيسية فقط)
   if (!isBusSupervisor) {
-    // Both Super Admin and Read-only can view Fleet and Monitoring (read-only mode)
+    // Fleet management and Monitoring
     menuItems.push({ id: 'fleet', label: 'أسطول الحافلات', icon: Bus, desc: 'حالة الأسطول والتشغيل', iconBg: 'bg-sky-50 dark:bg-sky-900/40 text-sky-600' });
     menuItems.push({ id: 'monitoring', label: 'الرقابة والمتابعة', icon: ShieldCheck, desc: 'توزيع السائقين والمواقع', iconBg: 'bg-cyan-50 dark:bg-cyan-900/40 text-cyan-600' });
 

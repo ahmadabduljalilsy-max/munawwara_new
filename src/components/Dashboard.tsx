@@ -18,6 +18,8 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Phone,
+  PhoneCall,
   Loader2,
   PieChart as PieChartIcon,
   BarChart3,
@@ -56,7 +58,7 @@ import {
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDriver } from '../types';
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
-import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring } from '../lib/driverUtils';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isWorkerActiveInMonitoring, isDriverEndedInMonitoring } from '../lib/driverUtils';
 import { DmtcLogo } from './DmtcLogo';
 
 interface DashboardProps {
@@ -417,24 +419,109 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(stats);
   }, [busesInSelectedLocation]);
 
+  // Helper to resolve only the active driver and their phone number for any bus
+  const getBusDrivers = React.useCallback((bus: BusType) => {
+    const today = new Date().toISOString().split('T')[0];
+    const opNum = String(bus.operationalNumber || '').trim();
+    const plateNum = String(bus.plateNumber || '').trim();
+
+    // 1. Direct active assigned workers from workers collection (الرقابة والمتابعة)
+    const activeAssignedWorkers = workers.filter(w => {
+      const isAssigned = (
+        (w.assignedBusId && w.assignedBusId === bus.id) ||
+        (w.assignedBusOperationalNumber && String(w.assignedBusOperationalNumber).trim() === opNum) ||
+        (w.assignedBusPlateNumber && String(w.assignedBusPlateNumber).trim() === plateNum)
+      );
+      if (!isAssigned) return false;
+      return isWorkerActiveInMonitoring(w, today);
+    });
+
+    if (activeAssignedWorkers.length > 0) {
+      // Sort by startDate descending (or workerNumber / id) to pick the most recent active assignment
+      const sorted = [...activeAssignedWorkers].sort((a, b) => {
+        const dateA = a.startDate || '';
+        const dateB = b.startDate || '';
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return (b.workerNumber || 0) - (a.workerNumber || 0);
+      });
+      const activeWorker = sorted[0];
+
+      let phone = (activeWorker.mobileNumber || '').trim();
+      if (!phone) {
+        const matchCd = companyDrivers.find(cd => 
+          (activeWorker.iqamaNumber && cd.iqamaNumber && cd.iqamaNumber.trim() === activeWorker.iqamaNumber.trim()) ||
+          (activeWorker.name && cd.fullName && cd.fullName.trim() === activeWorker.name.trim())
+        );
+        if (matchCd?.mobileNumber) {
+          phone = matchCd.mobileNumber.trim();
+        }
+      }
+
+      return [{
+        id: activeWorker.id,
+        name: activeWorker.name,
+        phone,
+        iqama: activeWorker.iqamaNumber
+      }];
+    }
+
+    // 2. Fallback: Only if NO active worker is assigned in monitoring, check active companyDrivers
+    const activeCompanyDrivers = companyDrivers.filter(d => {
+      if (!d.busNumber) return false;
+      const bNum = String(d.busNumber).trim();
+      const matches = bNum === opNum || bNum === `#${opNum}` || bNum === plateNum;
+      if (!matches) return false;
+
+      // Driver status check
+      const st = (d.status || 'نشط').trim();
+      if (st === 'مستبعد' || st.includes('مستبعد') || st === 'في إجازة' || st.includes('إجازة')) return false;
+
+      // Check if driver has an ended assignment in monitoring
+      if (isDriverEndedInMonitoring(d, workers, today)) return false;
+
+      return true;
+    });
+
+    if (activeCompanyDrivers.length > 0) {
+      const cd = activeCompanyDrivers[0];
+      return [{
+        id: cd.id,
+        name: cd.fullName,
+        phone: (cd.mobileNumber || '').trim(),
+        iqama: cd.iqamaNumber
+      }];
+    }
+
+    return [];
+  }, [workers, companyDrivers]);
+
   const filteredBusesInSelectedLocation = React.useMemo(() => {
     return busesInSelectedLocation.filter(bus => {
+      const searchLower = modalSearch.trim().toLowerCase();
       const opNum = (bus.operationalNumber || '').toLowerCase();
       const plateNum = (bus.plateNumber || '').toLowerCase();
       const category = (bus.category || '').toLowerCase();
       const manufacturer = (bus.manufacturer || '').toLowerCase();
-      const searchMatch = !modalSearch || 
-        opNum.includes(modalSearch.toLowerCase()) || 
-        plateNum.includes(modalSearch.toLowerCase()) ||
-        category.includes(modalSearch.toLowerCase()) ||
-        manufacturer.includes(modalSearch.toLowerCase());
+
+      const busDrivers = getBusDrivers(bus);
+      const driverMatch = Boolean(searchLower && busDrivers.some(d => 
+        (d.name || '').toLowerCase().includes(searchLower) ||
+        (d.phone || '').includes(searchLower)
+      ));
+
+      const searchMatch = !searchLower || 
+        opNum.includes(searchLower) || 
+        plateNum.includes(searchLower) || 
+        category.includes(searchLower) || 
+        manufacturer.includes(searchLower) ||
+        driverMatch;
       
       const categoryMatch = !modalCategoryFilter || bus.category === modalCategoryFilter;
       const statusMatch = !modalStatusFilter || bus.technicalStatus === modalStatusFilter;
       
       return searchMatch && categoryMatch && statusMatch;
     });
-  }, [busesInSelectedLocation, modalSearch, modalCategoryFilter, modalStatusFilter]);
+  }, [busesInSelectedLocation, modalSearch, modalCategoryFilter, modalStatusFilter, getBusDrivers]);
 
   // Stats by Status
   const statusCounts = buses.reduce((acc: any, bus) => {
@@ -2446,22 +2533,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 15, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className="bg-surface w-full max-w-5xl rounded-3xl border border-border/80 shadow-2xl overflow-hidden flex flex-col h-[85vh] text-right"
+              className="bg-surface w-full max-w-6xl rounded-3xl border border-border/80 shadow-2xl overflow-hidden flex flex-col h-[88vh] text-right"
               dir="rtl"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal Header */}
-              <div className="bg-slate-50 border-b border-border/60 p-6 flex items-center justify-between gap-4 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                    <MapPin className="w-5 h-5" />
+              <div className="bg-slate-50 dark:bg-slate-900/80 border-b border-border/60 p-5 sm:p-6 flex items-center justify-between gap-4 shrink-0">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-xs">
+                    <MapPin className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-text-main flex items-center gap-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-text-main flex items-center gap-2 font-cairo">
                       <span>حافلات موقع:</span>
                       <span className="text-primary">{selectedLocation ? normalizeBusLocation(selectedLocation) : ''}</span>
                     </h3>
-                    <p className="text-[11px] text-text-muted font-bold mt-0.5">
+                    <p className="text-xs sm:text-sm text-text-muted font-bold mt-1">
                       يوجد {busesInSelectedLocation.length} حافلة مسجلة ميدانياً في هذا الموقع
                     </p>
                   </div>
@@ -2469,28 +2556,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                 <button 
                   onClick={() => setSelectedLocation(null)}
-                  className="w-10 h-10 bg-white border border-border hover:bg-slate-50 text-text-muted hover:text-text-main rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-sm hover:scale-105"
+                  className="w-11 h-11 bg-white dark:bg-slate-800 border border-border hover:bg-slate-50 dark:hover:bg-slate-700 text-text-muted hover:text-text-main rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-xs hover:scale-105"
+                  title="إغلاق النافذة"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Filters Bar */}
-              <div className="p-5 border-b border-border/40 bg-white flex flex-col md:flex-row items-stretch md:items-center gap-4 shrink-0">
+              <div className="p-4 sm:p-5 border-b border-border/40 bg-white dark:bg-slate-900 flex flex-col md:flex-row items-stretch md:items-center gap-4 shrink-0">
                 {/* Search field */}
                 <div className="relative flex-1">
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
+                  <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
                   <input 
                     type="text"
-                    placeholder="البحث بالرقم التشغيلي، رقم اللوحة، الماركة..."
+                    placeholder="البحث بالرقم التشغيلي، رقم اللوحة، هاتف السائق، اسم السائق، الماركة..."
                     value={modalSearch}
                     onChange={(e) => setModalSearch(e.target.value)}
-                    className="w-full pr-9 pl-4 py-2 bg-background border border-border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-right"
+                    className="w-full pr-10 pl-4 py-2.5 bg-background border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-right"
                   />
                   {modalSearch && (
                     <button 
                       onClick={() => setModalSearch('')} 
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] bg-slate-200 hover:bg-slate-350 text-text-muted py-0.5 px-2 rounded font-bold"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-text-muted py-0.5 px-2 rounded-md font-bold transition-colors"
                     >
                       مسح
                     </button>
@@ -2498,12 +2586,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* Category filter */}
-                <div className="flex items-center gap-2 min-w-[180px]">
-                  <span className="text-[10px] font-black text-text-muted shrink-0">الفئة:</span>
+                <div className="flex items-center gap-2 min-w-[200px]">
+                  <span className="text-xs font-black text-text-muted shrink-0">الفئة:</span>
                   <select
                     value={modalCategoryFilter}
                     onChange={(e) => setModalCategoryFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">كل الفئات ({uniqueCategories.length})</option>
                     {uniqueCategories.map(cat => (
@@ -2513,12 +2601,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* Status filter */}
-                <div className="flex items-center gap-2 min-w-[180px]">
-                  <span className="text-[10px] font-black text-text-muted shrink-0">الحالة:</span>
+                <div className="flex items-center gap-2 min-w-[200px]">
+                  <span className="text-xs font-black text-text-muted shrink-0">الحالة:</span>
                   <select
                     value={modalStatusFilter}
                     onChange={(e) => setModalStatusFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">كل الحالات ({uniqueStatuses.length})</option>
                     {uniqueStatuses.map(stat => (
@@ -2529,76 +2617,134 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Scrollable Buses List */}
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50/40 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-50/50 dark:bg-slate-950/30 custom-scrollbar">
                 {filteredBusesInSelectedLocation.length === 0 ? (
-                  <div className="py-16 text-center bg-white border border-dashed border-border rounded-2xl max-w-lg mx-auto mt-8 shadow-sm">
+                  <div className="py-16 text-center bg-white dark:bg-slate-900 border border-dashed border-border rounded-2xl max-w-lg mx-auto mt-8 shadow-sm p-6">
                     <Bus className="w-14 h-14 text-text-muted/30 mx-auto mb-3" />
-                    <p className="text-sm font-black text-text-main mb-1">لا توجد حافلات مطابقة لخيارات البحث</p>
-                    <p className="text-xs text-text-muted font-bold">يرجى تعديل الفلاتر أو عبارة البحث للمحاولة مرة أخرى</p>
+                    <p className="text-base font-black text-text-main mb-1">لا توجد حافلات مطابقة لخيارات البحث</p>
+                    <p className="text-xs sm:text-sm text-text-muted font-bold">يرجى تعديل الفلاتر أو عبارة البحث للمحاولة مرة أخرى</p>
                   </div>
                 ) : (
                   <>
-                    <div className="hidden md:block overflow-hidden bg-white border border-border rounded-2xl shadow-sm">
+                    <div className="hidden md:block overflow-hidden bg-white dark:bg-slate-900 border border-border rounded-2xl shadow-sm">
                       <table className="w-full text-right border-collapse">
                         <thead>
-                          <tr className="bg-slate-50 border-b border-border text-[10px] font-black text-text-muted uppercase">
+                          <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-b border-border text-xs sm:text-sm font-black text-slate-700 dark:text-slate-200 uppercase">
                             <th className="px-5 py-4">الرقم التشغيلي</th>
-                            <th className="px-5 py-4">رقم اللوحة</th>
+                            <th className="px-5 py-4">رقم اللوحة وهاتف السائق</th>
                             <th className="px-5 py-4">الفئة</th>
                             <th className="px-5 py-4">الماركة / الموديل</th>
                             <th className="px-5 py-4">الحالة الفنية</th>
-                            <th className="px-5 py-4 text-center">الكوادر المرتبطين (السائقين)</th>
+                            <th className="px-5 py-4 text-center">السائق النشط</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border/60 text-xs text-text-main">
+                        <tbody className="divide-y divide-border/60 text-sm sm:text-base text-text-main">
                           {filteredBusesInSelectedLocation.map(bus => {
-                            const assignedWorkers = workers.filter(w => w.assignedBusId === bus.id);
+                            const busDrivers = getBusDrivers(bus);
+                            const primaryDriver = busDrivers[0];
                             
                             let statusColor = 'bg-slate-100 text-slate-800 border-slate-200';
                             const status = bus.technicalStatus || '';
                             if (status.includes('ممتاز') || status.includes('جديد')) {
-                              statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                              statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800';
                             } else if (status.includes('جيد جداً')) {
-                              statusColor = 'bg-teal-50 text-teal-700 border-teal-100';
+                              statusColor = 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800';
                             } else if (status.includes('جيد')) {
-                              statusColor = 'bg-amber-50 text-amber-700 border-amber-100';
+                              statusColor = 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800';
                             } else if (status.includes('صيانة') || status.includes('متوقف') || status.includes('عطل')) {
-                              statusColor = 'bg-rose-50 text-rose-700 border-rose-100';
+                              statusColor = 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800';
                             }
 
                             return (
-                              <tr key={bus.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-5 py-4 font-black text-primary font-mono">{bus.operationalNumber}</td>
-                                <td className="px-5 py-4">
-                                  <div className="inline-flex items-center bg-slate-50 border border-slate-300 rounded-md px-2 py-0.5 text-[11px] font-mono font-black select-none shadow-sm gap-2">
-                                    <span className="text-slate-800 tracking-wider">{bus.plateNumber}</span>
-                                    <span className="text-[8px] bg-slate-200 text-slate-500 px-1 rounded font-bold">KSA</span>
+                              <tr key={bus.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                {/* 1. الرقم التشغيلي بخط كبير وواضح */}
+                                <td className="px-5 py-4.5 font-black text-primary font-mono text-base sm:text-lg tabular-nums">
+                                  #{bus.operationalNumber}
+                                </td>
+
+                                {/* 2. رقم اللوحة متضمناً مع رقم هاتف السائق */}
+                                <td className="px-5 py-4.5">
+                                  <div className="flex flex-col gap-1.5 items-start">
+                                    {/* لوحة الحافلة بخط واضح ومكبر */}
+                                    <div className="inline-flex items-center bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1 text-sm sm:text-base font-mono font-black select-none shadow-2xs gap-2">
+                                      <span className="text-slate-900 dark:text-white tracking-widest">{bus.plateNumber || '—'}</span>
+                                      <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-black tracking-tighter">KSA</span>
+                                    </div>
+
+                                    {/* رقم هاتف السائق متضمن مع اللوحة */}
+                                    {primaryDriver?.phone ? (
+                                      <a
+                                        href={`tel:${primaryDriver.phone}`}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-300/80 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm font-mono font-black transition-colors shadow-2xs group"
+                                        title={`اتصال مباشر بالسائق: ${primaryDriver.name}`}
+                                        dir="ltr"
+                                      >
+                                        <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+                                        <span>{primaryDriver.phone}</span>
+                                      </a>
+                                    ) : busDrivers.length > 0 ? (
+                                      <span className="text-xs text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
+                                        <Phone className="w-3 h-3 text-amber-500 shrink-0" />
+                                        <span>الهاتف غير مسجل</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 dark:text-slate-500 font-medium flex items-center gap-1">
+                                        <Phone className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" />
+                                        <span>بدون سائق معين</span>
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
-                                <td className="px-5 py-4 font-bold text-text-main">{bus.category}</td>
-                                <td className="px-5 py-4 font-semibold text-text-muted">
-                                  {bus.manufacturer || 'غير محدد'} / {bus.model || '—'}
+
+                                {/* 3. الفئة بخط كبير ومقروء */}
+                                <td className="px-5 py-4.5 font-bold text-slate-900 dark:text-white text-sm sm:text-base">
+                                  {bus.category || '—'}
                                 </td>
-                                <td className="px-5 py-4">
-                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-[10px] font-black ${statusColor}`}>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                    {bus.technicalStatus}
+
+                                {/* 4. الماركة / الموديل */}
+                                <td className="px-5 py-4.5 font-bold text-slate-700 dark:text-slate-200 text-sm sm:text-base">
+                                  <span>{bus.manufacturer || 'غير محدد'}</span>
+                                  <span className="text-slate-400 mx-1.5">/</span>
+                                  <span className="font-mono text-primary font-black">{bus.model || '—'}</span>
+                                </td>
+
+                                {/* 5. الحالة الفنية */}
+                                <td className="px-5 py-4.5">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-xs sm:text-sm font-black shadow-2xs ${statusColor}`}>
+                                    <span className="w-2 h-2 rounded-full bg-current" />
+                                    <span>{bus.technicalStatus || 'غير محدد'}</span>
                                   </span>
                                 </td>
-                                <td className="px-5 py-4 text-center">
-                                  {assignedWorkers.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1 justify-center">
-                                      {assignedWorkers.map(w => (
-                                        <span key={w.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md text-[10px] font-black">
-                                          <Users className="w-3 h-3 text-indigo-500 shrink-0" />
-                                          <span>{w.name}</span>
-                                        </span>
+
+                                {/* 6. السائق النشط فقط */}
+                                <td className="px-5 py-4.5 text-center">
+                                  {busDrivers.length > 0 ? (
+                                    <div className="flex flex-col gap-1.5 items-center justify-center">
+                                      {busDrivers.map((driver, idx) => (
+                                        <div 
+                                          key={driver.id || idx} 
+                                          className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 border border-indigo-200/90 dark:border-indigo-800 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-black shadow-2xs"
+                                        >
+                                          <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                          <span>{driver.name}</span>
+                                          {driver.phone && (
+                                            <a
+                                              href={`tel:${driver.phone}`}
+                                              className="inline-flex items-center gap-1 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md text-emerald-700 dark:text-emerald-400 font-mono text-xs border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 transition-colors"
+                                              dir="ltr"
+                                              title={`اتصال بالسائق ${driver.name}`}
+                                            >
+                                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                                              <span>{driver.phone}</span>
+                                            </a>
+                                          )}
+                                        </div>
                                       ))}
                                     </div>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 px-2.5 py-1 rounded-lg text-[10px] font-bold">
-                                      <AlertTriangle className="w-3 h-3 text-slate-400 shrink-0" />
-                                      <span>غير معين له سائق</span>
+                                    <span className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold">
+                                      <AlertTriangle className="w-4 h-4 text-slate-400 shrink-0" />
+                                      <span>لا يوجد سائق نشط</span>
                                     </span>
                                   )}
                                 </td>
@@ -2612,62 +2758,89 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Mobile View Card List */}
                     <div className="block md:hidden space-y-4">
                       {filteredBusesInSelectedLocation.map(bus => {
-                        const assignedWorkers = workers.filter(w => w.assignedBusId === bus.id);
+                        const busDrivers = getBusDrivers(bus);
+                        const primaryDriver = busDrivers[0];
+
                         let statusColor = 'bg-slate-100 text-slate-800 border-slate-200';
                         const status = bus.technicalStatus || '';
                         if (status.includes('ممتاز') || status.includes('جديد')) {
-                          statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                          statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800';
                         } else if (status.includes('جيد جداً')) {
-                          statusColor = 'bg-teal-50 text-teal-700 border-teal-100';
+                          statusColor = 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800';
                         } else if (status.includes('جيد')) {
-                          statusColor = 'bg-amber-50 text-amber-700 border-amber-100';
+                          statusColor = 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800';
                         } else if (status.includes('صيانة') || status.includes('متوقف') || status.includes('عطل')) {
-                          statusColor = 'bg-rose-50 text-rose-700 border-rose-100';
+                          statusColor = 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800';
                         }
 
                         return (
-                          <div key={bus.id} className="bg-white p-4 rounded-xl border border-border shadow-sm space-y-3">
-                            <div className="flex justify-between items-center border-b border-border/40 pb-2">
-                              <span className="text-xs font-black text-primary font-mono">حافلة تشغيلية: #{bus.operationalNumber}</span>
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 border rounded-lg text-[9px] font-black ${statusColor}`}>
-                                {bus.technicalStatus}
+                          <div key={bus.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-border shadow-xs space-y-3.5">
+                            <div className="flex justify-between items-center border-b border-border/40 pb-2.5">
+                              <span className="text-sm sm:text-base font-black text-primary font-mono">حافلة تشغيلية: #{bus.operationalNumber}</span>
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-xs font-black ${statusColor}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                <span>{bus.technicalStatus || 'غير محدد'}</span>
                               </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-[10px] text-text-muted font-bold">
+
+                            <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm font-bold text-text-muted">
+                              {/* رقم اللوحة متضمن مع هاتف السائق */}
+                              <div className="col-span-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-border/60 flex flex-wrap items-center justify-between gap-2.5">
+                                <div>
+                                  <span className="block text-xs text-text-muted font-bold mb-1">رقم اللوحة</span>
+                                  <div className="inline-flex items-center bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-0.5 text-sm sm:text-base font-mono font-black gap-2 shadow-2xs">
+                                    <span className="text-slate-900 dark:text-white tracking-wider">{bus.plateNumber || '—'}</span>
+                                    <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-black">KSA</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="block text-xs text-text-muted font-bold mb-1">هاتف السائق المرتبط</span>
+                                  {primaryDriver?.phone ? (
+                                    <a
+                                      href={`tel:${primaryDriver.phone}`}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm font-mono font-black"
+                                      dir="ltr"
+                                    >
+                                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>{primaryDriver.phone}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 font-medium">غير متوفر</span>
+                                  )}
+                                </div>
+                              </div>
+
                               <div>
-                                <span className="block text-[8px] text-text-muted/60 mb-0.5">رقم اللوحة</span>
-                                <span className="text-text-main font-mono">{bus.plateNumber}</span>
+                                <span className="block text-xs text-text-muted font-bold mb-0.5">الفئة</span>
+                                <span className="text-text-main text-sm sm:text-base font-black">{bus.category || '—'}</span>
                               </div>
                               <div>
-                                <span className="block text-[8px] text-text-muted/60 mb-0.5">الفئة</span>
-                                <span className="text-text-main">{bus.category}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[8px] text-text-muted/60 mb-0.5">الماركة</span>
-                                <span className="text-text-main">{bus.manufacturer || '—'}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[8px] text-text-muted/60 mb-0.5">الموديل</span>
-                                <span className="text-text-main">{bus.model || '—'}</span>
+                                <span className="block text-xs text-text-muted font-bold mb-0.5">الماركة / الموديل</span>
+                                <span className="text-text-main text-sm sm:text-base font-black">{bus.manufacturer || '—'} / {bus.model || '—'}</span>
                               </div>
                             </div>
 
-                            {/* Assigned Drivers */}
-                            <div className="bg-slate-50 p-2.5 rounded-lg border border-border/40">
-                              <span className="block text-[8px] text-text-muted/70 font-bold mb-1">الكوادر المرتبطين (السائقين):</span>
-                              {assignedWorkers.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {assignedWorkers.map(w => (
-                                    <span key={w.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md text-[9px] font-black">
-                                      <Users className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
-                                      <span>{w.name}</span>
-                                    </span>
+                            {/* Active Driver */}
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-border/50">
+                              <span className="block text-xs text-text-muted font-black mb-1.5">السائق النشط:</span>
+                              {busDrivers.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {busDrivers.map((driver, idx) => (
+                                    <div key={driver.id || idx} className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 px-3 py-1 rounded-xl text-xs sm:text-sm font-black">
+                                      <Users className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                      <span>{driver.name}</span>
+                                      {driver.phone && (
+                                        <a href={`tel:${driver.phone}`} className="font-mono text-emerald-700 dark:text-emerald-300 text-xs" dir="ltr">
+                                          ({driver.phone})
+                                        </a>
+                                      )}
+                                    </div>
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-[9px] text-slate-500 font-bold flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span>لم يتم تعيين سائق بعد</span>
+                                <span className="text-xs text-slate-500 font-bold flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <span>لا يوجد سائق نشط</span>
                                 </span>
                               )}
                             </div>
@@ -2680,7 +2853,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Modal Footer */}
-              <div className="bg-slate-50 border-t border-border/40 p-4 shrink-0 flex items-center justify-between text-[11px] font-bold text-text-muted">
+              <div className="bg-slate-50 dark:bg-slate-900/80 border-t border-border/40 p-4 sm:p-5 shrink-0 flex items-center justify-between text-xs sm:text-sm font-bold text-text-muted">
                 <span>يتم تحديث هذه البيانات ديناميكياً بناءً على إدخالات قسم التشغيل</span>
                 <span>الحافلات المعروضة: {filteredBusesInSelectedLocation.length} من أصل {busesInSelectedLocation.length}</span>
               </div>

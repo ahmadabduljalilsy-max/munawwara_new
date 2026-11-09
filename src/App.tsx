@@ -218,6 +218,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     const staleDrivers: Array<{ id: string; data: Record<string, any> }> = [];
 
     companyDrivers.forEach(driver => {
+      // تصنيف خروج نهائي: مستثنى نهائياً من أي مزامنة أو تعديل
+      if (driver.driverClassification === 'خروج نهائي') return;
+
       const targetClass = getDriverClassification(driver, workers, today);
       const matchedWorker = getMatchingWorkerByIqama<Worker>(driver, workers);
 
@@ -853,6 +856,10 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
   const handleSaveCompanyDriver = async (data: Partial<CompanyDriver>) => {
     try {
+      if (editingCompanyDriver && editingCompanyDriver.driverClassification === 'خروج نهائي') {
+        throw new Error('لا يمكن إجراء أي تعديل على هذا السائق بعد تصنيفه كـ "خروج نهائي".');
+      }
+
       const cleaned = cleanData(data);
       const cleanIqama = cleaned.iqamaNumber ? String(cleaned.iqamaNumber).trim() : '';
       const cleanBorder = cleaned.borderNumber ? String(cleaned.borderNumber).trim() : '';
@@ -949,6 +956,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       const updates: Array<{ id: string; data: Record<string, any> }> = [];
 
       for (const driver of companyDrivers) {
+        // السائق المصنف خروج نهائي مقفل ومستثنى من المزامنة
+        if (driver.driverClassification === 'خروج نهائي') continue;
+
         const matchedWorker = getMatchingWorkerByIqama<Worker>(driver, workers);
         const resolvedClass = getDriverClassification(driver, workers, today);
         
@@ -1024,6 +1034,12 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
   const handleSaveDriverResponse = async (data: Omit<DriverResponse, 'id'>) => {
     try {
+      const targetDriver = companyDrivers.find(d => d.id === data.driverId || d.serialNumber === data.driverSerialNumber);
+      if (targetDriver && targetDriver.driverClassification === 'خروج نهائي') {
+        alert('لا يمكن تسجيل رد لسائق مصنف كـ "خروج نهائي". الحساب مقفل ومستبعد من العمليات التشغيلية.');
+        return;
+      }
+
       const cleaned = cleanData(data);
       await addDoc(collection(db, 'driver_responses'), {
         ...cleaned,
@@ -1062,13 +1078,23 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
   const handleUpdateCompanyDriverStatus = async (id: string, newStatus: DriverStatus, reason?: string) => {
     try {
+      const isFinal = newStatus === 'خروج نهائي' || newStatus === 'مستبعد';
       const updateData: any = {
-        status: newStatus,
+        status: isFinal ? 'خروج نهائي' : newStatus,
         statusUpdatedAt: new Date().toISOString(),
         updatedAt: serverTimestamp()
       };
       if (reason !== undefined) {
         updateData.statusReason = reason;
+      }
+      if (isFinal) {
+        updateData.driverClassification = 'خروج نهائي';
+        updateData.workplace = 'خروج نهائي';
+        updateData.busNumber = '';
+        if (reason) {
+          updateData.finalExitReason = reason;
+        }
+        updateData.finalExitDate = new Date().toISOString();
       }
       await updateDoc(doc(db, 'company_drivers', id), updateData);
     } catch (error) {

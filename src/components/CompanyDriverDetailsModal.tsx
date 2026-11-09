@@ -32,7 +32,8 @@ import {
   Download,
   Briefcase,
   Printer,
-  GraduationCap
+  GraduationCap,
+  Lock
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType, Worker } from '../types';
 import { copyDriverResponsesToGoogleSheetsClipboard, exportDriverResponsesToExcel } from '../lib/excelService';
@@ -146,6 +147,10 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
 
   const handleConfirmStatusWithReason = async () => {
     if (!pendingStatus || !onStatusChange) return;
+    if (pendingStatus === 'خروج نهائي' && !statusReason.trim()) {
+      alert('يرجى ذكر سبب الخروج النهائي للسائق (إجباري)');
+      return;
+    }
     try {
       setIsUpdatingStatus(true);
       await onStatusChange(driver.id, pendingStatus, statusReason.trim() || undefined);
@@ -173,7 +178,8 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
     }
   };
 
-  const currentStatus: DriverStatus = driver.status || 'نشط';
+  const isDriverFinal = driver.driverClassification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
+  const currentStatus: DriverStatus = isDriverFinal ? 'خروج نهائي' : (driver.status || 'نشط');
 
   const getTypeBadge = (type: DriverType) => {
     switch (type) {
@@ -286,10 +292,10 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
       color: '#f59e0b'
     },
     {
-      status: 'مستبعد',
-      title: 'مستبعد',
-      description: 'مستبعد أو موقوف عن تشغيل حافلات الشركة',
-      icon: <UserX className="w-5 h-5 text-rose-600 dark:text-rose-400" />,
+      status: 'خروج نهائي',
+      title: 'خروج نهائي',
+      description: 'خروج نهائي من تشغيل حافلات الشركة وأرشفة السجل',
+      icon: <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />,
       activeBorder: 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/80 dark:bg-rose-950/40',
       activeBg: 'bg-rose-600 text-white',
       activeTextColor: 'text-rose-900 dark:text-rose-200',
@@ -351,7 +357,9 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                     </span>
 
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                      classification === 'عمرة'
+                      classification === 'خروج نهائي'
+                        ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800 shadow-2xs'
+                        : classification === 'عمرة'
                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
                         : classification === 'النقل الدولي سوريا'
                         ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-300 dark:border-teal-700'
@@ -359,7 +367,11 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                         ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700'
                         : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                     }`}>
-                      <Briefcase className="w-3 h-3" />
+                      {classification === 'خروج نهائي' ? (
+                        <Lock className="w-3 h-3 text-rose-600" />
+                      ) : (
+                        <Briefcase className="w-3 h-3" />
+                      )}
                       <span>{classification}</span>
                     </span>
                   </div>
@@ -435,6 +447,26 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
             {/* ========================================================= */}
             {activeTab === 'info' && (
               <div className="space-y-6">
+                {/* FINAL EXIT NOTICE BANNER */}
+                {classification === 'خروج نهائي' && (
+                  <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-300 dark:border-rose-800 flex items-start gap-3 shadow-xs">
+                    <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-black text-rose-900 dark:text-rose-200">
+                        السائق مصنف كـ «خروج نهائي» (سجل مقفل)
+                      </h4>
+                      <p className="text-xs text-rose-800 dark:text-rose-300 font-bold">
+                        سبب الخروج المسجل: <span className="font-semibold underline">{driver.finalExitReason || driver.statusReason || 'غير محدد'}</span>
+                      </p>
+                      <p className="text-[11px] text-rose-700 dark:text-rose-400 font-medium">
+                        هذا السائق مستبعد بالكامل من كافة إحصائيات وأعداد المنظومة، وتم قفل حسابه نهائياً لمنع أي تعديل أو تبديل أو تسجيل ردود.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* DRIVER STATUS OPTIONS SECTION (خيارات حالة السائق) */}
                 <div className="p-4 sm:p-5 rounded-2xl border border-border bg-slate-50/70 dark:bg-slate-900/40 space-y-3.5 shadow-xs">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/70 pb-3">
@@ -447,7 +479,7 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                           خيارات حالة السائق
                         </h3>
                         <p className="text-[11px] text-text-muted font-medium">
-                          تحديد الحالة التشغيلية للسائق (نشط / في إجازة / مستبعد) مع حفظ التوقيت آلياً
+                          تحديد الحالة التشغيلية للسائق (نشط / في إجازة / خروج نهائي) مع حفظ التوقيت آلياً
                         </p>
                       </div>
                     </div>
@@ -818,7 +850,12 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                         </button>
                       </>
                     )}
-                    {onAddResponse && (
+                    {classification === 'خروج نهائي' ? (
+                      <div className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>تسجيل الردود مقفل (خروج نهائي)</span>
+                      </div>
+                    ) : onAddResponse && (
                       <button
                         type="button"
                         onClick={() => onAddResponse(driver)}
@@ -935,16 +972,23 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
           <div className="p-4 sm:p-5 border-t border-border bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2">
               {isAdmin && onEdit && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onEdit(driver);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  <Edit className="w-4 h-4" />
-                  <span>تعديل بيانات السائق</span>
-                </button>
+                classification === 'خروج نهائي' ? (
+                  <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700">
+                    <Lock className="w-4 h-4 text-slate-400" />
+                    <span>السجل مقفل (خروج نهائي)</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onEdit(driver);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>تعديل بيانات السائق</span>
+                  </button>
+                )
               )}
 
               {isAdmin && onDelete && (

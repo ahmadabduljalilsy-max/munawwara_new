@@ -855,7 +855,7 @@ export const exportCompanyDriversToExcel = (drivers: any[], workers?: any[]) => 
       'تصنيف السائق': classification,
       'الحالة': d.status || 'نشط',
       'تاريخ آخر تحديث للحالة': formattedDate,
-      'سبب الحالة': d.statusReason || '',
+      'سبب الحالة': d.finalExitReason || d.statusReason || '',
       'الجنسية': d.nationality || '',
       'رقم الإقامة': d.iqamaNumber || '',
       'رقم الحدود': d.borderNumber || '',
@@ -909,9 +909,9 @@ export const downloadCompanyDriversTemplate = () => {
       'اسم السائق الثلاثي': 'طارق عمر الفضلي',
       'الصفة النظامية': 'موسمي',
       'تصنيف السائق': 'عمرة',
-      'الحالة': 'مستبعد',
+      'الحالة': 'خروج نهائي',
       'تاريخ آخر تحديث للحالة': today,
-      'سبب الحالة': 'انتهاء موسم العمرة',
+      'سبب الحالة': 'انتهاء موسم العمل (خروج نهائي)',
       'الجنسية': 'اليمن',
       'رقم الإقامة': '',
       'رقم الحدود': '3987654321',
@@ -988,7 +988,7 @@ export const parseCompanyDriversExcel = (file: File, workers?: any[]): Promise<a
             driverType = 'مقيم';
           }
 
-          // Normalize driver status (حالة السائق: نشط / في إجازة / مستبعد)
+          // Normalize driver status (حالة السائق: نشط / في إجازة / خروج نهائي)
           const rawStatus = String(
             row['الحالة'] || 
             row['حالة السائق'] || 
@@ -996,11 +996,11 @@ export const parseCompanyDriversExcel = (file: File, workers?: any[]): Promise<a
             ''
           ).trim();
 
-          let status: 'نشط' | 'في إجازة' | 'مستبعد' = 'نشط';
+          let status: 'نشط' | 'في إجازة' | 'خروج نهائي' | 'مستبعد' = 'نشط';
           if (rawStatus.includes('إجازة') || rawStatus.includes('اجازة')) {
             status = 'في إجازة';
-          } else if (rawStatus.includes('مستبعد') || rawStatus.includes('موقوف') || rawStatus.includes('استبعاد')) {
-            status = 'مستبعد';
+          } else if (rawStatus.includes('خروج نهائي') || rawStatus.includes('نهائي') || rawStatus.includes('مستبعد') || rawStatus.includes('موقوف') || rawStatus.includes('استبعاد')) {
+            status = 'خروج نهائي';
           } else if (rawStatus.includes('نشط') || rawStatus.includes('فعال') || rawStatus.includes('متاح')) {
             status = 'نشط';
           }
@@ -1115,15 +1115,18 @@ export const parseCompanyDriversExcel = (file: File, workers?: any[]): Promise<a
             row['Workplace'] || 
             ''
           ).trim();
-          const driverClassification = isMonitoringActive
-            ? 'نقل عمال'
-            : (rawClassification.includes('سوريا') || rawClassification.includes('سورية') || rawClassification === 'النقل الدولي سوريا')
-                ? 'النقل الدولي سوريا'
-                : (rawClassification.includes('اليمن') || rawClassification === 'النقل الدولي اليمن')
-                    ? 'النقل الدولي اليمن'
-                    : ((rawClassification.includes('عمرة') || rawClassification.includes('عمره')) 
-                        ? 'عمرة' 
-                        : 'نقل عمال');
+          const isFinal = status === 'خروج نهائي' || rawClassification.includes('خروج نهائي') || rawClassification.includes('نهائي') || rawClassification.includes('مستبعد');
+          const driverClassification = isFinal
+            ? 'خروج نهائي'
+            : (isMonitoringActive
+                ? 'نقل عمال'
+                : (rawClassification.includes('سوريا') || rawClassification.includes('سورية') || rawClassification === 'النقل الدولي سوريا')
+                    ? 'النقل الدولي سوريا'
+                    : (rawClassification.includes('اليمن') || rawClassification === 'النقل الدولي اليمن')
+                        ? 'النقل الدولي اليمن'
+                        : ((rawClassification.includes('عمرة') || rawClassification.includes('عمره')) 
+                            ? 'عمرة' 
+                            : 'نقل عمال'));
 
           const notes = String(
             row['ملاحظات'] || 
@@ -1141,15 +1144,17 @@ export const parseCompanyDriversExcel = (file: File, workers?: any[]): Promise<a
             fullName,
             driverType,
             driverClassification,
-            status,
+            finalExitReason: isFinal ? (statusReason || 'خروج نهائي') : undefined,
+            finalExitDate: isFinal ? (statusUpdatedAt || new Date().toISOString()) : undefined,
+            status: isFinal ? 'خروج نهائي' : status,
             statusUpdatedAt,
             statusReason,
             nationality,
             iqamaNumber,
             borderNumber,
             mobileNumber,
-            workplace: driverClassification,
-            busNumber,
+            workplace: isFinal ? 'خروج نهائي' : driverClassification,
+            busNumber: isFinal ? '' : busNumber,
             notes
           };
         }).filter(d => d.fullName || d.iqamaNumber || d.borderNumber || d.mobileNumber);

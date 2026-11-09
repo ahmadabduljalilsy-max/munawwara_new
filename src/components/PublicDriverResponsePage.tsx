@@ -337,6 +337,11 @@ export const PublicDriverResponsePage: React.FC<PublicDriverResponsePageProps> =
       return;
     }
 
+    if (matchedDriver.driverClassification === 'خروج نهائي') {
+      setError(`لا يمكن تسجيل رد للسائق (${matchedDriver.fullName}). السائق مصنف كـ «خروج نهائي» وملفه مقفل.`);
+      return;
+    }
+
     if (!busNumber.trim()) {
       setError('يرجى إدخال رقم الحافلة');
       return;
@@ -838,26 +843,49 @@ export const PublicDriverResponsePage: React.FC<PublicDriverResponsePageProps> =
                       جاري فحص قائمة السائقين...
                     </p>
                   ) : matchedDriver ? (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-900 dark:text-emerald-200"
-                    >
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <div>
-                          <p className="text-xs font-black">
-                            أهلاً بك: {matchedDriver.fullName}
-                          </p>
-                          <p className="text-[10px] text-emerald-700 dark:text-emerald-300">
-                            النوع: {matchedDriver.driverType} | الحالة: {matchedDriver.status || 'نشط'}
-                          </p>
+                    matchedDriver.driverClassification === 'خروج نهائي' ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center justify-between p-3.5 bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-300 dark:border-rose-800 rounded-xl text-rose-900 dark:text-rose-200"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Lock className="w-5 h-5 text-rose-600 shrink-0" />
+                          <div>
+                            <p className="text-xs font-black">
+                              السائق: {matchedDriver.fullName} (مصنف خروج نهائي)
+                            </p>
+                            <p className="text-[10px] text-rose-800 dark:text-rose-300 font-bold">
+                              سبب الخروج: {matchedDriver.finalExitReason || matchedDriver.statusReason || 'غير محدد'} — لا يمكن تسجيل ردود
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-xs font-black px-2 py-0.5 bg-emerald-200 dark:bg-emerald-900/60 rounded-md">
-                        #{matchedDriver.serialNumber}
-                      </span>
-                    </motion.div>
+                        <span className="text-xs font-black px-2 py-0.5 bg-rose-200 dark:bg-rose-900 rounded-md">
+                          مقفل
+                        </span>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-900 dark:text-emerald-200"
+                      >
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                          <div>
+                            <p className="text-xs font-black">
+                              أهلاً بك: {matchedDriver.fullName}
+                            </p>
+                            <p className="text-[10px] text-emerald-700 dark:text-emerald-300">
+                              النوع: {matchedDriver.driverType} | الحالة: {matchedDriver.status || 'نشط'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-black px-2 py-0.5 bg-emerald-200 dark:bg-emerald-900/60 rounded-md">
+                          #{matchedDriver.serialNumber}
+                        </span>
+                      </motion.div>
+                    )
                   ) : serialInput.trim() !== '' ? (
                     <motion.div
                       initial={{ opacity: 0, y: -4 }}
@@ -1041,7 +1069,7 @@ export const PublicDriverResponsePage: React.FC<PublicDriverResponsePageProps> =
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={submitting || !matchedDriver || !busNumber.trim() || isBusInvalid}
+                  disabled={submitting || !matchedDriver || matchedDriver.driverClassification === 'خروج نهائي' || !busNumber.trim() || isBusInvalid}
                   className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm rounded-2xl transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {submitting ? (

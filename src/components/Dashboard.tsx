@@ -183,6 +183,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     companyDrivers.forEach(d => {
       const classification = getDriverClassification(d, workers);
+      // مستبعد تماماً من إحصائيات وأعداد المنظومة
+      if (classification === 'خروج نهائي' || d.driverClassification === 'خروج نهائي') {
+        return;
+      }
       const effType = resolveDriverType(d);
       const isSeasonal = effType === 'موسمي';
       const nat = (d.nationality || '').trim() || 'غير محدد';
@@ -289,9 +293,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let excluded = 0;
     let activeInMonitoring = 0;
     let assignedBuses = 0;
-    const total = companyDrivers.length;
+    let total = 0;
 
     companyDrivers.forEach(d => {
+      const classification = getDriverClassification(d, workers);
+      // مستبعد تماماً من إحصائيات وأعداد المنظومة
+      if (classification === 'خروج نهائي' || d.driverClassification === 'خروج نهائي' || d.status === 'خروج نهائي' || d.status === 'مستبعد') {
+        return;
+      }
+
+      total++;
+
       // 1. Legal Document / Type (مقيم / موسمي)
       const effType = resolveDriverType(d);
       const isSeasonal = effType === 'موسمي';
@@ -302,7 +314,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
 
       // 2. Operational Classification (نقل عمال / النقل المدرسي / عمرة / النقل الدولي سوريا / النقل الدولي اليمن)
-      const classification = getDriverClassification(d, workers);
       if (classification === 'النقل المدرسي') {
         schoolTransport.total++;
         if (isSeasonal) schoolTransport.seasonal++;
@@ -467,6 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // 2. Fallback: Only if NO active worker is assigned in monitoring, check active companyDrivers
     const activeCompanyDrivers = companyDrivers.filter(d => {
+      if (d.driverClassification === 'خروج نهائي' || (d.statusReason && d.statusReason.includes('خروج نهائي'))) return false;
       if (!d.busNumber) return false;
       const bNum = String(d.busNumber).trim();
       const matches = bNum === opNum || bNum === `#${opNum}` || bNum === plateNum;
@@ -474,7 +486,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       // Driver status check
       const st = (d.status || 'نشط').trim();
-      if (st === 'مستبعد' || st.includes('مستبعد') || st === 'في إجازة' || st.includes('إجازة')) return false;
+      if (st === 'خروج نهائي' || st === 'مستبعد' || st.includes('مستبعد') || st.includes('خروج نهائي') || st === 'في إجازة' || st.includes('إجازة')) return false;
 
       // Check if driver has an ended assignment in monitoring
       if (isDriverEndedInMonitoring(d, workers, today)) return false;
@@ -1358,10 +1370,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
               className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-border flex items-center justify-between cursor-pointer hover:border-rose-400 transition-all"
             >
               <div>
-                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 block">مستبعد / موقوف</span>
-                <span className="text-[10px] text-text-muted">خارج الخدمة حالياً</span>
+                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 block">خروج نهائي</span>
+                <span className="text-[10px] text-text-muted">سجلات مؤرشفة ومقفلة</span>
               </div>
-              <span className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">{driverStats.excluded}</span>
+              <span className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                {companyDrivers.filter(d => d.driverClassification === 'خروج نهائي' || d.status === 'خروج نهائي' || d.status === 'مستبعد').length}
+              </span>
             </div>
 
             <div 

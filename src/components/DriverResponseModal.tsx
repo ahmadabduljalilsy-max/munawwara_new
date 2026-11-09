@@ -16,7 +16,8 @@ import {
   FileText,
   Calendar,
   Sparkles,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 import type { CompanyDriver, DriverResponse, DriverResponseType, Bus } from '../types';
 
@@ -169,6 +170,11 @@ export const DriverResponseModal: React.FC<DriverResponseModalProps> = ({
 
     if (!matchedDriver) {
       setError(`لم يتم العثور على سائق بالرقم المتسلسل (#${sNum}). يرجى التحقق من الرقم في قائمة السائقين.`);
+      return;
+    }
+
+    if (matchedDriver.driverClassification === 'خروج نهائي') {
+      setError(`لا يمكن تسجيل رد للسائق (${matchedDriver.fullName}). السائق مصنف كـ «خروج نهائي» وحسابه مقفل.`);
       return;
     }
 
@@ -336,40 +342,70 @@ export const DriverResponseModal: React.FC<DriverResponseModalProps> = ({
 
               {/* Live Driver Preview Card */}
               {matchedDriver ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 dark:bg-emerald-950/30 dark:border-emerald-800/60 flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
-                      #{matchedDriver.serialNumber}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                          تم التحقق من السائق:
-                        </span>
-                        <span className="text-[10px] px-2 py-0.2 rounded-full font-bold bg-white/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-700">
-                          {matchedDriver.status || 'نشط'}
-                        </span>
+                matchedDriver.driverClassification === 'خروج نهائي' ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="p-3.5 rounded-2xl border-2 border-rose-300 bg-rose-50 dark:bg-rose-950/60 dark:border-rose-800 flex items-center justify-between gap-3 shadow-xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                        <Lock className="w-5 h-5" />
                       </div>
-                      <div className="text-sm font-black text-slate-900 dark:text-white truncate">
-                        {matchedDriver.fullName}
-                      </div>
-                      <div className="text-[11px] text-text-muted flex items-center gap-2 mt-0.5">
-                        <span>الجنسية: {matchedDriver.nationality || 'غير محدد'}</span>
-                        {matchedDriver.busNumber && (
-                          <span className="text-sky-700 dark:text-sky-300 font-mono font-bold">
-                            • حافلة: #{matchedDriver.busNumber}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-rose-800 dark:text-rose-200">
+                            السائق مصنف كـ «خروج نهائي»:
                           </span>
-                        )}
+                          <span className="text-[10px] px-2 py-0.2 rounded-full font-bold bg-rose-200 dark:bg-rose-900 text-rose-950 dark:text-rose-100">
+                            مقفل
+                          </span>
+                        </div>
+                        <div className="text-sm font-black text-slate-900 dark:text-white truncate">
+                          {matchedDriver.fullName}
+                        </div>
+                        <div className="text-[11px] text-rose-700 dark:text-rose-300 font-bold mt-0.5">
+                          سبب الخروج: {matchedDriver.finalExitReason || matchedDriver.statusReason || 'غير محدد'} (لا يمكن تسجيل رد)
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 dark:bg-emerald-950/30 dark:border-emerald-800/60 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                        #{matchedDriver.serialNumber}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                            تم التحقق من السائق:
+                          </span>
+                          <span className="text-[10px] px-2 py-0.2 rounded-full font-bold bg-white/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-700">
+                            {matchedDriver.status || 'نشط'}
+                          </span>
+                        </div>
+                        <div className="text-sm font-black text-slate-900 dark:text-white truncate">
+                          {matchedDriver.fullName}
+                        </div>
+                        <div className="text-[11px] text-text-muted flex items-center gap-2 mt-0.5">
+                          <span>الجنسية: {matchedDriver.nationality || 'غير محدد'}</span>
+                          {matchedDriver.busNumber && (
+                            <span className="text-sky-700 dark:text-sky-300 font-mono font-bold">
+                              • حافلة: #{matchedDriver.busNumber}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                </motion.div>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  </motion.div>
+                )
               ) : serialInput.trim() ? (
                 <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
@@ -607,7 +643,7 @@ export const DriverResponseModal: React.FC<DriverResponseModalProps> = ({
 
               <button
                 type="submit"
-                disabled={loading || !matchedDriver || !busNumber.trim() || isBusInvalid}
+                disabled={loading || !matchedDriver || matchedDriver.driverClassification === 'خروج نهائي' || !busNumber.trim() || isBusInvalid}
                 className="px-6 py-2.5 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-primary/20 flex items-center gap-2 cursor-pointer"
               >
                 <Send className="w-4 h-4" />

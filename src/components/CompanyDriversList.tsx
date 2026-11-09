@@ -38,7 +38,8 @@ import {
   ListFilter,
   Printer,
   GraduationCap,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
@@ -187,32 +188,34 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     }
   };
 
-  // Metrics
+  // Metrics (يستثنى منها تماماً أي سائق مصنف خروج نهائي)
   const stats = useMemo(() => {
-    const total = drivers.length;
+    const isFinal = (d: CompanyDriver) => d.driverClassification === 'خروج نهائي' || d.status === 'خروج نهائي' || d.status === 'مستبعد';
+    const operationalDrivers = drivers.filter(d => !isFinal(d) && getDriverClassification(d, workers) !== 'خروج نهائي');
+    const total = operationalDrivers.length;
     // Driver Type: Iqama -> 'مقيم', Border -> 'موسمي'
-    const resident = drivers.filter(d => resolveDriverType(d) === 'مقيم').length;
-    const seasonal = drivers.filter(d => resolveDriverType(d) === 'موسمي').length;
-    const temporary = drivers.filter(d => resolveDriverType(d) === 'مؤقت').length;
+    const resident = operationalDrivers.filter(d => resolveDriverType(d) === 'مقيم').length;
+    const seasonal = operationalDrivers.filter(d => resolveDriverType(d) === 'موسمي').length;
+    const temporary = operationalDrivers.filter(d => resolveDriverType(d) === 'مؤقت').length;
     
     // Status metrics (default to 'نشط' if not explicitly set)
-    const active = drivers.filter(d => !d.status || d.status === 'نشط').length;
-    const onLeave = drivers.filter(d => d.status === 'في إجازة').length;
-    const excluded = drivers.filter(d => d.status === 'مستبعد').length;
+    const active = operationalDrivers.filter(d => !d.status || d.status === 'نشط').length;
+    const onLeave = operationalDrivers.filter(d => d.status === 'في إجازة').length;
+    const finalExit = drivers.filter(d => isFinal(d)).length;
 
     // Driver Classification: نقل عمال / النقل المدرسي / عمرة / النقل الدولي سوريا / النقل الدولي اليمن
-    const laborTransport = drivers.filter(d => getDriverClassification(d, workers) === 'نقل عمال').length;
-    const schoolTransport = drivers.filter(d => getDriverClassification(d, workers) === 'النقل المدرسي').length;
-    const umrah = drivers.filter(d => getDriverClassification(d, workers) === 'عمرة').length;
-    const intlSyria = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي سوريا').length;
-    const intlYemen = drivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي اليمن').length;
+    const laborTransport = operationalDrivers.filter(d => getDriverClassification(d, workers) === 'نقل عمال').length;
+    const schoolTransport = operationalDrivers.filter(d => getDriverClassification(d, workers) === 'النقل المدرسي').length;
+    const umrah = operationalDrivers.filter(d => getDriverClassification(d, workers) === 'عمرة').length;
+    const intlSyria = operationalDrivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي سوريا').length;
+    const intlYemen = operationalDrivers.filter(d => getDriverClassification(d, workers) === 'النقل الدولي اليمن').length;
 
     // Active in Monitoring count (الرقابة والمتابعة - غير منتهي عمله)
-    const activeInMonitoring = drivers.filter(d => isDriverActiveInMonitoring(d, workers)).length;
+    const activeInMonitoring = operationalDrivers.filter(d => isDriverActiveInMonitoring(d, workers)).length;
 
-    const uniqueNationalities = Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).length;
+    const uniqueNationalities = Array.from(new Set(operationalDrivers.map(d => d.nationality).filter(Boolean))).length;
 
-    return { total, resident, temporary, seasonal, active, onLeave, excluded, laborTransport, schoolTransport, umrah, intlSyria, intlYemen, activeInMonitoring, uniqueNationalities };
+    return { total, resident, temporary, seasonal, active, onLeave, finalExit, excluded: finalExit, laborTransport, schoolTransport, umrah, intlSyria, intlYemen, activeInMonitoring, uniqueNationalities };
   }, [drivers, workers]);
 
   const nationalities = useMemo(() => {
@@ -239,11 +242,14 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         `#${driver.serialNumber || ''}`.includes(search)
       );
 
+      const isDriverFinal = driver.driverClassification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
       const matchesType = selectedType === 'all' || effectiveType === selectedType;
-      const driverCurrentStatus = driver.status || 'نشط';
-      const matchesStatus = selectedStatus === 'all' || driverCurrentStatus === selectedStatus;
+      const driverCurrentStatus = isDriverFinal ? 'خروج نهائي' : (driver.status || 'نشط');
+      const matchesStatus = selectedStatus === 'all' || 
+        (selectedStatus === 'خروج نهائي' ? isDriverFinal : driverCurrentStatus === selectedStatus);
       const matchesNationality = !selectedNationality || driver.nationality === selectedNationality;
-      const matchesClassification = !selectedClassification || classification === selectedClassification;
+      const matchesClassification = !selectedClassification || 
+        (selectedClassification === 'خروج نهائي' ? isDriverFinal : classification === selectedClassification);
 
       return matchesSearch && matchesType && matchesStatus && matchesNationality && matchesClassification;
     });
@@ -255,7 +261,15 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     let seasonal = 0;
     let temporary = 0;
     let active = 0;
+    let finalExitCount = 0;
+
     filteredDrivers.forEach(d => {
+      const isFinalExit = getDriverClassification(d, workers) === 'خروج نهائي';
+      if (isFinalExit) {
+        finalExitCount++;
+        return;
+      }
+
       const type = resolveDriverType(d);
       if (type === 'مقيم') resident++;
       else if (type === 'موسمي') seasonal++;
@@ -263,6 +277,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
       if (!d.status || d.status === 'نشط') active++;
     });
+
     const isFiltered = Boolean(
       selectedStatus !== 'all' || 
       selectedNationality || 
@@ -270,17 +285,24 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
       selectedClassification || 
       searchTerm.trim()
     );
-    const percentage = drivers.length > 0 ? Math.round((filteredDrivers.length / drivers.length) * 100) : 0;
+
+    const operationalCount = selectedClassification === 'خروج نهائي'
+      ? finalExitCount
+      : filteredDrivers.filter(d => getDriverClassification(d, workers) !== 'خروج نهائي').length;
+
+    const baseTotal = stats.total > 0 ? stats.total : 1;
+    const percentage = Math.round((operationalCount / baseTotal) * 100);
+
     return {
-      count: filteredDrivers.length,
+      count: operationalCount,
       resident,
       seasonal,
       temporary,
       active,
       isFiltered,
-      percentage
+      percentage: Math.min(percentage, 100)
     };
-  }, [filteredDrivers, drivers.length, selectedStatus, selectedNationality, selectedType, selectedClassification, searchTerm]);
+  }, [filteredDrivers, stats.total, workers, selectedStatus, selectedNationality, selectedType, selectedClassification, searchTerm]);
 
   // Reset page when filtering
   React.useEffect(() => {
@@ -348,10 +370,11 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
           dotColor: 'bg-amber-500',
           accentBorder: 'border-amber-500'
         };
+      case 'خروج نهائي':
       case 'مستبعد':
         return {
-          label: 'مستبعد',
-          icon: <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
+          label: 'خروج نهائي',
+          icon: <Lock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
           color: '#f43f5e',
           className: 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800',
           dotColor: 'bg-rose-500',
@@ -571,21 +594,21 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         </div>
 
         <div 
-          onClick={() => setSelectedStatus(selectedStatus === 'مستبعد' ? 'all' : 'مستبعد')}
+          onClick={() => setSelectedStatus(selectedStatus === 'خروج نهائي' ? 'all' : 'خروج نهائي')}
           className={`p-3.5 bg-surface rounded-2xl border transition-all cursor-pointer ${
-            selectedStatus === 'مستبعد' 
+            selectedStatus === 'خروج نهائي' 
               ? 'border-rose-500 ring-2 ring-rose-500/20 shadow-md' 
               : 'border-border hover:border-slate-300 dark:hover:border-slate-700 shadow-xs'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400">مستبعد</span>
+            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400">خروج نهائي</span>
             <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/30 text-rose-600 flex items-center justify-center">
-              <UserX className="w-4 h-4" />
+              <Lock className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">{stats.excluded}</div>
-          <span className="text-[10px] text-text-muted mt-1 block">موقوف أو مستبعد</span>
+          <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">{stats.finalExit}</div>
+          <span className="text-[10px] text-text-muted mt-1 block">سجلات مقفلة</span>
         </div>
 
         <div 
@@ -727,10 +750,10 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     <span>الحالة:</span>
                   </span>
                   {[
-                    { id: 'all', label: 'كافة الحالات', count: drivers.length },
+                    { id: 'all', label: 'كافة الحالات', count: stats.total },
                     { id: 'نشط', label: 'نشط', count: stats.active, colorClass: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300' },
                     { id: 'في إجازة', label: 'في إجازة', count: stats.onLeave, colorClass: 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 border-amber-300' },
-                    { id: 'مستبعد', label: 'مستبعد', count: stats.excluded, colorClass: 'text-rose-700 bg-rose-50 dark:bg-rose-950/40 border-rose-300' },
+                    { id: 'خروج نهائي', label: 'خروج نهائي', count: stats.finalExit, colorClass: 'text-rose-700 bg-rose-50 dark:bg-rose-950/40 border-rose-300' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -808,12 +831,13 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     onChange={(e) => setSelectedClassification(e.target.value)}
                     className="w-full p-2 bg-background border border-border rounded-lg outline-none focus:border-primary text-sm shadow-sm font-medium"
                   >
-                    <option value="">كافة التصنيفات</option>
+                    <option value="">كافة التصنيفات (النشطة)</option>
                     <option value="نقل عمال">🚌 نقل عمال ({stats.laborTransport})</option>
                     <option value="النقل المدرسي">🏫 النقل المدرسي ({stats.schoolTransport})</option>
                     <option value="عمرة">🕌 عمرة ({stats.umrah})</option>
                     <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا ({stats.intlSyria})</option>
                     <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن ({stats.intlYemen})</option>
+                    <option value="خروج نهائي">🚫 خروج نهائي ({stats.finalExit})</option>
                   </select>
                 </div>
 
@@ -968,7 +992,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
                       {/* Classification Badge */}
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-bold ${
-                        classification === 'عمرة'
+                        classification === 'خروج نهائي'
+                          ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800 shadow-2xs'
+                          : classification === 'عمرة'
                           ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                           : classification === 'النقل الدولي سوريا'
                           ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
@@ -978,13 +1004,22 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                           ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
                           : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
                       }`}>
-                        {classification === 'النقل المدرسي' ? (
+                        {classification === 'خروج نهائي' ? (
+                          <Lock className="w-2.5 h-2.5 text-rose-600" />
+                        ) : classification === 'النقل المدرسي' ? (
                           <GraduationCap className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300" />
                         ) : (
                           <Briefcase className="w-2.5 h-2.5" />
                         )}
                         <span>{classification}</span>
                       </span>
+
+                      {/* Final Exit Reason Tag */}
+                      {classification === 'خروج نهائي' && (driver.finalExitReason || driver.statusReason) && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-900/50 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800 font-bold" title={`سبب الخروج: ${driver.finalExitReason || driver.statusReason}`}>
+                          <span>السبب: {driver.finalExitReason || driver.statusReason}</span>
+                        </span>
+                      )}
 
                       {/* Active in Monitoring Live Ping */}
                       {inMonitoring && (
@@ -1131,7 +1166,15 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                       <Printer className="w-3.5 h-3.5" />
                     </button>
 
-                    {onOpenDriverResponse && (
+                    {classification === 'خروج نهائي' ? (
+                      <span 
+                        className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold flex items-center gap-1 cursor-not-allowed border border-slate-200 dark:border-slate-700"
+                        title="لا يمكن تسجيل رد لسائق مصنف خروج نهائي"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>مقفل</span>
+                      </span>
+                    ) : onOpenDriverResponse && (
                       <button 
                         type="button"
                         onClick={(e) => {
@@ -1147,17 +1190,28 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     )}
 
                     {isAdmin && onEdit && (
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(driver);
-                        }}
-                        className="p-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-primary border border-border hover:border-primary/40 rounded-xl transition-all cursor-pointer active:scale-95"
-                        title="تعديل بيانات السائق"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
+                      classification === 'خروج نهائي' ? (
+                        <button 
+                          type="button"
+                          disabled
+                          className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border border-slate-200 dark:border-slate-700 rounded-xl cursor-not-allowed"
+                          title="لا يمكن تعديل السائق بعد تصنيفه كـ «خروج نهائي»"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(driver);
+                          }}
+                          className="p-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-primary border border-border hover:border-primary/40 rounded-xl transition-all cursor-pointer active:scale-95"
+                          title="تعديل بيانات السائق"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                      )
                     )}
 
                     {isAdmin && onDelete && (

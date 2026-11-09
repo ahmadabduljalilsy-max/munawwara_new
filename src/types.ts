@@ -108,9 +108,9 @@ export interface AppSettings {
 }
 
 export type DriverType = 'مقيم' | 'مؤقت' | 'موسمي';
-export type DriverStatus = 'نشط' | 'في إجازة' | 'مستبعد';
+export type DriverStatus = 'نشط' | 'في إجازة' | 'خروج نهائي' | 'مستبعد';
 export type DriverResponseType = 'محايل عسير' | 'ينبع' | 'القصيم' | 'الرياض' | 'الترددية';
-export type DriverClassification = 'نقل عمال' | 'النقل المدرسي' | 'عمرة' | 'النقل الدولي سوريا' | 'النقل الدولي اليمن';
+export type DriverClassification = 'نقل عمال' | 'النقل المدرسي' | 'عمرة' | 'النقل الدولي سوريا' | 'النقل الدولي اليمن' | 'خروج نهائي';
 
 export interface CompanyDriver {
   id: string;
@@ -118,8 +118,10 @@ export interface CompanyDriver {
   fullName: string; // اسم السائق الثلاثي
   nationality: string; // الجنسية
   driverType: DriverType; // مقيم - مؤقت - موسمي
-  driverClassification?: DriverClassification | string; // تصنيف السائق: نقل عمال - عمرة
-  status?: DriverStatus; // نشط - في إجازة - مستبعد (الافتراضي: نشط)
+  driverClassification?: DriverClassification | string; // تصنيف السائق: نقل عمال - عمرة - خروج نهائي
+  finalExitReason?: string; // سبب الخروج النهائي (إجباري عند تصنيف خروج نهائي)
+  finalExitDate?: string | any; // تاريخ الخروج النهائي
+  status?: DriverStatus; // نشط - في إجازة - خروج نهائي (الافتراضي: نشط)
   statusUpdatedAt?: string | any; // تاريخ آخر تحديث للحالة
   statusReason?: string; // سبب الحالة (إجازة سنوية، انتهاء عقد، مخالفة...)
   iqamaNumber: string; // رقم الإقامة

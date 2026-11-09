@@ -80,10 +80,11 @@ export function getMatchingActiveMonitoringWorker<T extends {
  * and is currently active (غير منتهي عمله).
  */
 export function isDriverActiveInMonitoring(
-  driver: { iqamaNumber?: string; borderNumber?: string },
+  driver: { iqamaNumber?: string; borderNumber?: string; driverClassification?: string },
   workers?: { iqamaNumber?: string; nationalId?: string; endDate?: string }[],
   todayStr?: string
 ): boolean {
+  if (driver.driverClassification === 'خروج نهائي') return false;
   return Boolean(getMatchingActiveMonitoringWorker(driver, workers, todayStr));
 }
 
@@ -92,10 +93,11 @@ export function isDriverActiveInMonitoring(
  * When true, the driver is automatically classified as Umrah (عمرة).
  */
 export function isDriverEndedInMonitoring(
-  driver: { iqamaNumber?: string; borderNumber?: string },
+  driver: { iqamaNumber?: string; borderNumber?: string; driverClassification?: string },
   workers?: { iqamaNumber?: string; nationalId?: string; endDate?: string }[],
   todayStr?: string
 ): boolean {
+  if (driver.driverClassification === 'خروج نهائي') return false;
   const matched = getMatchingWorkerByIqama(driver, workers);
   if (!matched) return false;
   const today = todayStr || new Date().toISOString().split('T')[0];
@@ -174,6 +176,12 @@ export function getDriverClassification(
 ): DriverClassification {
   const today = todayStr || new Date().toISOString().split('T')[0];
   const driverExplicitClass = (driver.driverClassification || '').trim();
+
+  // تصنيف خروج نهائي: نهائي ودائم ومقفل، ولا يتغير بأي مزامنة أو ربط ميداني
+  if (driverExplicitClass === 'خروج نهائي') {
+    return 'خروج نهائي';
+  }
+
   const driverWorkplace = (driver.workplace || '').trim();
   const driverResponse = (driver.responseType || '').trim();
   const driverNotes = (driver.notes || '').trim();
@@ -263,6 +271,11 @@ export function getMonitoringUpdatesForDriver(
   hasChanges: boolean;
   updates: Record<string, any>;
 } {
+  // السائق المصنف خروج نهائي لا يقبل أي تحديث أو تعديل
+  if (driver.driverClassification === 'خروج نهائي') {
+    return { hasChanges: false, updates: {} };
+  }
+
   const updates: Record<string, any> = {};
   let hasChanges = false;
   const today = todayStr || new Date().toISOString().split('T')[0];

@@ -14,7 +14,8 @@ import {
   Bus,
   AlertCircle,
   Briefcase,
-  GraduationCap
+  GraduationCap,
+  Lock
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverClassification, Bus as BusType, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker, isSchoolTransportLocation } from '../lib/driverUtils';
@@ -75,6 +76,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
     fullName: string;
     driverType: DriverType;
     driverClassification: DriverClassification;
+    finalExitReason: string;
     status: DriverStatus;
     statusReason: string;
     nationality: string;
@@ -88,6 +90,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
     fullName: '',
     driverType: 'مقيم',
     driverClassification: 'نقل عمال',
+    finalExitReason: '',
     status: 'نشط',
     statusReason: '',
     nationality: '',
@@ -110,7 +113,8 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
         fullName: driver.fullName || '',
         driverType: computedType,
         driverClassification: computedClass,
-        status: driver.status || 'نشط',
+        finalExitReason: driver.finalExitReason || (computedClass === 'خروج نهائي' ? (driver.statusReason || '') : ''),
+        status: (driver.status === 'مستبعد' || computedClass === 'خروج نهائي') ? 'خروج نهائي' : (driver.status || 'نشط'),
         statusReason: driver.statusReason || '',
         nationality: driver.nationality || '',
         iqamaNumber: driver.iqamaNumber || '',
@@ -125,6 +129,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
         fullName: '',
         driverType: 'مقيم',
         driverClassification: 'نقل عمال',
+        finalExitReason: '',
         status: 'نشط',
         statusReason: '',
         nationality: '',
@@ -195,40 +200,57 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
       }
     }
 
-    setLoading(true);
-    setError(null);
-    try {
-      const nowIso = new Date().toISOString();
-      // If status changed or not set yet, update statusUpdatedAt
-      const statusChanged = !driver || driver.status !== formData.status;
-      const statusUpdatedAt = statusChanged 
-        ? nowIso 
-        : (driver?.statusUpdatedAt || nowIso);
+      if (formData.driverClassification === 'خروج نهائي' && !formData.finalExitReason.trim()) {
+        setError('يرجى تحديد وكتابة سبب الخروج النهائي للسائق (إجباري).');
+        return;
+      }
 
-      // Auto resolve driverType: if iqama exists -> 'مقيم', if border exists and no iqama -> 'موسمي'
-      const computedDriverType: DriverType = cleanIqama ? 'مقيم' : (cleanBorder ? 'موسمي' : formData.driverType);
+      setLoading(true);
+      setError(null);
+      try {
+        const nowIso = new Date().toISOString();
+        // If status changed or not set yet, update statusUpdatedAt
+        const statusChanged = !driver || driver.status !== formData.status;
+        const statusUpdatedAt = statusChanged 
+          ? nowIso 
+          : (driver?.statusUpdatedAt || nowIso);
 
-      // Auto resolve classification: if active in monitoring (الرقابة والمتابعة) -> 'نقل عمال'
-      const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber: cleanIqama }, workers);
-      const finalClassification = isMonitoringActive ? 'نقل عمال' : formData.driverClassification;
+        // Auto resolve driverType: if iqama exists -> 'مقيم', if border exists and no iqama -> 'موسمي'
+        const computedDriverType: DriverType = cleanIqama ? 'مقيم' : (cleanBorder ? 'موسمي' : formData.driverType);
 
-      await onSave({
-        fullName: formData.fullName.trim(),
-        driverType: computedDriverType,
-        driverClassification: finalClassification,
-        status: formData.status,
-        statusUpdatedAt: statusUpdatedAt,
-        statusReason: formData.statusReason.trim(),
-        nationality: formData.nationality.trim(),
-        iqamaNumber: cleanIqama,
-        borderNumber: cleanBorder,
-        mobileNumber: formData.mobileNumber.trim(),
-        workplace: finalClassification,
-        busNumber: formData.busNumber.trim(),
-        notes: formData.notes.trim()
-      });
-      onClose();
-    } catch (err: any) {
+        // Auto resolve classification: if active in monitoring (الرقابة والمتابعة) -> 'نقل عمال'
+        const isMonitoringActive = isDriverActiveInMonitoring({ iqamaNumber: cleanIqama }, workers);
+        const isFinalExit = formData.driverClassification === 'خروج نهائي' || formData.status === 'خروج نهائي' || formData.status === 'مستبعد';
+        const finalClassification = isFinalExit
+          ? 'خروج نهائي'
+          : (isMonitoringActive ? 'نقل عمال' : formData.driverClassification);
+
+        const finalReason = (formData.finalExitReason || formData.statusReason || '').trim();
+        if (isFinalExit && !finalReason) {
+          setError('يرجى ذكر سبب الخروج النهائي للسائق (إجباري)');
+          setLoading(false);
+          return;
+        }
+
+        await onSave({
+          fullName: formData.fullName.trim(),
+          driverType: computedDriverType,
+          driverClassification: finalClassification,
+          finalExitReason: isFinalExit ? finalReason : undefined,
+          finalExitDate: isFinalExit ? (driver?.finalExitDate || nowIso) : undefined,
+          status: isFinalExit ? 'خروج نهائي' : formData.status,
+          statusUpdatedAt: statusUpdatedAt,
+          statusReason: isFinalExit ? finalReason : formData.statusReason.trim(),
+          nationality: formData.nationality.trim(),
+          iqamaNumber: cleanIqama,
+          borderNumber: cleanBorder,
+          mobileNumber: formData.mobileNumber.trim(),
+          workplace: isFinalExit ? 'خروج نهائي' : finalClassification,
+          busNumber: isFinalExit ? '' : formData.busNumber.trim(),
+          notes: formData.notes.trim()
+        });
+        onClose();
+      } catch (err: any) {
       setError(err?.message || 'حدث خطأ أثناء حفظ بيانات السائق');
     } finally {
       setLoading(false);
@@ -257,9 +279,9 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
       badgeClass: 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
     },
     { 
-      status: 'مستبعد', 
-      title: 'مستبعد', 
-      subtitle: 'مستبعد من التشغيل أو موقوف عن العمل', 
+      status: 'خروج نهائي', 
+      title: 'خروج نهائي', 
+      subtitle: 'خروج نهائي من العمل وأرشفة السجل وإلغاء الربط', 
       color: 'rose',
       badgeClass: 'text-rose-700 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
     },
@@ -314,6 +336,25 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 custom-scrollbar flex-1">
+              {driver?.driverClassification === 'خروج نهائي' && (
+                <div className="p-4 bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-300 dark:border-rose-800 rounded-2xl flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black text-rose-900 dark:text-rose-200">
+                      هذا السائق مصنف كـ «خروج نهائي» (سجل مقفل)
+                    </h4>
+                    <p className="text-xs text-rose-800 dark:text-rose-300 font-bold">
+                      سبب الخروج المسجل: <span className="font-semibold underline">{driver.finalExitReason || driver.statusReason || 'غير محدد'}</span>
+                    </p>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-400 font-medium">
+                      لا يمكن إجراء أي تعديل على بيانات السائق أو تبديله أو تسجيل ردود بعد تصنيفه كـ «خروج نهائي».
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {error && (
                 <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-2xl text-red-600 dark:text-red-400 text-xs font-bold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -366,7 +407,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                 </div>
               </div>
 
-              {/* Status Selector (نشط / في إجازة / مستبعد) with Last Update Tracking */}
+              {/* Status Selector (نشط / في إجازة / خروج نهائي) with Last Update Tracking */}
               <div className="space-y-2 p-3.5 bg-slate-50/70 dark:bg-slate-800/40 border border-border/80 rounded-2xl">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black text-text-main flex items-center gap-1.5">
@@ -396,7 +437,22 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                       <button
                         key={item.status}
                         type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, status: item.status }))}
+                        onClick={() => {
+                          if (item.status === 'خروج نهائي') {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              status: 'خروج نهائي',
+                              driverClassification: 'خروج نهائي',
+                              workplace: 'خروج نهائي'
+                            }));
+                          } else {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              status: item.status,
+                              driverClassification: prev.driverClassification === 'خروج نهائي' ? 'نقل عمال' : prev.driverClassification
+                            }));
+                          }
+                        }}
                         className={`p-3 rounded-2xl border text-right transition-all cursor-pointer relative overflow-hidden ${
                           isSelected
                             ? `${item.badgeClass} ring-2 ring-primary/20 shadow-xs font-bold`
@@ -422,13 +478,17 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                 {formData.status !== 'نشط' && (
                   <div className="pt-2 mt-2 border-t border-border/60">
                     <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                      {formData.status === 'في إجازة' ? 'سبب الإجازة أو مدتها (اختياري)' : 'سبب الاستبعاد أو الإيقاف (اختياري)'}
+                      {formData.status === 'في إجازة' ? 'سبب الإجازة أو مدتها (اختياري)' : 'سبب الخروج النهائي (إجباري)'}
                     </label>
                     <input
                       type="text"
-                      placeholder={formData.status === 'في إجازة' ? 'مثال: إجازة سنوية لمدة 30 يوماً' : 'مثال: موقوف للمراجعة / غير لائق طبياً'}
-                      value={formData.statusReason}
-                      onChange={(e) => setFormData(prev => ({ ...prev, statusReason: e.target.value }))}
+                      placeholder={formData.status === 'في إجازة' ? 'مثال: إجازة سنوية لمدة 30 يوماً' : 'اكتب سبب الخروج النهائي بالتفصيل (انتهاء العقد / رغبة العامل...)'}
+                      value={formData.status === 'خروج نهائي' ? (formData.finalExitReason || formData.statusReason) : formData.statusReason}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        statusReason: e.target.value,
+                        finalExitReason: prev.status === 'خروج نهائي' ? e.target.value : prev.finalExitReason
+                      }))}
                       className="w-full px-3 py-2 bg-background border border-border focus:border-primary rounded-xl outline-none text-xs font-medium text-text-main transition-all"
                     />
                   </div>
@@ -650,7 +710,54 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                         <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
                       )}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ 
+                        ...prev, 
+                        driverClassification: 'خروج نهائي', 
+                        workplace: 'خروج نهائي',
+                        status: 'خروج نهائي'
+                      }))}
+                      className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold text-xs ${
+                        formData.driverClassification === 'خروج نهائي'
+                          ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-500 text-rose-800 dark:text-rose-200 ring-2 ring-rose-500/20 shadow-xs'
+                          : 'bg-background border-border hover:border-rose-300 text-text-muted'
+                      }`}
+                    >
+                      <Lock className="w-4 h-4 text-rose-600" />
+                      <span>خروج نهائي</span>
+                      {formData.driverClassification === 'خروج نهائي' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-rose-600" />
+                      )}
+                    </button>
                   </div>
+
+                  {/* Input for final exit reason when selected */}
+                  {formData.driverClassification === 'خروج نهائي' && (
+                    <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded-2xl space-y-2 mt-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                          <AlertCircle className="w-4 h-4 text-rose-600" />
+                          <span>سبب الخروج النهائي (إجباري)</span>
+                          <span className="text-red-500 font-bold">*</span>
+                        </label>
+                        <span className="text-[10px] bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded-md font-black">
+                          أرشفة وقفل السائق
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="اكتب سبب الخروج النهائي بالتفصيل (انتهاء العقد / رغبة العامل / عدم تجديد...)"
+                        value={formData.finalExitReason}
+                        onChange={(e) => setFormData(prev => ({ ...prev, finalExitReason: e.target.value, statusReason: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 bg-background border border-rose-300 dark:border-rose-700 focus:border-rose-500 rounded-xl outline-none text-xs font-bold text-text-main shadow-2xs"
+                      />
+                      <p className="text-[10px] text-rose-800 dark:text-rose-300 font-medium">
+                        تنبيه: بعد حفظ السائق بتصنيف "خروج نهائي" سيتم استبعاده من كافة إحصائيات وأعداد المنظومة، ولن يمكن إجراء أي تعديل عليه أو تسجيل رد أو تبديله.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Active monitoring notice if applicable */}
                   {(() => {
@@ -724,10 +831,19 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="soft-btn-primary px-7 py-2.5 text-xs font-black flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                  disabled={loading || driver?.driverClassification === 'خروج نهائي'}
+                  className={`px-7 py-2.5 text-xs font-black flex items-center gap-2 rounded-2xl transition-all ${
+                    driver?.driverClassification === 'خروج نهائي'
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
+                      : 'soft-btn-primary cursor-pointer disabled:opacity-60'
+                  }`}
                 >
-                  {loading ? (
+                  {driver?.driverClassification === 'خروج نهائي' ? (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span>السجل مقفل (خروج نهائي)</span>
+                    </>
+                  ) : loading ? (
                     <span>جاري الحفظ...</span>
                   ) : (
                     <span>{driver ? 'حفظ التعديلات' : 'إضافة السائق'}</span>

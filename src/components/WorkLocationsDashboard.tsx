@@ -46,6 +46,8 @@ import {
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, CompanyDriver } from '../types';
 import { normalizeBusLocation } from '../lib/excelService';
+import { EmptyState } from './EmptyState';
+import { AnimatedNumber } from './AnimatedNumber';
 
 export interface LocationStatItem {
   name: string;
@@ -907,7 +909,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                         <span className="text-2xl font-black text-slate-900 font-mono">
-                          {selectedLocationData.operationalRate}%
+                          <AnimatedNumber value={selectedLocationData.operationalRate} suffix="%" />
                         </span>
                         <span className="text-[10px] font-bold text-emerald-600">جاهزية</span>
                       </div>
@@ -1049,7 +1051,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
           <div className="space-y-1">
             <span className="text-xs font-bold text-slate-500 block">إجمالي الحافلات</span>
             <span className="text-xl sm:text-2xl font-black text-[#0F172A] font-mono tabular-nums leading-none block">
-              {totalBusesCount.toLocaleString('en-US')}
+              <AnimatedNumber value={totalBusesCount} />
             </span>
           </div>
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-primary shrink-0">
@@ -1062,7 +1064,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
           <div className="space-y-1">
             <span className="text-xs font-bold text-slate-500 block">السائقون النشطون</span>
             <span className="text-xl sm:text-2xl font-black text-[#0F172A] font-mono tabular-nums leading-none block">
-              {totalActiveDriversCount.toLocaleString('en-US')}
+              <AnimatedNumber value={totalActiveDriversCount} />
             </span>
           </div>
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
@@ -1075,7 +1077,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
           <div className="space-y-1">
             <span className="text-xs font-bold text-slate-500 block">متوسط معدل التشغيل</span>
             <span className="text-xl sm:text-2xl font-black text-[#0F172A] font-mono tabular-nums leading-none block">
-              {avgOperationalRate}%
+              <AnimatedNumber value={avgOperationalRate} suffix="%" />
             </span>
           </div>
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
@@ -1088,7 +1090,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
           <div className="space-y-1">
             <span className="text-xs font-bold text-slate-500 block">إجمالي مواقع العمل</span>
             <span className="text-xl sm:text-2xl font-black text-[#0F172A] font-mono tabular-nums leading-none block">
-              {allLocationsList.length}
+              <AnimatedNumber value={allLocationsList.length} />
             </span>
           </div>
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0">
@@ -1335,10 +1337,19 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredLocations.length === 0 ? (
-            <div className="col-span-full py-16 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
-              <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-black text-slate-700">لم يتم العثور على أي مواقع عمل مطابقة</p>
-              <p className="text-xs text-slate-400 font-bold mt-1">يرجى تعديل معايير البحث أو اختيار مدينة أخرى</p>
+            <div className="col-span-full">
+              <EmptyState
+                icon={Building2}
+                title="لا توجد مواقع مطابقة"
+                description="جرّب تغيير الفلاتر أو كلمة البحث."
+                actionLabel={(searchTerm || selectedCity || selectedCategory || selectedStatus) ? 'مسح الفلاتر' : undefined}
+                onAction={() => {
+                  setSearchTerm('');
+                  setSelectedCity('');
+                  setSelectedCategory('');
+                  setSelectedStatus('');
+                }}
+              />
             </div>
           ) : (
             filteredLocations.map((loc, idx) => {
@@ -1443,8 +1454,20 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredLocations.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 font-bold">
-                      لا توجد مواقع مطابقة للبحث
+                    <td colSpan={8} className="p-4">
+                      <EmptyState
+                        icon={Building2}
+                        title="لا توجد مواقع مطابقة"
+                        description="جرّب تغيير الفلاتر أو كلمة البحث."
+                        actionLabel={(searchTerm || selectedCity || selectedCategory || selectedStatus) ? 'مسح الفلاتر' : undefined}
+                        onAction={() => {
+                          setSearchTerm('');
+                          setSelectedCity('');
+                          setSelectedCategory('');
+                          setSelectedStatus('');
+                        }}
+                        variant="compact"
+                      />
                     </td>
                   </tr>
                 ) : (

@@ -23,6 +23,7 @@ import {
 import type { Bus } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { normalizeBusLocation } from '../lib/excelService';
+import { EmptyState } from './EmptyState';
 
 interface FleetListProps {
   buses: Bus[];
@@ -513,13 +514,23 @@ export const FleetList: React.FC<FleetListProps> = ({
       </div>
 
       {filteredBuses.length === 0 && (
-        <div className="p-20 text-center bg-surface rounded-2xl border-2 border-dashed border-border">
-          <div className="bg-primary/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Search className="w-8 h-8 text-primary/40" />
-          </div>
-          <h3 className="text-lg font-black text-text-main mb-1">لا توجد حافلات مطابقة</h3>
-          <p className="text-sm text-text-muted font-medium">جرب تغيير معايير البحث أو الفلترة لتظهر النتائج هنا</p>
-        </div>
+        <EmptyState
+          icon={Search}
+          title="لا توجد حافلات مطابقة"
+          description="جرّب تغيير الفلاتر أو كلمة البحث."
+          actionLabel={(searchTerm || Object.values(filters).some(Boolean)) ? 'مسح الفلاتر' : undefined}
+          onAction={() => {
+            setSearchTerm('');
+            setFilters({
+              location: '',
+              model: '',
+              category: '',
+              technicalStatus: '',
+              color: '',
+              seatsCount: ''
+            });
+          }}
+        />
       )}
 
       {/* Pagination Controls */}

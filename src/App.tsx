@@ -22,9 +22,11 @@ import { DriverResponseModal } from './components/DriverResponseModal';
 import { PublicDriverResponsePage } from './components/PublicDriverResponsePage';
 import { WelcomeAnnouncementModal } from './components/WelcomeAnnouncementModal';
 import { WorkLocationsDashboard } from './components/WorkLocationsDashboard';
+import { AdministrativeReports } from './components/AdministrativeReports';
+import { ToastProvider, useToast } from './components/ToastContext';
 import { AnimatePresence, motion } from 'motion/react';
 import { db, auth, testConnection } from './lib/firebase';
-import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, setDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
 import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
@@ -35,6 +37,7 @@ import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResp
 function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
   const { user, profile, loading: authLoading } = useAuth();
   const { logoURL, loading: logoLoading } = useLogo();
+  const { showToast } = useToast();
   const loading = authLoading || logoLoading;
   const [activeTab, setActiveTab] = useState('dashboard');
   const [buses, setBuses] = useState<Bus[]>([]);
@@ -42,6 +45,10 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
   const [companyDrivers, setCompanyDrivers] = useState<CompanyDriver[]>([]);
   const [driverResponses, setDriverResponses] = useState<DriverResponse[]>([]);
+  const [busesLoaded, setBusesLoaded] = useState(false);
+  const [workersLoaded, setWorkersLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(false);
+  const [pendingDeletedDriverIds, setPendingDeletedDriverIds] = useState<string[]>([]);
   const [isDriverResponseModalOpen, setIsDriverResponseModalOpen] = useState(false);
   const [prefilledResponseDriver, setPrefilledResponseDriver] = useState<CompanyDriver | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -104,14 +111,22 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       const unsubBuses = onSnapshot(qBuses, (snapshot) => {
         const fleet = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bus));
         setBuses(fleet);
-      }, (error) => handleFirestoreError(error, OperationType.GET, pathBuses));
+        setBusesLoaded(true);
+      }, (error) => {
+        setBusesLoaded(true);
+        handleFirestoreError(error, OperationType.GET, pathBuses);
+      });
 
       const pathWorkers = 'workers';
       const qWorkers = query(collection(db, pathWorkers));
       const unsubWorkers = onSnapshot(qWorkers, (snapshot) => {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Worker));
         setWorkers(list);
-      }, (error) => handleFirestoreError(error, OperationType.GET, pathWorkers));
+        setWorkersLoaded(true);
+      }, (error) => {
+        setWorkersLoaded(true);
+        handleFirestoreError(error, OperationType.GET, pathWorkers);
+      });
 
       let unsubSalaries = () => {};
       const isPrivileged = profile?.role === 'admin';
@@ -156,7 +171,13 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
           list.sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0));
           setCompanyDrivers(list);
-        }, (error) => handleFirestoreError(error, OperationType.GET, pathCompanyDrivers));
+          setDriversLoaded(true);
+        }, (error) => {
+          setDriversLoaded(true);
+          handleFirestoreError(error, OperationType.GET, pathCompanyDrivers);
+        });
+      } else {
+        setDriversLoaded(true);
       }
 
       // Realtime listener for driver responses
@@ -201,9 +222,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       setActiveTab('dashboard');
     } else if (isBusSupervisor && activeTab !== 'dashboard') {
       setActiveTab('dashboard');
-    } else if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin' || activeTab === 'drivers')) {
+    } else if (isReadOnly && (activeTab === 'salaries' || activeTab === 'admin' || activeTab === 'drivers' || activeTab === 'reports')) {
       setActiveTab('dashboard');
-    } else if (!isSuperAdmin && (activeTab === 'admin' || activeTab === 'drivers' || activeTab === 'salaries')) {
+    } else if (!isSuperAdmin && (activeTab === 'admin' || activeTab === 'drivers' || activeTab === 'salaries' || activeTab === 'reports')) {
       setActiveTab('dashboard');
     }
   }, [activeTab, isBusSupervisor, isReadOnly, isSuperAdmin]);
@@ -264,6 +285,34 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   const activeWorkersCount = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return workers.filter(w => !w.endDate || w.endDate >= today).length;
+  }, [workers]);
+
+  const visibleCompanyDrivers = useMemo(() => {
+    if (pendingDeletedDriverIds.length === 0) return companyDrivers;
+    return companyDrivers.filter(d => !pendingDeletedDriverIds.includes(d.id));
+  }, [companyDrivers, pendingDeletedDriverIds]);
+
+  const headerAlerts = useMemo(() => {
+    const list: Array<{ id: string; title: string; subtitle?: string }> = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inSevenDays = new Date(today);
+    inSevenDays.setDate(inSevenDays.getDate() + 7);
+
+    workers.forEach(w => {
+      if (!w.endDate) return;
+      const d = new Date(w.endDate);
+      if (isNaN(d.getTime())) return;
+      if (d <= inSevenDays) {
+        list.push({
+          id: `worker-${w.id}`,
+          title: w.name,
+          subtitle: d < today ? `عقد منتهي (${w.endDate})` : `ينتهي قريباً (${w.endDate})`
+        });
+      }
+    });
+
+    return list.slice(0, 10);
   }, [workers]);
 
   // Public standalone driver response portal (no authentication required)
@@ -902,14 +951,43 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       const finalWorkplace = cleaned.workplace || (finalClassification === 'النقل المدرسي' ? 'النقل المدرسي (ينبع / محايل عسير / القصيم)' : finalClassification);
 
       if (editingCompanyDriver) {
-        await updateDoc(doc(db, 'company_drivers', editingCompanyDriver.id), {
+        const targetId = editingCompanyDriver.id;
+        const previousSnapshot: Record<string, any> = {
+          fullName: editingCompanyDriver.fullName || '',
+          iqamaNumber: editingCompanyDriver.iqamaNumber || '',
+          borderNumber: editingCompanyDriver.borderNumber || '',
+          mobileNumber: editingCompanyDriver.mobileNumber || '',
+          nationality: editingCompanyDriver.nationality || '',
+          driverType: editingCompanyDriver.driverType || 'مقيم',
+          driverClassification: editingCompanyDriver.driverClassification || 'نقل عمال',
+          workplace: editingCompanyDriver.workplace || '',
+          busNumber: editingCompanyDriver.busNumber || '',
+          status: editingCompanyDriver.status || 'نشط',
+          statusUpdatedAt: editingCompanyDriver.statusUpdatedAt || finalStatusDate,
+          notes: editingCompanyDriver.notes || ''
+        };
+        if ((editingCompanyDriver as any).iqamaExpiryDate !== undefined) {
+          previousSnapshot.iqamaExpiryDate = (editingCompanyDriver as any).iqamaExpiryDate;
+        }
+
+        await updateDoc(doc(db, 'company_drivers', targetId), {
           ...cleaned,
           driverClassification: finalClassification,
           workplace: finalWorkplace,
-          serialNumber: editingCompanyDriver.serialNumber || (companyDrivers.findIndex(d => d.id === editingCompanyDriver.id) + 1),
+          serialNumber: editingCompanyDriver.serialNumber || (companyDrivers.findIndex(d => d.id === targetId) + 1),
           status: finalStatus,
           statusUpdatedAt: finalStatusDate,
           updatedAt: serverTimestamp()
+        });
+
+        showToast({
+          message: 'تم تحديث بيانات السائق',
+          onUndo: async () => {
+            await updateDoc(doc(db, 'company_drivers', targetId), {
+              ...previousSnapshot,
+              updatedAt: serverTimestamp()
+            });
+          }
         });
       } else {
         // Find highest existing serialNumber to assign the next sequential non-repeating number starting from 1
@@ -919,7 +997,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         const maxSerial = serials.length > 0 ? Math.max(...serials) : 0;
         const nextSerial = maxSerial + 1;
 
-        await addDoc(collection(db, 'company_drivers'), {
+        const createdRef = await addDoc(collection(db, 'company_drivers'), {
           ...cleaned,
           driverClassification: finalClassification,
           workplace: finalWorkplace,
@@ -930,13 +1008,25 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           updatedAt: serverTimestamp(),
           createdBy: user.uid
         });
+
+        showToast({
+          message: 'تم تحديث بيانات السائق',
+          onUndo: async () => {
+            await deleteDoc(doc(db, 'company_drivers', createdRef.id));
+          }
+        });
       }
       setIsCompanyDriverFormOpen(false);
       setEditingCompanyDriver(null);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('مسجل مسبقاً')) {
+      if (error instanceof Error && (error.message.includes('مسجل مسبقاً') || error.message.includes('خروج نهائي'))) {
         throw error;
       }
+      showToast({
+        message: 'تعذّر الحفظ، حاول مرة أخرى',
+        variant: 'error',
+        onRetry: () => handleSaveCompanyDriver(data)
+      });
       handleFirestoreError(error, OperationType.WRITE, 'company_drivers');
     }
   };
@@ -1069,14 +1159,59 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   };
 
   const handleDeleteDriverResponse = async (id: string) => {
+    const cleanId = typeof id === 'string' ? id.trim() : '';
+    if (!cleanId) {
+      const invalidIdErr = new Error('معرّف الرد غير صالح أو مفقود');
+      console.error('Error deleting driver response:', invalidIdErr);
+      throw invalidIdErr;
+    }
+
+    const deletedResponse = driverResponses.find(r => r.id === cleanId);
+
     try {
-      await deleteDoc(doc(db, 'driver_responses', id));
+      await deleteDoc(doc(db, 'driver_responses', cleanId));
+      setDriverResponses(prev => prev.filter(r => r.id !== cleanId));
+
+      showToast({
+        message: 'تم حذف الرد',
+        onUndo: deletedResponse
+          ? async () => {
+              const { id: _ignored, ...rest } = deletedResponse;
+              await setDoc(doc(db, 'driver_responses', cleanId), cleanData(rest));
+              setDriverResponses(prev => {
+                if (prev.some(r => r.id === cleanId)) return prev;
+                const next = [deletedResponse, ...prev];
+                next.sort((a, b) => {
+                  const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || a.createdDate || 0).getTime();
+                  const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || b.createdDate || 0).getTime();
+                  return timeB - timeA;
+                });
+                return next;
+              });
+            }
+          : undefined
+      });
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `driver_responses/${id}`);
+      console.error('Failed to delete driver response:', error);
+      handleFirestoreError(error, OperationType.DELETE, `driver_responses/${cleanId}`);
     }
   };
 
   const handleUpdateCompanyDriverStatus = async (id: string, newStatus: DriverStatus, reason?: string) => {
+    const prevDriver = companyDrivers.find(d => d.id === id);
+    const previousSnapshot: Record<string, any> = prevDriver
+      ? {
+          status: prevDriver.status || 'نشط',
+          statusReason: prevDriver.statusReason || '',
+          driverClassification: prevDriver.driverClassification || 'نقل عمال',
+          workplace: prevDriver.workplace || '',
+          busNumber: prevDriver.busNumber || '',
+          finalExitReason: prevDriver.finalExitReason || '',
+          finalExitDate: prevDriver.finalExitDate || '',
+          statusUpdatedAt: prevDriver.statusUpdatedAt || new Date().toISOString()
+        }
+      : { status: 'نشط' };
+
     try {
       const isFinal = newStatus === 'خروج نهائي' || newStatus === 'مستبعد';
       const updateData: any = {
@@ -1097,17 +1232,52 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         updateData.finalExitDate = new Date().toISOString();
       }
       await updateDoc(doc(db, 'company_drivers', id), updateData);
+
+      showToast({
+        message: 'تم حفظ الحالة',
+        onUndo: async () => {
+          await updateDoc(doc(db, 'company_drivers', id), {
+            ...previousSnapshot,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
     } catch (error) {
+      showToast({
+        message: 'تعذّر الحفظ، حاول مرة أخرى',
+        variant: 'error',
+        onRetry: () => handleUpdateCompanyDriverStatus(id, newStatus, reason)
+      });
       handleFirestoreError(error, OperationType.UPDATE, 'company_drivers');
     }
   };
 
   const handleDeleteCompanyDriver = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'company_drivers', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
-    }
+    setPendingDeletedDriverIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+
+    showToast({
+      message: 'تم نقل السائق إلى الأرشيف',
+      onUndo: () => {
+        setPendingDeletedDriverIds(prev => prev.filter(x => x !== id));
+      },
+      onExpire: async () => {
+        try {
+          await deleteDoc(doc(db, 'company_drivers', id));
+        } catch (error) {
+          setPendingDeletedDriverIds(prev => prev.filter(x => x !== id));
+          showToast({
+            message: 'تعذّر الحفظ، حاول مرة أخرى',
+            variant: 'error',
+            onRetry: async () => {
+              await deleteDoc(doc(db, 'company_drivers', id));
+            }
+          });
+          handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
+        } finally {
+          setPendingDeletedDriverIds(prev => prev.filter(x => x !== id));
+        }
+      }
+    });
   };
 
   const handleDeleteAllCompanyDrivers = async () => {
@@ -1262,7 +1432,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} alerts={headerAlerts}>
       <AnimatePresence mode="wait">
         <motion.div
            key={activeTab}
@@ -1279,11 +1449,13 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               profile={profile} 
               workersCount={activeWorkersCount}
               driverResponses={driverResponses}
-              companyDrivers={companyDrivers}
+              companyDrivers={visibleCompanyDrivers}
+              isLoading={!busesLoaded || !workersLoaded}
               onOpenResponsePage={onOpenPublicResponsePage}
               onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
               onNavigateToDrivers={() => setActiveTab('drivers')}
               onNavigateToFleet={() => setActiveTab('fleet')}
+              onNavigateToReports={isSuperAdmin ? () => setActiveTab('reports') : undefined}
               onNavigateToLocations={() => { setSelectedLocationForView(null); setActiveTab('locations'); }}
               onNavigateToLocation={(locName) => { setSelectedLocationForView(locName); setActiveTab('locations'); }}
             />
@@ -1292,7 +1464,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
             <WorkLocationsDashboard
               buses={buses}
               workers={workers}
-              companyDrivers={companyDrivers}
+              companyDrivers={visibleCompanyDrivers}
               isAdmin={isSuperAdmin}
               canEdit={canEdit}
               initialSelectedLocation={selectedLocationForView}
@@ -1333,11 +1505,24 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           )}
           {activeTab === 'admin' && isSuperAdmin && <AdminPanel />}
 
+          {activeTab === 'reports' && isSuperAdmin && (
+            <AdministrativeReports 
+              buses={buses}
+              companyDrivers={visibleCompanyDrivers}
+              workers={workers}
+              driverResponses={driverResponses}
+              profile={profile}
+              isAdmin={isSuperAdmin}
+              onNavigateToTab={(tab) => setActiveTab(tab)}
+            />
+          )}
+
           {activeTab === 'drivers' && isSuperAdmin && (
             <CompanyDriversList 
-              drivers={companyDrivers}
+              drivers={visibleCompanyDrivers}
               workers={workers}
               isAdmin={isSuperAdmin}
+              isLoading={!driversLoaded}
               driverResponses={driverResponses}
               onOpenDriverResponse={(driver) => {
                 setPrefilledResponseDriver(driver || null);
@@ -1497,21 +1682,23 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <LogoProvider>
-        <AppContent 
-          onOpenPublicResponsePage={() => {
-            setShowPublicResponse(true);
-            try {
-              const url = new URL(window.location.href);
-              url.searchParams.set('action', 'driver-response');
-              window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
-            } catch {
-              // ignore
-            }
-          }} 
-        />
-      </LogoProvider>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <LogoProvider>
+          <AppContent 
+            onOpenPublicResponsePage={() => {
+              setShowPublicResponse(true);
+              try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('action', 'driver-response');
+                window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+              } catch {
+                // ignore
+              }
+            }} 
+          />
+        </LogoProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }

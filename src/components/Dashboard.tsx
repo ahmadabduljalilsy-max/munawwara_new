@@ -60,6 +60,9 @@ import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDrive
 import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isWorkerActiveInMonitoring, isDriverEndedInMonitoring } from '../lib/driverUtils';
 import { DmtcLogo } from './DmtcLogo';
+import { DashboardSkeleton, useDelayedLoading } from './Skeleton';
+import { EmptyState } from './EmptyState';
+import { AnimatedNumber } from './AnimatedNumber';
 
 interface DashboardProps {
   buses: BusType[];
@@ -68,10 +71,14 @@ interface DashboardProps {
   workersCount?: number;
   driverResponses?: DriverResponse[];
   companyDrivers?: CompanyDriver[];
+  isLoading?: boolean;
   onOpenResponsePage?: () => void;
   onOpenAnnouncement?: () => void;
   onNavigateToDrivers?: () => void;
   onNavigateToFleet?: () => void;
+  onNavigateToReports?: () => void;
+  onNavigateToLocations?: () => void;
+  onNavigateToLocation?: (locName: string) => void;
 }
 
 const COLORS = ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#8b5cf6'];
@@ -112,11 +119,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   workersCount = 0,
   driverResponses = [],
   companyDrivers = [],
+  isLoading = false,
   onOpenResponsePage,
   onOpenAnnouncement,
   onNavigateToDrivers,
-  onNavigateToFleet
+  onNavigateToFleet,
+  onNavigateToReports
 }) => {
+  const showSkeleton = useDelayedLoading(isLoading, 200);
   const totalBuses = buses.length;
   const [copiedResponseLink, setCopiedResponseLink] = useState(false);
   const [chartTab, setChartTab] = useState<'year' | 'brand'>('year');
@@ -761,6 +771,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     Boolean(profile?.canSubmitDriverResponses)
   );
 
+  if (showSkeleton) {
+    return <DashboardSkeleton />;
+  }
+
   return (
     <div className="space-y-8 pb-12 text-right" dir="rtl">
       {/* 🚀 Driver Response Quick Access (يظهر فقط لمشرف نقل الحافلات ومدير النظام، ويمنع وضع القراءة فقط) */}
@@ -875,7 +889,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="min-w-0">
                   <span className="block text-[10px] font-bold text-slate-300 truncate">الأسطول</span>
                   <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
-                    {totalBuses} <span className="text-[10px] font-normal text-slate-400">حافلة</span>
+                    <AnimatedNumber value={totalBuses} /> <span className="text-[10px] font-normal text-slate-400">حافلة</span>
                   </span>
                 </div>
               </div>
@@ -888,7 +902,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="min-w-0">
                   <span className="block text-[10px] font-bold text-slate-300 truncate">السائقون</span>
                   <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
-                    {driverStats.total} <span className="text-[10px] font-normal text-slate-400">سائق</span>
+                    <AnimatedNumber value={driverStats.total} /> <span className="text-[10px] font-normal text-slate-400">سائق</span>
                   </span>
                 </div>
               </div>
@@ -901,7 +915,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="min-w-0">
                   <span className="block text-[10px] font-bold text-slate-300 truncate">مواقع العمل</span>
                   <span className="block text-sm sm:text-base font-black font-mono text-white tabular-nums leading-tight">
-                    {Object.keys(locationCounts).length} <span className="text-[10px] font-normal text-slate-400">موقع</span>
+                    <AnimatedNumber value={Object.keys(locationCounts).length} /> <span className="text-[10px] font-normal text-slate-400">موقع</span>
                   </span>
                 </div>
               </div>
@@ -949,7 +963,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-xl sm:text-2xl font-black font-mono text-white leading-none tabular-nums">
-                  %{readinessScore}
+                  %<AnimatedNumber value={readinessScore} />
                 </span>
                 <span className="text-[9px] font-bold text-emerald-400 mt-1 uppercase">
                   جاهزية الأسطول
@@ -1033,7 +1047,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
             <div className="text-center bg-indigo-50 dark:bg-indigo-950/40 px-3.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800">
               <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-bold block leading-tight">إجمالي السائقين</span>
-              <span className="text-xl font-black text-indigo-900 dark:text-indigo-200 font-mono leading-none">{driverStats.total}</span>
+              <span className="text-xl font-black text-indigo-900 dark:text-indigo-200 font-mono leading-none">
+                <AnimatedNumber value={driverStats.total} />
+              </span>
             </div>
           </div>
         </div>
@@ -1067,7 +1083,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="text-left shrink-0">
                 <span className="text-3xl font-black text-emerald-700 dark:text-emerald-300 font-mono leading-none block">
-                  {driverStats.resident}
+                  <AnimatedNumber value={driverStats.resident} />
                 </span>
                 <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
                   سائق مقيم
@@ -1095,7 +1111,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="text-left shrink-0">
                 <span className="text-3xl font-black text-purple-700 dark:text-purple-300 font-mono leading-none block">
-                  {driverStats.seasonal}
+                  <AnimatedNumber value={driverStats.seasonal} />
                 </span>
                 <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
                   سائق موسمي
@@ -1139,7 +1155,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
                   <span className="text-2xl font-black text-sky-700 dark:text-sky-300 font-mono">
-                    {driverStats.laborTransport.total}
+                    <AnimatedNumber value={driverStats.laborTransport.total} />
                   </span>
                 </div>
 
@@ -1147,13 +1163,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
-                      {driverStats.laborTransport.resident}
+                      <AnimatedNumber value={driverStats.laborTransport.resident} />
                     </span>
                   </div>
                   <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
-                      {driverStats.laborTransport.seasonal}
+                      <AnimatedNumber value={driverStats.laborTransport.seasonal} />
                     </span>
                   </div>
                 </div>
@@ -1186,7 +1202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
                   <span className="text-2xl font-black text-amber-800 dark:text-amber-300 font-mono">
-                    {driverStats.schoolTransport.total}
+                    <AnimatedNumber value={driverStats.schoolTransport.total} />
                   </span>
                 </div>
 
@@ -1194,13 +1210,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
-                      {driverStats.schoolTransport.resident}
+                      <AnimatedNumber value={driverStats.schoolTransport.resident} />
                     </span>
                   </div>
                   <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
-                      {driverStats.schoolTransport.seasonal}
+                      <AnimatedNumber value={driverStats.schoolTransport.seasonal} />
                     </span>
                   </div>
                 </div>
@@ -1228,7 +1244,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
                   <span className="text-2xl font-black text-orange-700 dark:text-orange-300 font-mono">
-                    {driverStats.umrah.total}
+                    <AnimatedNumber value={driverStats.umrah.total} />
                   </span>
                 </div>
 
@@ -1236,13 +1252,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
-                      {driverStats.umrah.resident}
+                      <AnimatedNumber value={driverStats.umrah.resident} />
                     </span>
                   </div>
                   <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
-                      {driverStats.umrah.seasonal}
+                      <AnimatedNumber value={driverStats.umrah.seasonal} />
                     </span>
                   </div>
                 </div>
@@ -1270,7 +1286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
                   <span className="text-2xl font-black text-teal-700 dark:text-teal-300 font-mono">
-                    {driverStats.intlSyria.total}
+                    <AnimatedNumber value={driverStats.intlSyria.total} />
                   </span>
                 </div>
 
@@ -1278,13 +1294,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
-                      {driverStats.intlSyria.resident}
+                      <AnimatedNumber value={driverStats.intlSyria.resident} />
                     </span>
                   </div>
                   <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
-                      {driverStats.intlSyria.seasonal}
+                      <AnimatedNumber value={driverStats.intlSyria.seasonal} />
                     </span>
                   </div>
                 </div>
@@ -1312,7 +1328,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs font-black text-slate-700 dark:text-slate-300">المجموع الكامل</span>
                   <span className="text-2xl font-black text-purple-700 dark:text-purple-300 font-mono">
-                    {driverStats.intlYemen.total}
+                    <AnimatedNumber value={driverStats.intlYemen.total} />
                   </span>
                 </div>
 
@@ -1320,13 +1336,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="px-2 py-1 rounded-xl bg-emerald-100/70 dark:bg-emerald-950/60 border border-emerald-300/70 dark:border-emerald-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-300">مقيمين:</span>
                     <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-200">
-                      {driverStats.intlYemen.resident}
+                      <AnimatedNumber value={driverStats.intlYemen.resident} />
                     </span>
                   </div>
                   <div className="px-2 py-1 rounded-xl bg-purple-100/70 dark:bg-purple-950/60 border border-purple-300/70 dark:border-purple-800/60 flex items-center justify-between">
                     <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">موسمين:</span>
                     <span className="text-sm font-black font-mono text-purple-800 dark:text-purple-200">
-                      {driverStats.intlYemen.seasonal}
+                      <AnimatedNumber value={driverStats.intlYemen.seasonal} />
                     </span>
                   </div>
                 </div>
@@ -1351,7 +1367,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 block">سائق نشط</span>
                 <span className="text-[10px] text-text-muted">متاح وجاهز للتشغيل</span>
               </div>
-              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{driverStats.active}</span>
+              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono"><AnimatedNumber value={driverStats.active} /></span>
             </div>
 
             <div 
@@ -1362,7 +1378,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block">في إجازة</span>
                 <span className="text-[10px] text-text-muted">إجازة دورية / سنوية</span>
               </div>
-              <span className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">{driverStats.onLeave}</span>
+              <span className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono"><AnimatedNumber value={driverStats.onLeave} /></span>
             </div>
 
             <div 
@@ -1374,7 +1390,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[10px] text-text-muted">سجلات مؤرشفة ومقفلة</span>
               </div>
               <span className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                {companyDrivers.filter(d => d.driverClassification === 'خروج نهائي' || d.status === 'خروج نهائي' || d.status === 'مستبعد').length}
+                <AnimatedNumber value={companyDrivers.filter(d => d.driverClassification === 'خروج نهائي' || d.status === 'خروج نهائي' || d.status === 'مستبعد').length} />
               </span>
             </div>
 
@@ -1386,7 +1402,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="text-[11px] font-bold text-cyan-700 dark:text-cyan-400 block">بالرقابة والمتابعة</span>
                 <span className="text-[10px] text-text-muted">مطابق لسجل نشط</span>
               </div>
-              <span className="text-xl font-black text-cyan-600 dark:text-cyan-400 font-mono">{driverStats.activeInMonitoring}</span>
+              <span className="text-xl font-black text-cyan-600 dark:text-cyan-400 font-mono"><AnimatedNumber value={driverStats.activeInMonitoring} /></span>
             </div>
           </div>
         </div>
@@ -2470,10 +2486,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           /* Locations Grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" dir="rtl">
              {filteredLocationData.length === 0 ? (
-               <div className="py-12 text-center col-span-full bg-slate-50 border border-dashed border-border rounded-2xl">
-                 <MapPin className="w-12 h-12 text-text-muted/40 mx-auto mb-3" />
-                 <p className="text-sm font-black text-text-main mb-1">لم يتم العثور على أي كفايات تطابق البحث</p>
-                 <p className="text-xs text-text-muted font-bold">يرجى تجربة عبارة بحث أخرى للعثور على النتائج المطلوبة</p>
+               <div className="col-span-full">
+                 <EmptyState
+                   icon={MapPin}
+                   title="لا توجد مواقع مطابقة"
+                   description="جرّب تغيير الفلاتر أو كلمة البحث."
+                   actionLabel={locSearch ? 'مسح الفلاتر' : undefined}
+                   onAction={locSearch ? () => setLocSearch('') : undefined}
+                 />
                </div>
              ) : (
                filteredLocationData.map((loc, idx) => {
@@ -2633,10 +2653,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Scrollable Buses List */}
               <div className="flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-50/50 dark:bg-slate-950/30 custom-scrollbar">
                 {filteredBusesInSelectedLocation.length === 0 ? (
-                  <div className="py-16 text-center bg-white dark:bg-slate-900 border border-dashed border-border rounded-2xl max-w-lg mx-auto mt-8 shadow-sm p-6">
-                    <Bus className="w-14 h-14 text-text-muted/30 mx-auto mb-3" />
-                    <p className="text-base font-black text-text-main mb-1">لا توجد حافلات مطابقة لخيارات البحث</p>
-                    <p className="text-xs sm:text-sm text-text-muted font-bold">يرجى تعديل الفلاتر أو عبارة البحث للمحاولة مرة أخرى</p>
+                  <div className="max-w-lg mx-auto mt-8">
+                    <EmptyState
+                      icon={Bus}
+                      title="لا توجد حافلات مطابقة"
+                      description="جرّب تغيير الفلاتر أو كلمة البحث."
+                      actionLabel={(modalSearch || modalCategoryFilter || modalStatusFilter) ? 'مسح الفلاتر' : undefined}
+                      onAction={(modalSearch || modalCategoryFilter || modalStatusFilter) ? () => {
+                        setModalSearch('');
+                        setModalCategoryFilter('');
+                        setModalStatusFilter('');
+                      } : undefined}
+                    />
                   </div>
                 ) : (
                   <>
@@ -2960,6 +2988,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <Download className="w-5 h-5 text-primary shrink-0 group-hover:translate-x-[-2px] transition-transform" />
                 </button>
+
+                {/* Export Comprehensive Operational & Administrative Word Report */}
+                {onNavigateToReports && (
+                  <button
+                    onClick={() => {
+                      setIsExportModalOpen(false);
+                      onNavigateToReports();
+                    }}
+                    className="p-4 bg-gradient-to-r from-blue-900/10 via-[#07152B]/10 to-blue-800/10 hover:from-blue-900/20 hover:to-blue-800/20 border border-[#2563EB]/40 rounded-2xl flex items-center justify-between transition-all group cursor-pointer text-right hover:shadow-lg"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-[#2563EB] text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition-transform">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-sm text-[#07152B] dark:text-sky-200 block">
+                            التقرير التشغيلي الشامل (Word .docx)
+                          </span>
+                          <span className="text-[10px] font-black bg-[#2563EB] text-white px-2 py-0.5 rounded-md">
+                            مدير النظام فقط
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mt-1 leading-relaxed">
+                          إعداد وتوليد وثيقة وورد رسمية متكاملة لأسطول الحافلات والسائقين والجاهزية ومواقع العمل مع التدقيق الأمني
+                        </span>
+                      </div>
+                    </div>
+                    <ExternalLink className="w-5 h-5 text-[#2563EB] dark:text-sky-400 shrink-0 group-hover:translate-x-[-2px] transition-transform" />
+                  </button>
+                )}
               </div>
 
               <div className="pt-2 border-t border-border/40 flex justify-between items-center text-[10px] text-text-muted font-bold">

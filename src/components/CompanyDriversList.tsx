@@ -39,20 +39,29 @@ import {
   Printer,
   GraduationCap,
   RotateCcw,
-  Lock
+  Lock,
+  ChevronDown,
+  MoreHorizontal,
+  ArrowUpDown,
+  Table2
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
-import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker } from '../lib/driverUtils';
+import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama } from '../lib/driverUtils';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompanyDriverDetailsModal } from './CompanyDriverDetailsModal';
 import { DriverResponseLinkModal } from './DriverResponseLinkModal';
 import { DriverCardPrintModal } from './DriverCardPrintModal';
 import { downloadCompanyDriversTemplate, exportDriverResponsesToExcel } from '../lib/excelService';
+import { CompanyDriversSkeleton, useDelayedLoading } from './Skeleton';
+import { EmptyState } from './EmptyState';
+import { AnimatedNumber } from './AnimatedNumber';
+import { useToast } from './ToastContext';
 
 interface CompanyDriversListProps {
   drivers: CompanyDriver[];
   workers?: Worker[];
   isAdmin: boolean;
+  isLoading?: boolean;
   onAdd?: () => void;
   onEdit?: (driver: CompanyDriver) => void;
   onDelete?: (id: string) => void;
@@ -71,6 +80,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   drivers,
   workers = [],
   isAdmin,
+  isLoading = false,
   onAdd,
   onEdit,
   onDelete,
@@ -84,6 +94,8 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   onExport,
   onSyncWithMonitoring
 }) => {
+  const showSkeleton = useDelayedLoading(isLoading, 200);
+  const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -98,10 +110,29 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [selectedDriverForDetails, setSelectedDriverForDetails] = useState<CompanyDriver | null>(null);
   const [isPrintCardModalOpen, setIsPrintCardModalOpen] = useState(false);
   const [cardModalInitialDriver, setCardModalInitialDriver] = useState<CompanyDriver | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'compact'>('compact');
+  const [sortBy, setSortBy] = useState<'default' | 'name_asc' | 'name_desc' | 'expiry_asc'>('default');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [isSyncingMonitoring, setIsSyncingMonitoring] = useState(false);
   const itemsPerPage = 36;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-driver-action-menu]')) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const cleanSaudiPhone = (phone?: string) => {
     if (!phone) return '';
@@ -137,6 +168,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     id: string | null;
+    ids?: string[];
     name?: string;
     isAll: boolean;
   }>({
@@ -149,6 +181,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedField(fieldKey);
+    if (fieldKey.startsWith('iqama')) {
+      showToast({ message: 'تم نسخ رقم الإقامة' });
+    }
     setTimeout(() => {
       setCopiedField(null);
     }, 1800);
@@ -304,17 +339,76 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     };
   }, [filteredDrivers, stats.total, workers, selectedStatus, selectedNationality, selectedType, selectedClassification, searchTerm]);
 
-  // Reset page when filtering
+  // Helper to get iqama/contract expiry date and urgency
+  const getDriverExpiryInfo = React.useCallback((driver: CompanyDriver) => {
+    const matchedWorker = getMatchingWorkerByIqama(driver, workers);
+    const rawDate = String((driver as any).iqamaExpiryDate || (driver as any).endDate || matchedWorker?.endDate || '').trim();
+    if (!rawDate) {
+      return { dateStr: '', daysRemaining: null as number | null, urgency: 'none' as const };
+    }
+    const parsed = new Date(rawDate);
+    if (isNaN(parsed.getTime())) {
+      return { dateStr: rawDate, daysRemaining: null as number | null, urgency: 'none' as const };
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(parsed);
+    target.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    let urgency: 'expired' | 'critical' | 'soon' | 'valid' = 'valid';
+    if (diffDays < 0) urgency = 'expired';
+    else if (diffDays <= 15) urgency = 'critical';
+    else if (diffDays <= 60) urgency = 'soon';
+    return { dateStr: rawDate, daysRemaining: diffDays, urgency };
+  }, [workers]);
+
+  // Sorted drivers
+  const sortedDrivers = useMemo(() => {
+    if (sortBy === 'default') return filteredDrivers;
+    const list = [...filteredDrivers];
+    if (sortBy === 'name_asc') {
+      list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'ar'));
+    } else if (sortBy === 'name_desc') {
+      list.sort((a, b) => (b.fullName || '').localeCompare(a.fullName || '', 'ar'));
+    } else if (sortBy === 'expiry_asc') {
+      list.sort((a, b) => {
+        const expA = getDriverExpiryInfo(a);
+        const expB = getDriverExpiryInfo(b);
+        if (expA.daysRemaining === null && expB.daysRemaining === null) return 0;
+        if (expA.daysRemaining === null) return 1;
+        if (expB.daysRemaining === null) return -1;
+        return expA.daysRemaining - expB.daysRemaining;
+      });
+    }
+    return list;
+  }, [filteredDrivers, sortBy, getDriverExpiryInfo]);
+
+  // Reset page when filtering or sorting
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
+  }, [searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification, sortBy]);
 
-  const totalPages = Math.ceil(filteredDrivers.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedDrivers.length / itemsPerPage);
 
   const paginatedDrivers = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredDrivers.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredDrivers, currentPage]);
+    return sortedDrivers.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedDrivers, currentPage]);
+
+  const isAllPageSelected = paginatedDrivers.length > 0 && paginatedDrivers.every(d => selectedIds.includes(d.id));
+
+  const toggleSelectDriver = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const toggleSelectPage = () => {
+    const pageIds = paginatedDrivers.map(d => d.id);
+    if (isAllPageSelected) {
+      setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
 
   const getTypeBadge = (type: DriverType) => {
     switch (type) {
@@ -383,6 +477,10 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     }
   };
 
+  if (showSkeleton) {
+    return <CompanyDriversSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header & Stat Cards */}
@@ -405,125 +503,168 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
           </p>
         </div>
 
-        {/* Global Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Direct Public Link Button (Enter link directly without login / popup blockers) */}
-          <button 
-            type="button"
-            onClick={() => {
-              if (onOpenPublicResponsePage) {
-                onOpenPublicResponsePage();
-              } else {
-                window.location.search = '?action=driver-response';
-              }
-            }}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black transition-all shadow-sm shadow-emerald-600/20 cursor-pointer"
-            title="الدخول على الرابط المباشر الآن وتسجيل بيانات الرد"
-          >
-            <Navigation className="w-4 h-4" />
-            <span>الدخول على الرابط وتسجيل الرد</span>
-          </button>
-
-          {/* 2. Export Driver Responses to Excel directly */}
-          <button 
-            type="button"
-            onClick={() => exportDriverResponsesToExcel(driverResponses, 'ردود_وحركات_السائقين.xlsx', drivers)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer"
-            title="تصدير ردود وحركات السائقين إلى Excel (يتضمن رقم الإقامة ورقم الحدود)"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            <span>تصدير الردود Excel</span>
-            {driverResponses.length > 0 && (
-              <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-mono font-bold">
-                {driverResponses.length}
-              </span>
-            )}
-          </button>
-
-          {/* 3. Internal Quick Admin Response Modal */}
-          {onOpenDriverResponse && (
-            <button 
-              onClick={() => onOpenDriverResponse()}
-              className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="تسجيل رد سريع من داخل لوحة التحكم"
-            >
-              <Plus className="w-3.5 h-3.5 text-emerald-600" />
-              <span>رد سريع</span>
-            </button>
-          )}
-
+        {/* Global Actions: Only "إضافة سائق" visible + "المزيد" dropdown */}
+        <div className="flex flex-wrap items-center gap-2 relative">
+          {/* Hidden file input kept mounted for import action inside More menu */}
           {isAdmin && onImport && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3.5 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-              title="استيراد سائقين من ملف Excel"
-            >
-              <Upload className="w-4 h-4 text-blue-600" />
-              <span>استيراد Excel</span>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={onImport} 
-                className="hidden" 
-                accept=".xlsx, .xls, .csv" 
-              />
-            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={onImport} 
+              className="hidden" 
+              accept=".xlsx, .xls, .csv" 
+            />
           )}
 
-          <button 
-            onClick={() => onExport(filteredDrivers)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-            title="تصدير السائقين الحاليين إلى Excel"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            <span>تصدير Excel</span>
-          </button>
-
-          {isAdmin && (
-            <button 
-              onClick={() => downloadCompanyDriversTemplate()}
-              className="flex items-center gap-2 px-3 py-2 bg-surface border border-border text-text-muted hover:text-slate-900 dark:hover:text-white rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-              title="تحميل نموذج Excel فارغ لتعبئة بيانات السائقين"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-primary" />
-              <span className="hidden sm:inline">تحميل النموذج</span>
-            </button>
-          )}
-
-          {/* Sync Drivers with Monitoring */}
-          {isAdmin && onSyncWithMonitoring && (
-            <button 
+          {/* More Actions Dropdown */}
+          <div className="relative" ref={moreMenuRef}>
+            <button
               type="button"
-              disabled={isSyncingMonitoring}
-              onClick={async () => {
-                try {
-                  setIsSyncingMonitoring(true);
-                  await onSyncWithMonitoring();
-                } finally {
-                  setIsSyncingMonitoring(false);
-                }
-              }}
-              className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50"
-              title="مزامنة وتحديث بيانات وتصنيفات السائقين ومواقع عملهم وحافلاتهم استناداً إلى سجلات الرقابة والمتابعة والنقل المدرسي"
+              onClick={() => setIsMoreMenuOpen(prev => !prev)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-surface border border-border text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 text-emerald-200 ${isSyncingMonitoring ? 'animate-spin' : ''}`} />
-              <span>{isSyncingMonitoring ? 'جارٍ التحديث...' : 'تحديث من الرقابة والمتابعة'}</span>
+              <span>المزيد</span>
+              <ChevronDown className={`w-4 h-4 text-text-muted transition-transform duration-150 ${isMoreMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-          )}
 
-          {/* Print Driver Card Modal Trigger Button */}
-          <button 
-            type="button"
-            onClick={() => {
-              setCardModalInitialDriver(null);
-              setIsPrintCardModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-600/20 cursor-pointer active:scale-95"
-            title="طباعة بطاقة السائق الرسمية أو طباعة 6 بطاقات مجتمعة"
-          >
-            <Printer className="w-4 h-4 text-amber-300" />
-            <span>طباعة بطاقة السائق</span>
-          </button>
+            <AnimatePresence>
+              {isMoreMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute left-0 md:left-0 mt-2 w-64 bg-surface border border-border rounded-2xl shadow-xl z-50 p-1.5 flex flex-col gap-1"
+                >
+                  {isAdmin && onImport && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>استيراد Excel</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      onExport(sortedDrivers);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>تصدير Excel</span>
+                  </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        downloadCompanyDriversTemplate();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-primary shrink-0" />
+                      <span>تحميل النموذج</span>
+                    </button>
+                  )}
+
+                  <div className="my-0.5 border-t border-border/60" />
+
+                  {onOpenDriverResponse && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        onOpenDriverResponse();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>رد سريع</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      exportDriverResponsesToExcel(driverResponses, 'ردود_وحركات_السائقين.xlsx', drivers);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Download className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>تصدير الردود Excel</span>
+                    </span>
+                    {driverResponses.length > 0 && (
+                      <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-mono font-bold">
+                        {driverResponses.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      if (onOpenPublicResponsePage) {
+                        onOpenPublicResponsePage();
+                      } else {
+                        window.location.search = '?action=driver-response';
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl transition-colors text-right cursor-pointer"
+                  >
+                    <Navigation className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>رابط التسجيل وتسجيل الرد</span>
+                  </button>
+
+                  <div className="my-0.5 border-t border-border/60" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setCardModalInitialDriver(null);
+                      setIsPrintCardModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-colors text-right cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>طباعة بطاقة السائق</span>
+                  </button>
+
+                  {isAdmin && onSyncWithMonitoring && (
+                    <button
+                      type="button"
+                      disabled={isSyncingMonitoring}
+                      onClick={async () => {
+                        setIsMoreMenuOpen(false);
+                        try {
+                          setIsSyncingMonitoring(true);
+                          await onSyncWithMonitoring();
+                        } finally {
+                          setIsSyncingMonitoring(false);
+                        }
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40 rounded-xl transition-colors text-right cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-teal-600 shrink-0 ${isSyncingMonitoring ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingMonitoring ? 'جارٍ التحديث...' : 'تحديث من الرقابة والمتابعة'}</span>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {isAdmin && onAdd && (
             <button 
@@ -531,7 +672,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة سائق جديد</span>
+              <span>إضافة سائق</span>
             </button>
           )}
         </div>
@@ -553,8 +694,14 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-slate-900 dark:text-white font-mono">{stats.total}</div>
-          <span className="text-[10px] text-text-muted mt-1 block">كافة الكوادر المسجلة</span>
+          <div className="text-xl font-black text-slate-900 dark:text-white font-mono">
+            <AnimatedNumber value={stats.total} />
+          </div>
+          <span className="text-[10px] text-text-muted mt-1 block leading-tight">
+            {stats.finalExit > 0
+              ? `يشمل النشط والإجازة فقط • يستثني ${stats.finalExit} خروج نهائي (الإجمالي ${drivers.length})`
+              : `يشمل النشطين وفي إجازة (${drivers.length} مسجل)`}
+          </span>
         </div>
 
         <div 
@@ -571,7 +718,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{stats.active}</div>
+          <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+            <AnimatedNumber value={stats.active} />
+          </div>
           <span className="text-[10px] text-text-muted mt-1 block">جاهز ومتاح للعمل</span>
         </div>
 
@@ -589,7 +738,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">{stats.onLeave}</div>
+          <div className="text-xl font-black text-amber-600 dark:text-amber-400 font-mono">
+            <AnimatedNumber value={stats.onLeave} />
+          </div>
           <span className="text-[10px] text-text-muted mt-1 block">إجازة دورية / سنوية</span>
         </div>
 
@@ -607,7 +758,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <Lock className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">{stats.finalExit}</div>
+          <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
+            <AnimatedNumber value={stats.finalExit} />
+          </div>
           <span className="text-[10px] text-text-muted mt-1 block">سجلات مقفلة</span>
         </div>
 
@@ -625,7 +778,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <UserCheck className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-slate-900 dark:text-white font-mono">{stats.resident}</div>
+          <div className="text-xl font-black text-slate-900 dark:text-white font-mono">
+            <AnimatedNumber value={stats.resident} />
+          </div>
           <span className="text-[10px] text-text-muted mt-1 block">إقامة نظامية دائمة</span>
         </div>
 
@@ -639,7 +794,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               <Sparkles className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono">{stats.temporary + stats.seasonal}</div>
+          <div className="text-xl font-black text-purple-600 dark:text-purple-400 font-mono">
+            <AnimatedNumber value={stats.temporary + stats.seasonal} />
+          </div>
           <span className="text-[10px] text-text-muted mt-1 block">عقود ومواسم ({stats.temporary} + {stats.seasonal})</span>
         </div>
       </div>
@@ -684,8 +841,37 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               )}
             </button>
 
-            {/* View Mode Toggle (Grid / Compact) */}
+            {/* Sort Dropdown */}
+            <div className="relative flex items-center shrink-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-text-muted absolute right-2.5 pointer-events-none" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="pr-8 pl-3 py-2 bg-background border border-border focus:border-primary rounded-lg outline-none text-xs font-bold text-text-main shadow-2xs cursor-pointer"
+                title="فرز السائقين"
+              >
+                <option value="default">فرز: الافتراضي</option>
+                <option value="name_asc">الاسم (أ - ي)</option>
+                <option value="name_desc">الاسم (ي - أ)</option>
+                <option value="expiry_asc">أقرب انتهاء إقامة</option>
+              </select>
+            </div>
+
+            {/* View Mode Toggle (Compact Table / Grid) */}
             <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 border border-border rounded-lg p-0.5 shrink-0 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('compact')}
+                className={`px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 text-xs ${
+                  viewMode === 'compact' 
+                    ? 'bg-surface text-primary shadow-xs font-black border border-border/80' 
+                    : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="عرض جدول مدمج"
+              >
+                <Table2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">مدمج</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
@@ -698,19 +884,6 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">شبكي</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('compact')}
-                className={`px-2.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 text-xs ${
-                  viewMode === 'compact' 
-                    ? 'bg-surface text-primary shadow-xs font-black border border-border/80' 
-                    : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
-                }`}
-                title="عرض بطاقات مدمجة"
-              >
-                <ListFilter className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">مدمج</span>
               </button>
             </div>
           </div>
@@ -915,386 +1088,852 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Drivers Cards Grid (Simplified, Compact & Full Name Visible) */}
-      {paginatedDrivers.length > 0 ? (
-        <div className={
-          viewMode === 'compact'
-            ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5"
-        }>
-          <AnimatePresence mode="popLayout">
-            {paginatedDrivers.map((driver, index) => {
-              const effectiveType = resolveDriverType(driver);
-              const badge = getTypeBadge(effectiveType);
-              const statusBadge = getStatusBadge(driver.status);
-              const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
-              const inMonitoring = Boolean(inMonitoringWorker);
-              const isEndedInMonitoring = isDriverEndedInMonitoring(driver, workers);
-              const classification = getDriverClassification(driver, workers);
-              const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
-              const driverRespList = driverResponses.filter(
-                r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
-              );
-              const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
-
-              // Primary ID to display: Iqama if مقيم or available, Border if موسمي
-              const primaryIdLabel = (effectiveType === 'موسمي' && driver.borderNumber) ? 'رقم الحدود' : 'رقم الإقامة';
-              const primaryIdValue = (effectiveType === 'موسمي' && driver.borderNumber)
-                ? driver.borderNumber
-                : (driver.iqamaNumber || driver.borderNumber || '—');
-
-              return (
-                <motion.div
-                  key={driver.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.15, delay: Math.min(index * 0.012, 0.2) }}
-                  onClick={() => setSelectedDriverForDetails(driver)}
-                  className={`group bg-surface rounded-2xl border transition-all duration-200 flex flex-col justify-between relative cursor-pointer overflow-hidden ${
-                    viewMode === 'compact' ? 'p-3 gap-2 shadow-2xs hover:shadow-md' : 'p-3.5 gap-2.5 shadow-xs hover:shadow-lg'
-                  }`}
-                  style={{
-                    borderColor: `${statusBadge.color}35`,
-                    borderTopWidth: '3.5px',
-                    borderTopColor: statusBadge.color
-                  }}
+      {/* Bulk Selection Bar */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="bg-primary/5 dark:bg-primary/15 border border-primary/30 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs"
+          >
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-black text-primary">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>تم تحديد {selectedIds.length} سائق</span>
+              </span>
+              {selectedIds.length < sortedDrivers.length && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(sortedDrivers.map(d => d.id))}
+                  className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
                 >
-                  {/* Top Bar: Serial + Type Badge + Status Badge */}
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 shrink-0">
-                        #{driver.serialNumber || 1}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${badge.className}`}>
-                        {badge.icon}
-                        <span>{badge.label}</span>
-                      </span>
-                    </div>
+                  تحديد الكل ({sortedDrivers.length})
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onExport(drivers.filter(d => selectedIds.includes(d.id)))}
+                className="px-3 py-1.5 bg-surface border border-border hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-text-main flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تصدير المحدد</span>
+              </button>
+              {isAdmin && onDelete && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteModal({
+                    isOpen: true,
+                    id: null,
+                    ids: selectedIds,
+                    name: `${selectedIds.length} سائق`,
+                    isAll: false
+                  })}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف المحدد</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="px-2.5 py-1.5 text-xs font-bold text-text-muted hover:text-text-main cursor-pointer"
+              >
+                إلغاء التحديد
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 shadow-2xs ${statusBadge.className}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotColor} ${driver.status === 'نشط' || !driver.status ? 'animate-pulse' : ''}`} />
-                      <span>{statusBadge.label}</span>
-                    </span>
-                  </div>
+      {/* Drivers Table (Compact Default) or Grid Cards */}
+      {paginatedDrivers.length > 0 ? (
+        viewMode === 'compact' ? (
+          <div className="bg-surface rounded-2xl border border-border shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/90 dark:bg-slate-900/60 border-b border-border text-[11px] font-black text-text-muted">
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllPageSelected}
+                        onChange={toggleSelectPage}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                        title="تحديد الكل في هذه الصفحة"
+                      />
+                    </th>
+                    <th className="py-3 px-3 whitespace-nowrap">الاسم</th>
+                    <th className="py-3 px-3 whitespace-nowrap">المسار</th>
+                    <th className="py-3 px-3 whitespace-nowrap">الجنسية</th>
+                    <th className="py-3 px-3 whitespace-nowrap">الجوال</th>
+                    <th className="py-3 px-3 whitespace-nowrap">رقم الإقامة</th>
+                    <th className="py-3 px-3 whitespace-nowrap">تاريخ انتهاء الإقامة</th>
+                    <th className="py-3 px-3 whitespace-nowrap">الحافلة</th>
+                    <th className="py-3 px-3 whitespace-nowrap">الحالة</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60 text-xs">
+                  {paginatedDrivers.map((driver) => {
+                    const effectiveType = resolveDriverType(driver);
+                    const statusBadge = getStatusBadge(driver.status);
+                    const classification = getDriverClassification(driver, workers);
+                    const isFinalExit = classification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
+                    const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
+                    const expiryInfo = getDriverExpiryInfo(driver);
+                    const driverRespList = driverResponses.filter(
+                      r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
+                    );
+                    const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
+                    const hasIqama = Boolean(driver.iqamaNumber && driver.iqamaNumber.trim());
+                    const hasBorder = Boolean(driver.borderNumber && driver.borderNumber.trim());
+                    const primaryIdValue = hasIqama
+                      ? driver.iqamaNumber.trim()
+                      : (hasBorder ? driver.borderNumber.trim() : '');
+                    const isSeasonalWithoutBorder = effectiveType === 'موسمي' && !hasBorder;
+                    const isSelected = selectedIds.includes(driver.id);
 
-                  {/* Driver Name Section: Full Width, Completely Visible without truncation! */}
-                  <div className="pt-0.5">
-                    <h3 
-                      className="text-sm sm:text-base font-black text-slate-900 dark:text-white group-hover:text-primary transition-colors leading-snug break-words"
-                      title={driver.fullName}
-                    >
-                      {driver.fullName}
-                    </h3>
+                    // Exception-only status badges (hide نشط and مقيم)
+                    const showStatusException = isFinalExit || driver.status === 'في إجازة';
+                    const showTypeException = effectiveType === 'موسمي' || effectiveType === 'مؤقت';
 
-                    {/* Operational Tags (Classification, Monitoring, Bus, Nationality) */}
-                    <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
-                      {/* Classification Badge */}
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-bold ${
-                        classification === 'خروج نهائي'
-                          ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800 shadow-2xs'
-                          : classification === 'عمرة'
-                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                          : classification === 'النقل الدولي سوريا'
-                          ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
-                          : classification === 'النقل الدولي اليمن'
-                          ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
-                          : classification === 'النقل المدرسي'
-                          ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
-                          : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                      }`}>
-                        {classification === 'خروج نهائي' ? (
-                          <Lock className="w-2.5 h-2.5 text-rose-600" />
-                        ) : classification === 'النقل المدرسي' ? (
-                          <GraduationCap className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300" />
-                        ) : (
-                          <Briefcase className="w-2.5 h-2.5" />
-                        )}
-                        <span>{classification}</span>
-                      </span>
+                    return (
+                      <tr
+                        key={driver.id}
+                        onClick={() => setSelectedDriverForDetails(driver)}
+                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer ${
+                          isSelected ? 'bg-primary/5 dark:bg-primary/10' : ''
+                        }`}
+                      >
+                        {/* 1. Multi-select Checkbox */}
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectDriver(driver.id)}
+                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                          />
+                        </td>
 
-                      {/* Final Exit Reason Tag */}
-                      {classification === 'خروج نهائي' && (driver.finalExitReason || driver.statusReason) && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-900/50 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800 font-bold" title={`سبب الخروج: ${driver.finalExitReason || driver.statusReason}`}>
-                          <span>السبب: {driver.finalExitReason || driver.statusReason}</span>
-                        </span>
-                      )}
+                        {/* 2. الاسم */}
+                        <td className="py-2.5 px-3">
+                          <div className="font-black text-slate-900 dark:text-white leading-snug min-w-[160px]">
+                            {driver.fullName}
+                          </div>
+                          {isFinalExit && (driver.finalExitReason || driver.statusReason) && (
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold block mt-0.5">
+                              السبب: {driver.finalExitReason || driver.statusReason}
+                            </span>
+                          )}
+                        </td>
 
-                      {/* Active in Monitoring Live Ping */}
-                      {inMonitoring && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 font-bold" title="نشط حالياً بنظام الرقابة والمتابعة وعمليات نقل العمال">
-                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
-                          <span>بالرقابة</span>
-                        </span>
-                      )}
-
-                      {/* Ended in Monitoring Tag */}
-                      {isEndedInMonitoring && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300/60 font-bold" title="انتهى عمل السائق في الرقابة والمتابعة وصُنّف تلقائياً عمرة">
-                          <Clock className="w-2.5 h-2.5 text-amber-600" />
-                          <span>منتهي بالرقابة</span>
-                        </span>
-                      )}
-
-                      {/* Assigned Bus Number */}
-                      {driver.busNumber && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-border font-mono font-bold">
-                          <Bus className="w-2.5 h-2.5 text-sky-600" />
-                          <span>#{driver.busNumber}</span>
-                        </span>
-                      )}
-
-                      {/* Nationality */}
-                      {driver.nationality && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
-                          <Globe className="w-2.5 h-2.5" />
-                          <span>{driver.nationality}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Compact Info Row: Official ID + Mobile Phone with Direct WhatsApp & Call */}
-                  <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border/50 text-[11px]">
-                    {/* ID Container */}
-                    <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
-                      <div className="flex items-center justify-between text-[10px] text-text-muted">
-                        <span className="flex items-center gap-1 font-bold">
-                          <IdCard className="w-3 h-3 text-primary" />
-                          <span>{primaryIdLabel}</span>
-                        </span>
-                        {primaryIdValue !== '—' && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyToClipboard(primaryIdValue, `id-${driver.id}`);
-                            }}
-                            className="text-text-muted hover:text-primary transition-colors p-0.5 cursor-pointer"
-                            title="نسخ الرقم"
-                          >
-                            {copiedField === `id-${driver.id}` ? (
-                              <Check className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
+                        {/* 3. المسار */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold ${
+                              classification === 'خروج نهائي'
+                                ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800'
+                                : classification === 'عمرة'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                : classification === 'النقل الدولي سوريا'
+                                ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                                : classification === 'النقل الدولي اليمن'
+                                ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                : classification === 'النقل المدرسي'
+                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                                : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                            }`}>
+                              <span>{classification}</span>
+                            </span>
+                            {latestResp && (
+                              <span className="text-[10px] text-primary font-bold">
+                                آخر حركة: {latestResp.responseType}
+                              </span>
                             )}
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" title={primaryIdValue}>
-                        {primaryIdValue}
-                      </div>
-                    </div>
+                          </div>
+                        </td>
 
-                    {/* Mobile Container */}
-                    <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
-                      <div className="flex items-center justify-between text-[10px] text-text-muted">
-                        <span className="flex items-center gap-1 font-bold">
-                          <Phone className="w-3 h-3 text-emerald-600" />
-                          <span>الجوال</span>
-                        </span>
-                        {driver.mobileNumber && (
-                          <div className="flex items-center gap-1">
-                            {cleanPhone && (
-                              <a 
-                                href={`https://wa.me/${cleanPhone}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
-                                title="محادثة واتساب مباشرة"
+                        {/* 4. الجنسية */}
+                        <td className="py-2.5 px-3 whitespace-nowrap text-slate-700 dark:text-slate-300 font-bold">
+                          {driver.nationality || '—'}
+                        </td>
+
+                        {/* 5. الجوال */}
+                        <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {driver.mobileNumber && driver.mobileNumber.trim() ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-slate-900 dark:text-white" dir="ltr">
+                                {driver.mobileNumber}
+                              </span>
+                              {cleanPhone && (
+                                <a
+                                  href={`https://wa.me/${cleanPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-0.5 text-emerald-600 hover:text-emerald-700"
+                                  title="واتساب"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              <a
+                                href={`tel:${driver.mobileNumber}`}
+                                className="p-0.5 text-emerald-600 hover:text-emerald-700"
+                                title="اتصال"
                               >
-                                <MessageCircle className="w-3.5 h-3.5" />
+                                <PhoneCall className="w-3.5 h-3.5" />
                               </a>
-                            )}
-                            <a 
-                              href={`tel:${driver.mobileNumber}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
-                              title="اتصال هاتفي"
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5">
+                              <span className="text-amber-600 dark:text-amber-400 font-black text-[11px]">غير مسجل</span>
+                              {isAdmin && onEdit && !isFinalExit && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEdit(driver)}
+                                  className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md text-[10px] font-black cursor-pointer"
+                                >
+                                  أضف
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 6. رقم الإقامة (أو رقم الحدود عند الموسمية) */}
+                        <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {primaryIdValue && !isSeasonalWithoutBorder ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                {primaryIdValue}
+                              </span>
+                              {!hasIqama && hasBorder && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-bold">
+                                  حدود
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(primaryIdValue, hasIqama ? `iqama-${driver.id}` : `id-${driver.id}`)}
+                                className="text-text-muted hover:text-primary p-0.5 cursor-pointer"
+                                title="نسخ الرقم"
+                              >
+                                {copiedField === (hasIqama ? `iqama-${driver.id}` : `id-${driver.id}`) ? (
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5">
+                              <span className="text-amber-600 dark:text-amber-400 font-black text-[11px]">غير مسجل</span>
+                              {isAdmin && onEdit && !isFinalExit && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEdit(driver)}
+                                  className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md text-[10px] font-black cursor-pointer"
+                                >
+                                  أضف
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 7. تاريخ انتهاء الإقامة (برتقالي/أحمر عند القرب) */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {expiryInfo.dateStr ? (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold border ${
+                                expiryInfo.urgency === 'expired' || expiryInfo.urgency === 'critical'
+                                  ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                  : expiryInfo.urgency === 'soon'
+                                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                  : 'bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 border-border'
+                              }`}
+                              title={
+                                expiryInfo.daysRemaining !== null
+                                  ? expiryInfo.daysRemaining < 0
+                                    ? `منتهي منذ ${Math.abs(expiryInfo.daysRemaining)} يوم`
+                                    : `متبقي ${expiryInfo.daysRemaining} يوم`
+                                  : undefined
+                              }
                             >
-                              <PhoneCall className="w-3.5 h-3.5" />
-                            </a>
+                              <span>{expiryInfo.dateStr}</span>
+                              {expiryInfo.daysRemaining !== null && expiryInfo.daysRemaining < 0 && (
+                                <span className="text-[9px] font-sans">(منتهي)</span>
+                              )}
+                              {expiryInfo.daysRemaining !== null && expiryInfo.daysRemaining >= 0 && expiryInfo.daysRemaining <= 60 && (
+                                <span className="text-[9px] font-sans">({expiryInfo.daysRemaining}ي)</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">—</span>
+                          )}
+                        </td>
+
+                        {/* 8. الحافلة */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {driver.busNumber ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-border font-mono font-bold text-[11px]">
+                              <Bus className="w-3 h-3 text-sky-600" />
+                              <span>{driver.busNumber}</span>
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">—</span>
+                          )}
+                        </td>
+
+                        {/* 9. الحالة (استثناء فقط: موسمي، إجازة، خروج نهائي) */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {showStatusException || showTypeException ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {showTypeException && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getTypeBadge(effectiveType).className}`}>
+                                  <span>{getTypeBadge(effectiveType).label}</span>
+                                </span>
+                              )}
+                              {showStatusException && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge.className}`}>
+                                  <span>{statusBadge.label}</span>
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+
+                        {/* 10. إجراءات: عرض التفاصيل + رد + قائمة ⋯ */}
+                        <td className="py-2.5 px-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex items-center justify-center gap-1.5 relative">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDriverForDetails(driver)}
+                              className="px-2.5 py-1 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-lg text-[11px] font-black transition-colors cursor-pointer"
+                            >
+                              عرض التفاصيل
+                            </button>
+
+                            {isFinalExit ? (
+                              <span
+                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-not-allowed border border-slate-200 dark:border-slate-700"
+                                title="لا يمكن تسجيل رد لسائق مصنف خروج نهائي"
+                              >
+                                <Lock className="w-3 h-3" />
+                                <span>مقفل</span>
+                              </span>
+                            ) : onOpenDriverResponse && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenDriverResponse(driver)}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 dark:border-emerald-800 rounded-lg text-[11px] font-black transition-colors cursor-pointer"
+                              >
+                                رد
+                              </button>
+                            )}
+
+                            <div className="relative" data-driver-action-menu>
+                              <button
+                                type="button"
+                                onClick={() => setOpenActionMenuId(openActionMenuId === driver.id ? null : driver.id)}
+                                className="p-1.5 bg-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-border rounded-lg transition-colors cursor-pointer"
+                                title="خيارات إضافية"
+                              >
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                              </button>
+
+                              {openActionMenuId === driver.id && (
+                                <div className="absolute left-0 mt-1 w-40 bg-surface border border-border rounded-xl shadow-xl z-40 p-1 flex flex-col gap-0.5 text-right">
+                                  {isAdmin && onEdit && (
+                                    isFinalExit ? (
+                                      <span className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-bold text-slate-400 cursor-not-allowed">
+                                        <Lock className="w-3.5 h-3.5" />
+                                        <span>مقفل للتعديل</span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenuId(null);
+                                          onEdit(driver);
+                                        }}
+                                        className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                                      >
+                                        <Edit className="w-3.5 h-3.5 text-primary" />
+                                        <span>تعديل</span>
+                                      </button>
+                                    )
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setCardModalInitialDriver(driver);
+                                      setIsPrintCardModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                                    <span>طباعة بطاقة</span>
+                                  </button>
+
+                                  {isAdmin && onDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenActionMenuId(null);
+                                        setDeleteModal({
+                                          isOpen: true,
+                                          id: driver.id,
+                                          name: driver.fullName,
+                                          isAll: false
+                                        });
+                                      }}
+                                      className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>حذف</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            <AnimatePresence mode="popLayout">
+              {paginatedDrivers.map((driver, index) => {
+                const effectiveType = resolveDriverType(driver);
+                const badge = getTypeBadge(effectiveType);
+                const statusBadge = getStatusBadge(driver.status);
+                const inMonitoringWorker = getMatchingActiveMonitoringWorker(driver, workers);
+                const inMonitoring = Boolean(inMonitoringWorker);
+                const isEndedInMonitoring = isDriverEndedInMonitoring(driver, workers);
+                const classification = getDriverClassification(driver, workers);
+                const isFinalExit = classification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
+                const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
+                const expiryInfo = getDriverExpiryInfo(driver);
+                const driverRespList = driverResponses.filter(
+                  r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
+                );
+                const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
+                const isSelected = selectedIds.includes(driver.id);
+
+                // Primary ID to display: Iqama if مقيم or available, Border if موسمي
+                const primaryIdLabel = (effectiveType === 'موسمي') ? 'رقم الحدود' : 'رقم الإقامة';
+                const primaryIdValue = (effectiveType === 'موسمي')
+                  ? (driver.borderNumber || '').trim()
+                  : ((driver.iqamaNumber || driver.borderNumber || '').trim());
+
+                const showTypeException = effectiveType === 'موسمي' || effectiveType === 'مؤقت';
+                const showStatusException = isFinalExit || driver.status === 'في إجازة';
+
+                return (
+                  <motion.div
+                    key={driver.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={{ duration: 0.15, delay: Math.min(index * 0.012, 0.2) }}
+                    onClick={() => setSelectedDriverForDetails(driver)}
+                    className={`group bg-surface rounded-2xl border transition-all duration-200 flex flex-col justify-between relative cursor-pointer p-3.5 gap-2.5 shadow-xs hover:shadow-lg ${
+                      isSelected ? 'ring-2 ring-primary/40' : ''
+                    }`}
+                    style={{
+                      borderColor: `${statusBadge.color}35`,
+                      borderTopWidth: '3.5px',
+                      borderTopColor: statusBadge.color
+                    }}
+                  >
+                    {/* Top Bar: Checkbox + Exception-only Type/Status Badges */}
+                    <div className="flex items-center justify-between gap-1.5 min-h-[22px]">
+                      <div className="flex items-center gap-1.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectDriver(driver.id)}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary shrink-0"
+                        />
+                        {showTypeException && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${badge.className}`}>
+                            {badge.icon}
+                            <span>{badge.label}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {showStatusException && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 shadow-2xs ${statusBadge.className}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotColor}`} />
+                          <span>{statusBadge.label}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Driver Name Section */}
+                    <div className="pt-0.5">
+                      <h3 
+                        className="text-sm sm:text-base font-black text-slate-900 dark:text-white group-hover:text-primary transition-colors leading-snug break-words"
+                        title={driver.fullName}
+                      >
+                        {driver.fullName}
+                      </h3>
+
+                      {/* Operational Tags (Classification, Monitoring, Bus, Nationality, Expiry) */}
+                      <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px]">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-bold ${
+                          classification === 'خروج نهائي'
+                            ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-800 shadow-2xs'
+                            : classification === 'عمرة'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                            : classification === 'النقل الدولي سوريا'
+                            ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800'
+                            : classification === 'النقل الدولي اليمن'
+                            ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                            : classification === 'النقل المدرسي'
+                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 shadow-2xs'
+                            : 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                        }`}>
+                          {classification === 'خروج نهائي' ? (
+                            <Lock className="w-2.5 h-2.5 text-rose-600" />
+                          ) : classification === 'النقل المدرسي' ? (
+                            <GraduationCap className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300" />
+                          ) : (
+                            <Briefcase className="w-2.5 h-2.5" />
+                          )}
+                          <span>{classification}</span>
+                        </span>
+
+                        {classification === 'خروج نهائي' && (driver.finalExitReason || driver.statusReason) && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-100/80 dark:bg-rose-900/50 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800 font-bold" title={`سبب الخروج: ${driver.finalExitReason || driver.statusReason}`}>
+                            <span>السبب: {driver.finalExitReason || driver.statusReason}</span>
+                          </span>
+                        )}
+
+                        {inMonitoring && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 font-bold" title="نشط حالياً بنظام الرقابة والمتابعة وعمليات نقل العمال">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />
+                            <span>بالرقابة</span>
+                          </span>
+                        )}
+
+                        {isEndedInMonitoring && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300/60 font-bold" title="انتهى عمل السائق في الرقابة والمتابعة وصُنّف تلقائياً عمرة">
+                            <Clock className="w-2.5 h-2.5 text-amber-600" />
+                            <span>منتهي بالرقابة</span>
+                          </span>
+                        )}
+
+                        {driver.busNumber && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-border font-mono font-bold">
+                            <Bus className="w-2.5 h-2.5 text-sky-600" />
+                            <span>{driver.busNumber}</span>
+                          </span>
+                        )}
+
+                        {driver.nationality && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
+                            <Globe className="w-2.5 h-2.5" />
+                            <span>{driver.nationality}</span>
+                          </span>
+                        )}
+
+                        {expiryInfo.dateStr && (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border font-mono font-bold ${
+                            expiryInfo.urgency === 'expired' || expiryInfo.urgency === 'critical'
+                              ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                              : expiryInfo.urgency === 'soon'
+                              ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-border'
+                          }`}>
+                            <Calendar className="w-2.5 h-2.5" />
+                            <span>{expiryInfo.dateStr}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Compact Info Row: Official ID + Mobile Phone */}
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border/50 text-[11px]">
+                      {/* ID Container */}
+                      <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-text-muted">
+                          <span className="flex items-center gap-1 font-bold">
+                            <IdCard className="w-3 h-3 text-primary" />
+                            <span>{primaryIdLabel}</span>
+                          </span>
+                          {primaryIdValue && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(
+                                  primaryIdValue,
+                                  primaryIdLabel === 'رقم الإقامة' && Boolean(driver.iqamaNumber?.trim())
+                                    ? `iqama-${driver.id}`
+                                    : `id-${driver.id}`
+                                );
+                              }}
+                              className="text-text-muted hover:text-primary transition-colors p-0.5 cursor-pointer"
+                              title="نسخ الرقم"
+                            >
+                              {copiedField === (primaryIdLabel === 'رقم الإقامة' && Boolean(driver.iqamaNumber?.trim()) ? `iqama-${driver.id}` : `id-${driver.id}`) ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                        {primaryIdValue ? (
+                          <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" title={primaryIdValue}>
+                            {primaryIdValue}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-[11px] font-black text-amber-600 dark:text-amber-400">غير مسجل</span>
+                            {isAdmin && onEdit && !isFinalExit && (
+                              <button
+                                type="button"
+                                onClick={() => onEdit(driver)}
+                                className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded text-[10px] font-black cursor-pointer"
+                              >
+                                أضف
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
-                      <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" dir="ltr" title={driver.mobileNumber || ''}>
-                        {driver.mobileNumber || 'غير مسجل'}
+
+                      {/* Mobile Container */}
+                      <div className="p-1.5 px-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-border/70 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-[10px] text-text-muted">
+                          <span className="flex items-center gap-1 font-bold">
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                            <span>الجوال</span>
+                          </span>
+                          {driver.mobileNumber && driver.mobileNumber.trim() && (
+                            <div className="flex items-center gap-1">
+                              {cleanPhone && (
+                                <a 
+                                  href={`https://wa.me/${cleanPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
+                                  title="محادثة واتساب مباشرة"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              <a 
+                                href={`tel:${driver.mobileNumber}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-0.5 text-emerald-600 hover:text-emerald-700 transition-colors"
+                                title="اتصال هاتفي"
+                              >
+                                <PhoneCall className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                        {driver.mobileNumber && driver.mobileNumber.trim() ? (
+                          <div className="text-xs font-mono font-black text-slate-900 dark:text-white truncate mt-0.5" dir="ltr" title={driver.mobileNumber}>
+                            {driver.mobileNumber}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-[11px] font-black text-amber-600 dark:text-amber-400">غير مسجل</span>
+                            {isAdmin && onEdit && !isFinalExit && (
+                              <button
+                                type="button"
+                                onClick={() => onEdit(driver)}
+                                className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded text-[10px] font-black cursor-pointer"
+                              >
+                                أضف
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Secondary Line: Latest registered route if available */}
-                  {latestResp && (
-                    <div className="px-2 py-1 rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 flex items-center justify-between text-[10px]">
-                      <span className="text-text-muted font-bold flex items-center gap-1 truncate">
-                        <Navigation className="w-2.5 h-2.5 text-primary shrink-0" />
-                        <span className="truncate">آخر حركة: <span className="text-primary font-black">{latestResp.responseType}</span></span>
-                      </span>
-                      <span className="text-[9px] font-mono font-bold text-primary shrink-0">
-                        {driverRespList.length} {driverRespList.length === 1 ? 'رد' : 'ردود'}
-                      </span>
-                    </div>
-                  )}
+                    {/* Secondary Line: Latest registered route if available */}
+                    {latestResp && (
+                      <div className="px-2 py-1 rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 flex items-center justify-between text-[10px]">
+                        <span className="text-text-muted font-bold flex items-center gap-1 truncate">
+                          <Navigation className="w-2.5 h-2.5 text-primary shrink-0" />
+                          <span className="truncate">آخر حركة: <span className="text-primary font-black">{latestResp.responseType}</span></span>
+                        </span>
+                        <span className="text-[9px] font-mono font-bold text-primary shrink-0">
+                          {driverRespList.length} {driverRespList.length === 1 ? 'رد' : 'ردود'}
+                        </span>
+                      </div>
+                    )}
 
-                  {/* Card Footer: Simple & Clean Actions */}
-                  <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-1.5 mt-auto">
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedDriverForDetails(driver);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-all text-xs font-black cursor-pointer active:scale-95 shadow-2xs"
-                      title="عرض بطاقة وتفاصيل السائق"
-                    >
-                      <IdCard className="w-3.5 h-3.5" />
-                      <span>عرض التفاصيل</span>
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCardModalInitialDriver(driver);
-                        setIsPrintCardModalOpen(true);
-                      }}
-                      className="p-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl transition-all cursor-pointer active:scale-95 shrink-0"
-                      title="طباعة بطاقة السائق الرسمية"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                    </button>
-
-                    {classification === 'خروج نهائي' ? (
-                      <span 
-                        className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold flex items-center gap-1 cursor-not-allowed border border-slate-200 dark:border-slate-700"
-                        title="لا يمكن تسجيل رد لسائق مصنف خروج نهائي"
-                      >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>مقفل</span>
-                      </span>
-                    ) : onOpenDriverResponse && (
+                    {/* Card Footer: عرض التفاصيل + رد + قائمة ⋯ */}
+                    <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-1.5 mt-auto">
                       <button 
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onOpenDriverResponse(driver);
+                          setSelectedDriverForDetails(driver);
                         }}
-                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 dark:border-emerald-800 rounded-xl transition-all text-xs font-black cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
-                        title="تسجيل رد أو حركة جديدة"
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-all text-xs font-black cursor-pointer active:scale-95 shadow-2xs"
+                        title="عرض بطاقة وتفاصيل السائق"
                       >
-                        <Navigation className="w-3.5 h-3.5" />
-                        <span>رد</span>
+                        <IdCard className="w-3.5 h-3.5" />
+                        <span>عرض التفاصيل</span>
                       </button>
-                    )}
 
-                    {isAdmin && onEdit && (
-                      classification === 'خروج نهائي' ? (
-                        <button 
-                          type="button"
-                          disabled
-                          className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border border-slate-200 dark:border-slate-700 rounded-xl cursor-not-allowed"
-                          title="لا يمكن تعديل السائق بعد تصنيفه كـ «خروج نهائي»"
+                      {isFinalExit ? (
+                        <span 
+                          className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold flex items-center gap-1 cursor-not-allowed border border-slate-200 dark:border-slate-700"
+                          title="لا يمكن تسجيل رد لسائق مصنف خروج نهائي"
                         >
                           <Lock className="w-3.5 h-3.5" />
-                        </button>
-                      ) : (
+                          <span>مقفل</span>
+                        </span>
+                      ) : onOpenDriverResponse && (
                         <button 
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onEdit(driver);
+                            onOpenDriverResponse(driver);
                           }}
-                          className="p-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-primary border border-border hover:border-primary/40 rounded-xl transition-all cursor-pointer active:scale-95"
-                          title="تعديل بيانات السائق"
+                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 dark:border-emerald-800 rounded-xl transition-all text-xs font-black cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
+                          title="تسجيل رد أو حركة جديدة"
                         >
-                          <Edit className="w-3.5 h-3.5" />
+                          <Navigation className="w-3.5 h-3.5" />
+                          <span>رد</span>
                         </button>
-                      )
-                    )}
+                      )}
 
-                    {isAdmin && onDelete && (
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteModal({
-                            isOpen: true,
-                            id: driver.id,
-                            name: driver.fullName,
-                            isAll: false
-                          });
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer active:scale-95"
-                        title="حذف السائق"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
+                      <div className="relative" data-driver-action-menu onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenActionMenuId(openActionMenuId === driver.id ? null : driver.id)}
+                          className="p-1.5 bg-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-border rounded-xl transition-all cursor-pointer active:scale-95"
+                          title="المزيد من الإجراءات"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+
+                        {openActionMenuId === driver.id && (
+                          <div className="absolute left-0 bottom-full mb-1.5 w-40 bg-surface border border-border rounded-xl shadow-xl z-40 p-1 flex flex-col gap-0.5 text-right">
+                            {isAdmin && onEdit && (
+                              isFinalExit ? (
+                                <span className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-bold text-slate-400 cursor-not-allowed">
+                                  <Lock className="w-3.5 h-3.5" />
+                                  <span>مقفل للتعديل</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionMenuId(null);
+                                    onEdit(driver);
+                                  }}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                                >
+                                  <Edit className="w-3.5 h-3.5 text-primary" />
+                                  <span>تعديل</span>
+                                </button>
+                              )
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenActionMenuId(null);
+                                setCardModalInitialDriver(driver);
+                                setIsPrintCardModalOpen(true);
+                              }}
+                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>طباعة بطاقة</span>
+                            </button>
+
+                            {isAdmin && onDelete && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenActionMenuId(null);
+                                  setDeleteModal({
+                                    isOpen: true,
+                                    id: driver.id,
+                                    name: driver.fullName,
+                                    isAll: false
+                                  });
+                                }}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )
       ) : (
         /* Empty State */
-        <div className="bg-surface rounded-2xl border border-dashed border-border p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 rounded-2xl flex items-center justify-center shadow-xs">
-            <Users className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-            {drivers.length === 0 ? 'لا يوجد سائقين مسجلين بعد' : 'لا توجد نتائج مطابقة لبحثك'}
-          </h3>
-          <p className="text-xs text-text-muted max-w-md mx-auto mb-6">
-            {drivers.length === 0 
-              ? 'يمكنك البدء بإضافة سائقي الشركة يدويًا أو استيرادهم مباشرة من ملف Excel.' 
-              : 'جرب تغيير كلمات البحث أو إعادة ضبط خيارات التصفية لعرض السائقين.'}
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            {drivers.length === 0 && isAdmin ? (
-              <>
-                {onAdd && (
-                  <button 
-                    onClick={onAdd}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>إضافة سائق جديد</span>
-                  </button>
-                )}
-                {onImport && (
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
-                  >
-                    <Upload className="w-4 h-4 text-blue-600" />
-                    <span>استيراد من Excel</span>
-                  </button>
-                )}
-              </>
-            ) : (
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedType('all');
-                  setSelectedNationality('');
-                }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                مسح معايير البحث
-              </button>
-            )}
-          </div>
-        </div>
+        drivers.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="ابدأ بإضافة أول سائق"
+            description="أضف سائقي الشركة يدوياً أو استورد بياناتهم من ملف Excel."
+            actionLabel={isAdmin && onAdd ? 'إضافة سائق' : undefined}
+            onAction={isAdmin ? onAdd : undefined}
+            secondaryActionLabel={isAdmin && onImport ? 'استيراد من Excel' : undefined}
+            onSecondaryAction={isAdmin && onImport ? () => fileInputRef.current?.click() : undefined}
+          />
+        ) : (
+          <EmptyState
+            icon={Search}
+            title="لا يوجد سائقون مطابقون"
+            description="جرّب تغيير الفلاتر أو كلمة البحث."
+            actionLabel="مسح الفلاتر"
+            onAction={() => {
+              setSearchTerm('');
+              setSelectedType('all');
+              setSelectedStatus('all');
+              setSelectedNationality('');
+              setSelectedClassification('');
+              setSortBy('default');
+            }}
+          />
+        )
       )}
 
       {/* Pagination (if applicable) */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border pt-4 px-2">
           <span className="text-xs text-text-muted">
-            عرض {paginatedDrivers.length} من أصل {filteredDrivers.length} سائق
+            عرض {paginatedDrivers.length} من أصل {sortedDrivers.length} سائق
           </span>
           <div className="flex items-center gap-1.5">
             <button
@@ -1325,15 +1964,31 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         onConfirm={async () => {
           if (deleteModal.isAll && onDeleteAll) {
             await onDeleteAll();
+            setSelectedIds([]);
+          } else if (deleteModal.ids && deleteModal.ids.length > 0 && onDelete) {
+            for (const targetId of deleteModal.ids) {
+              await onDelete(targetId);
+            }
+            setSelectedIds([]);
           } else if (deleteModal.id && onDelete) {
             await onDelete(deleteModal.id);
+            setSelectedIds(prev => prev.filter(id => id !== deleteModal.id));
           }
           setDeleteModal({ isOpen: false, id: null, isAll: false });
         }}
-        title={deleteModal.isAll ? "حذف جميع سائقي الشركة" : "حذف بيانات السائق"}
-        message={deleteModal.isAll 
-          ? "تحذير: هل أنت متأكد من حذف جميع بيانات سائقي الشركة؟ لا يمكن التراجع عن هذا الإجراء." 
-          : `هل أنت متأكد من رغبتك في حذف السائق (${deleteModal.name}) نهائياً من النظام؟`
+        title={
+          deleteModal.isAll 
+            ? "حذف جميع سائقي الشركة" 
+            : (deleteModal.ids && deleteModal.ids.length > 0) 
+              ? "حذف السائقين المحددين" 
+              : "حذف بيانات السائق"
+        }
+        message={
+          deleteModal.isAll 
+            ? "تحذير: هل أنت متأكد من حذف جميع بيانات سائقي الشركة؟ لا يمكن التراجع عن هذا الإجراء." 
+            : (deleteModal.ids && deleteModal.ids.length > 0)
+              ? `هل أنت متأكد من رغبتك في حذف (${deleteModal.ids.length}) سائقاً من النظام نهائياً؟`
+              : `هل أنت متأكد من رغبتك في حذف السائق (${deleteModal.name}) نهائياً من النظام؟`
         }
       />
 
@@ -1342,6 +1997,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
         driver={activeDetailDriver}
         workers={workers}
         isOpen={!!activeDetailDriver}
+        isLoading={isLoading}
         isAdmin={isAdmin}
         onClose={() => setSelectedDriverForDetails(null)}
         onEdit={onEdit}

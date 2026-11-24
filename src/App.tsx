@@ -363,7 +363,11 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     }
   };
 
-  const handleSaveWorker = async (data: Omit<Worker, 'id'>, targetWorkerId?: string) => {
+  const handleSaveWorker = async (
+    data: Omit<Worker, 'id'>,
+    targetWorkerId?: string,
+    busReassignment?: { replacedBusLocation?: string }
+  ) => {
     try {
       const cleaned = cleanData(data);
       const batch = writeBatch(db);
@@ -373,16 +377,40 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
       const oldBusId = targetWorkerRecord?.assignedBusId;
       const newBusId = cleaned.assignedBusId;
+      const oldBusOp = (targetWorkerRecord?.assignedBusOperationalNumber || '').trim();
+      const oldBus = oldBusId
+        ? buses.find(b => b.id === oldBusId)
+        : (oldBusOp ? buses.find(b => b.operationalNumber.trim() === oldBusOp) : undefined);
 
-      // 1. Handle old bus unlinking
-      if (oldBusId && oldBusId !== newBusId) {
-        const oldBus = buses.find(b => b.id === oldBusId);
-        if (oldBus) {
-          batch.update(doc(db, 'buses', oldBusId), {
-            location: 'في الشركة',
-            updatedAt: serverTimestamp()
-          });
+      // 1. Handle old bus unlinking -> move replaced bus to user-selected location and log movement
+      if (oldBus && oldBus.id !== newBusId) {
+        const destinationLocation = (busReassignment?.replacedBusLocation || '').trim() || 'في الشركة';
+        let oldBusNotes = oldBus.notes || '';
+        if (oldBus.location !== destinationLocation) {
+          const today = new Date();
+          const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+          const historyHeader = "--- سجل المواقع السابقة ---";
+          let nextIndex = 1;
+
+          if (oldBusNotes.includes(historyHeader)) {
+            const historyPart = oldBusNotes.split(historyHeader)[1];
+            const matches = historyPart.match(/\d+-\s/g);
+            if (matches) nextIndex = matches.length + 1;
+          }
+
+          const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${oldBus.location || 'في الشركة'} (نُقلت إلى ${destinationLocation} بعد استبدال حافلة السائق ${cleaned.name})`;
+          if (!oldBusNotes.includes(historyHeader)) {
+            oldBusNotes = oldBusNotes ? `${oldBusNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
+          } else {
+            oldBusNotes = `${oldBusNotes}\n${logEntry}`;
+          }
         }
+
+        batch.update(doc(db, 'buses', oldBus.id), {
+          location: destinationLocation,
+          notes: oldBusNotes,
+          updatedAt: serverTimestamp()
+        });
       }
 
       // 2. Handle new bus linking and sync location
@@ -903,7 +931,10 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     }
   };
 
-  const handleSaveCompanyDriver = async (data: Partial<CompanyDriver>) => {
+  const handleSaveCompanyDriver = async (
+    data: Partial<CompanyDriver>,
+    busReassignment?: { oldBusNumber?: string; replacedBusLocation?: string }
+  ) => {
     try {
       if (editingCompanyDriver && editingCompanyDriver.driverClassification === 'خروج نهائي') {
         throw new Error('لا يمكن إجراء أي تعديل على هذا السائق بعد تصنيفه كـ "خروج نهائي".');
@@ -980,6 +1011,43 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           updatedAt: serverTimestamp()
         });
 
+        const oldBusOp = (busReassignment?.oldBusNumber || '').trim();
+        const destLoc = (busReassignment?.replacedBusLocation || '').trim();
+        let movedBusRecord: { id: string; previousLocation: string; previousNotes: string } | null = null;
+        if (oldBusOp && destLoc) {
+          const oldBus = buses.find(b => b.operationalNumber.trim() === oldBusOp);
+          if (oldBus) {
+            movedBusRecord = {
+              id: oldBus.id,
+              previousLocation: oldBus.location || '',
+              previousNotes: oldBus.notes || ''
+            };
+            let oldBusNotes = oldBus.notes || '';
+            if (oldBus.location !== destLoc) {
+              const today = new Date();
+              const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+              const historyHeader = "--- سجل المواقع السابقة ---";
+              let nextIndex = 1;
+              if (oldBusNotes.includes(historyHeader)) {
+                const historyPart = oldBusNotes.split(historyHeader)[1];
+                const matches = historyPart.match(/\d+-\s/g);
+                if (matches) nextIndex = matches.length + 1;
+              }
+              const logEntry = `${nextIndex}- تم تغيير الموقع في ${dateStr} من: ${oldBus.location || 'في الشركة'} (نُقلت إلى ${destLoc} بعد استبدال حافلة السائق ${cleaned.fullName || editingCompanyDriver.fullName})`;
+              if (!oldBusNotes.includes(historyHeader)) {
+                oldBusNotes = oldBusNotes ? `${oldBusNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
+              } else {
+                oldBusNotes = `${oldBusNotes}\n${logEntry}`;
+              }
+            }
+            await updateDoc(doc(db, 'buses', oldBus.id), {
+              location: destLoc,
+              notes: oldBusNotes,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+
         showToast({
           message: 'تم تحديث بيانات السائق',
           onUndo: async () => {
@@ -987,6 +1055,13 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
               ...previousSnapshot,
               updatedAt: serverTimestamp()
             });
+            if (movedBusRecord) {
+              await updateDoc(doc(db, 'buses', movedBusRecord.id), {
+                location: movedBusRecord.previousLocation,
+                notes: movedBusRecord.previousNotes,
+                updatedAt: serverTimestamp()
+              });
+            }
           }
         });
       } else {

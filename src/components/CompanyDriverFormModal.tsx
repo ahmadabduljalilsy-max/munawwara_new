@@ -19,12 +19,13 @@ import {
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverClassification, Bus as BusType, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker, isSchoolTransportLocation } from '../lib/driverUtils';
-import { Activity, UserX, Clock, Calendar } from 'lucide-react';
+import { normalizeBusLocation } from '../lib/excelService';
+import { Activity, UserX, Clock, Calendar, AlertTriangle } from 'lucide-react';
 
 interface CompanyDriverFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (driverData: Partial<CompanyDriver>) => Promise<void>;
+  onSave: (driverData: Partial<CompanyDriver>, busReassignment?: { oldBusNumber?: string; replacedBusLocation?: string }) => Promise<void>;
   driver: CompanyDriver | null;
   existingDrivers?: CompanyDriver[];
   buses?: BusType[];
@@ -104,6 +105,30 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBusConfirmModal, setShowBusConfirmModal] = useState(false);
+  const [pendingDriverSavePayload, setPendingDriverSavePayload] = useState<Partial<CompanyDriver> | null>(null);
+  const [replacedBusLocationChoice, setReplacedBusLocationChoice] = useState('');
+  const [customReplacedBusLocation, setCustomReplacedBusLocation] = useState('');
+  const [busLocationError, setBusLocationError] = useState<string | null>(null);
+
+  const availableLocations = React.useMemo(() => {
+    const locs = new Set<string>(['في الشركة', 'تحت الصيانة / الورشة']);
+    buses.forEach(b => {
+      const normalized = normalizeBusLocation(b.location);
+      if (normalized) locs.add(normalized);
+    });
+    workers.forEach(w => {
+      const wp = (w.workplace || '').trim();
+      if (wp && wp !== 'غير محدد') locs.add(wp);
+    });
+    return Array.from(locs);
+  }, [buses, workers]);
+
+  const oldBusNumber = (driver?.busNumber || '').trim();
+  const replacedBusRecord = React.useMemo(() => {
+    if (!oldBusNumber) return undefined;
+    return buses.find(b => b.operationalNumber.trim() === oldBusNumber);
+  }, [buses, oldBusNumber]);
 
   useEffect(() => {
     if (driver) {
@@ -142,6 +167,11 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
       });
     }
     setError(null);
+    setShowBusConfirmModal(false);
+    setPendingDriverSavePayload(null);
+    setReplacedBusLocationChoice('');
+    setCustomReplacedBusLocation('');
+    setBusLocationError(null);
   }, [driver, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -232,7 +262,7 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
           return;
         }
 
-        await onSave({
+        const payload: Partial<CompanyDriver> = {
           fullName: formData.fullName.trim(),
           driverType: computedDriverType,
           driverClassification: finalClassification,
@@ -248,10 +278,51 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
           workplace: isFinalExit ? 'خروج نهائي' : finalClassification,
           busNumber: isFinalExit ? '' : formData.busNumber.trim(),
           notes: formData.notes.trim()
-        });
+        };
+
+        const nextBusNumber = (payload.busNumber || '').trim();
+        const isBusChanged = Boolean(driver && oldBusNumber && oldBusNumber !== nextBusNumber && replacedBusRecord);
+        if (isBusChanged) {
+          setPendingDriverSavePayload(payload);
+          setReplacedBusLocationChoice('');
+          setCustomReplacedBusLocation('');
+          setBusLocationError(null);
+          setShowBusConfirmModal(true);
+          setLoading(false);
+          return;
+        }
+
+        await onSave(payload);
         onClose();
       } catch (err: any) {
       setError(err?.message || 'حدث خطأ أثناء حفظ بيانات السائق');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmBusReassignmentSave = async () => {
+    if (!pendingDriverSavePayload) return;
+    const finalLocation = replacedBusLocationChoice === '__custom__'
+      ? customReplacedBusLocation.trim()
+      : replacedBusLocationChoice.trim();
+
+    if (!finalLocation) {
+      setBusLocationError('يرجى اختيار أو كتابة الموقع الذي ستذهب إليه الحافلة المستبدلة');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await onSave(pendingDriverSavePayload, {
+        oldBusNumber,
+        replacedBusLocation: finalLocation
+      });
+      setShowBusConfirmModal(false);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'حدث خطأ أثناء حفظ بيانات السائق');
+      setShowBusConfirmModal(false);
     } finally {
       setLoading(false);
     }
@@ -852,6 +923,101 @@ export const CompanyDriverFormModal: React.FC<CompanyDriverFormModalProps> = ({
               </div>
             </form>
           </motion.div>
+
+          {/* Replaced Bus Destination Confirmation Modal */}
+          <AnimatePresence>
+            {showBusConfirmModal && (
+              <div className="fixed inset-0 bg-[#00000090] backdrop-blur-md z-[200] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-surface max-w-md w-full rounded-3xl overflow-hidden shadow-2xl border border-border"
+                  dir="rtl"
+                >
+                  <div className="p-8 text-center">
+                    <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5 text-amber-600">
+                      <AlertTriangle className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-xl font-black text-text-main mb-2">تأكيد تغيير الحافلة</h3>
+                    <p className="text-text-muted text-sm font-bold leading-relaxed mb-5">
+                      هذا السائق مرتبط حالياً بالحافلة رقم 
+                      <span className="text-amber-600 px-1">({oldBusNumber})</span>.
+                      اختر الموقع الذي ستنتقل إليه الحافلة المستبدلة قبل تأكيد التغيير.
+                    </p>
+
+                    <div className="text-right bg-slate-50 dark:bg-slate-800/50 border border-border rounded-2xl p-4 mb-6 space-y-2.5">
+                      <label className="text-xs font-black text-text-main flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-primary shrink-0" />
+                        <span>أين ستذهب الحافلة المستبدلة ({oldBusNumber})؟</span>
+                        <span className="text-red-500">*</span>
+                      </label>
+                      {replacedBusRecord && (
+                        <p className="text-[11px] font-bold text-text-muted">
+                          الموقع الحالي: <span className="text-slate-800 dark:text-slate-200">{normalizeBusLocation(replacedBusRecord.location)}</span>
+                        </p>
+                      )}
+                      <select
+                        value={replacedBusLocationChoice}
+                        onChange={(e) => {
+                          setReplacedBusLocationChoice(e.target.value);
+                          if (busLocationError) setBusLocationError(null);
+                        }}
+                        className="w-full bg-surface border border-border focus:border-primary rounded-xl px-3.5 py-2.5 text-xs font-bold text-text-main outline-none transition-all"
+                      >
+                        <option value="">-- اختر الموقع الذي ستنتقل إليه الحافلة --</option>
+                        {availableLocations.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc}
+                          </option>
+                        ))}
+                        <option value="__custom__">موقع آخر (كتابة يدوية)...</option>
+                      </select>
+
+                      {replacedBusLocationChoice === '__custom__' && (
+                        <input
+                          type="text"
+                          value={customReplacedBusLocation}
+                          onChange={(e) => {
+                            setCustomReplacedBusLocation(e.target.value);
+                            if (busLocationError) setBusLocationError(null);
+                          }}
+                          placeholder="اكتب اسم الموقع الجديد للحافلة..."
+                          className="w-full bg-surface border border-border focus:border-primary rounded-xl px-3.5 py-2.5 text-xs font-bold text-text-main outline-none transition-all"
+                          autoFocus
+                        />
+                      )}
+
+                      {busLocationError && (
+                        <p className="text-[11px] font-bold text-rose-600">
+                          {busLocationError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={handleConfirmBusReassignmentSave}
+                        className="w-full bg-primary text-white py-3.5 rounded-xl font-black hover:bg-secondary transition-all shadow-lg cursor-pointer disabled:opacity-60"
+                      >
+                        {loading ? 'جارٍ الحفظ...' : 'نعم، تأكيد تغيير الحافلة'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => setShowBusConfirmModal(false)}
+                        className="w-full bg-surface text-text-muted py-3.5 rounded-xl font-black border border-border hover:bg-background transition-all cursor-pointer"
+                      >
+                        تراجع، البقاء على الحافلة الحالية
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </AnimatePresence>

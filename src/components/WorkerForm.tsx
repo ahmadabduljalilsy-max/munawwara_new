@@ -24,17 +24,23 @@ import {
   Hash,
   Search,
   Users,
-  RefreshCw
+  RefreshCw,
+  MapPin
 } from 'lucide-react';
 import { Worker, Bus, WorkerPreviousWork, CompanyDriver } from '../types';
 import { isSchoolTransportLocation } from '../lib/driverUtils';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface WorkerFormProps {
   worker: Worker | null;
   allWorkers: Worker[];
   buses: Bus[];
   companyDrivers?: CompanyDriver[];
-  onSave: (workerData: Omit<Worker, 'id'>, targetWorkerId?: string) => void;
+  onSave: (
+    workerData: Omit<Worker, 'id'>,
+    targetWorkerId?: string,
+    busReassignment?: { replacedBusLocation?: string }
+  ) => void;
   onClose: () => void;
 }
 
@@ -68,6 +74,9 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState<Omit<Worker, 'id'> | null>(null);
+  const [replacedBusLocationChoice, setReplacedBusLocationChoice] = useState('');
+  const [customReplacedBusLocation, setCustomReplacedBusLocation] = useState('');
+  const [reassignmentLocationError, setReassignmentLocationError] = useState<string | null>(null);
 
   // Track if this worker was linked to an existing worker in allWorkers
   const [activeWorkerToUpdate, setActiveWorkerToUpdate] = useState<Worker | null>(worker);
@@ -392,10 +401,16 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
     
     let finalNotes = formData.notes;
     let finalPreviousBuses = formData.previousBuses || '';
-    const isReassignment = worker && worker.assignedBusId && worker.assignedBusId !== formData.assignedBusId;
+    const currentTarget = activeWorkerToUpdate || worker;
+    const oldBusId = currentTarget?.assignedBusId || '';
+    const oldBusOp = (currentTarget?.assignedBusOperationalNumber || '').trim();
+    const isReassignment = Boolean(
+      (oldBusId && oldBusId !== formData.assignedBusId) ||
+      (oldBusOp && oldBusOp !== (formData.assignedBusOperationalNumber || '').trim())
+    );
     
     // Check if we are editing an existing worker and the bus has changed
-    if (isReassignment) {
+    if (isReassignment && currentTarget) {
       const today = new Date();
       const dateStr = today.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
       
@@ -411,7 +426,7 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
         }
       }
       
-      const logEntry = `${nextIndex}- تم فك الارتباط في ${dateStr} عن الحافلة رقم تشغيل: ${worker.assignedBusOperationalNumber} / رقم اللوحة: ${worker.assignedBusPlateNumber}`;
+      const logEntry = `${nextIndex}- تم فك الارتباط في ${dateStr} عن الحافلة رقم تشغيل: ${currentTarget.assignedBusOperationalNumber} / رقم اللوحة: ${currentTarget.assignedBusPlateNumber || '—'}`;
       
       if (!finalNotes || !finalNotes.includes(historyHeader)) {
         finalNotes = finalNotes ? `${finalNotes}\n\n${historyHeader}\n${logEntry}` : `${historyHeader}\n${logEntry}`;
@@ -420,13 +435,12 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
       }
 
       // Automatically append old bus to previousBuses field
-      if (worker?.assignedBusOperationalNumber) {
-        const oldBusNum = worker.assignedBusOperationalNumber.trim();
+      if (oldBusOp) {
         const existingList = finalPreviousBuses 
           ? finalPreviousBuses.split(/[\s,،\-]+/).map(item => item.trim()).filter(Boolean) 
           : [];
-        if (!existingList.includes(oldBusNum)) {
-          existingList.push(oldBusNum);
+        if (!existingList.includes(oldBusOp)) {
+          existingList.push(oldBusOp);
           finalPreviousBuses = existingList.join(' - ');
         }
       }
@@ -442,16 +456,52 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
     const activeTargetId = activeWorkerToUpdate?.id || worker?.id;
     if (isReassignment) {
       setPendingSaveData(saveData);
+      setReplacedBusLocationChoice('');
+      setCustomReplacedBusLocation('');
+      setReassignmentLocationError(null);
       setShowConfirmModal(true);
     } else {
       onSave(saveData, activeTargetId);
     }
   };
 
+  const availableLocations = React.useMemo(() => {
+    const locs = new Set<string>(['في الشركة', 'تحت الصيانة / الورشة']);
+    buses.forEach(b => {
+      const normalized = normalizeBusLocation(b.location);
+      if (normalized) locs.add(normalized);
+    });
+    allWorkers.forEach(w => {
+      const wp = (w.workplace || '').trim();
+      if (wp && wp !== 'غير محدد') locs.add(wp);
+    });
+    return Array.from(locs);
+  }, [buses, allWorkers]);
+
+  const currentAssignedTarget = activeWorkerToUpdate || worker;
+  const replacedBusRecord = React.useMemo(() => {
+    if (!currentAssignedTarget) return undefined;
+    return (
+      buses.find(b => b.id === currentAssignedTarget.assignedBusId) ||
+      (currentAssignedTarget.assignedBusOperationalNumber
+        ? buses.find(b => b.operationalNumber === currentAssignedTarget.assignedBusOperationalNumber)
+        : undefined)
+    );
+  }, [buses, currentAssignedTarget]);
+
   const handleConfirmSave = () => {
+    const finalLocation = replacedBusLocationChoice === '__custom__'
+      ? customReplacedBusLocation.trim()
+      : replacedBusLocationChoice.trim();
+
+    if (!finalLocation) {
+      setReassignmentLocationError('يرجى اختيار أو كتابة الموقع الذي ستذهب إليه الحافلة المستبدلة');
+      return;
+    }
+
     const activeTargetId = activeWorkerToUpdate?.id || worker?.id;
     if (pendingSaveData) {
-      onSave(pendingSaveData, activeTargetId);
+      onSave(pendingSaveData, activeTargetId, { replacedBusLocation: finalLocation });
     }
     setShowConfirmModal(false);
   };
@@ -1188,25 +1238,80 @@ export const WorkerForm: React.FC<WorkerFormProps> = ({
               dir="rtl"
             >
               <div className="p-8 text-center">
-                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600">
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5 text-amber-600">
                   <AlertTriangle className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-black text-text-main mb-3">تأكيد تغيير الارتباط</h3>
-                <p className="text-text-muted text-sm font-bold leading-relaxed mb-8">
+                <h3 className="text-xl font-black text-text-main mb-2">تأكيد تغيير الارتباط</h3>
+                <p className="text-text-muted text-sm font-bold leading-relaxed mb-5">
                   هذا العامل مرتبط حالياً بالحافلة رقم 
-                  <span className="text-amber-600 px-1">({worker?.assignedBusOperationalNumber})</span>. 
+                  <span className="text-amber-600 px-1">({currentAssignedTarget?.assignedBusOperationalNumber})</span>. 
                   هل أنت متأكد من رغبتك في فك هذا الارتباط وتغييره للحافلة الجديدة؟ سيتم حفظ بيانات الحافلة السابقة في سجل الملاحظات تلقائياً.
                 </p>
+
+                {/* Replaced Bus Destination Location Selector */}
+                <div className="text-right bg-slate-50 dark:bg-slate-800/50 border border-border rounded-2xl p-4 mb-6 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-black text-text-main flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-primary shrink-0" />
+                      <span>أين ستذهب الحافلة المستبدلة ({currentAssignedTarget?.assignedBusOperationalNumber})؟</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  {replacedBusRecord && (
+                    <p className="text-[11px] font-bold text-text-muted">
+                      الموقع الحالي: <span className="text-slate-800 dark:text-slate-200">{normalizeBusLocation(replacedBusRecord.location)}</span>
+                    </p>
+                  )}
+                  <select
+                    value={replacedBusLocationChoice}
+                    onChange={(e) => {
+                      setReplacedBusLocationChoice(e.target.value);
+                      if (reassignmentLocationError) setReassignmentLocationError(null);
+                    }}
+                    className="w-full bg-surface border border-border focus:border-primary rounded-xl px-3.5 py-2.5 text-xs font-bold text-text-main outline-none transition-all"
+                  >
+                    <option value="">-- اختر الموقع الذي ستنتقل إليه الحافلة --</option>
+                    {availableLocations.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                    <option value="__custom__">موقع آخر (كتابة يدوية)...</option>
+                  </select>
+
+                  {replacedBusLocationChoice === '__custom__' && (
+                    <input
+                      type="text"
+                      value={customReplacedBusLocation}
+                      onChange={(e) => {
+                        setCustomReplacedBusLocation(e.target.value);
+                        if (reassignmentLocationError) setReassignmentLocationError(null);
+                      }}
+                      placeholder="اكتب اسم الموقع الجديد للحافلة..."
+                      className="w-full bg-surface border border-border focus:border-primary rounded-xl px-3.5 py-2.5 text-xs font-bold text-text-main outline-none transition-all"
+                      autoFocus
+                    />
+                  )}
+
+                  {reassignmentLocationError && (
+                    <p className="text-[11px] font-bold text-rose-600">
+                      {reassignmentLocationError}
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex flex-col gap-3">
                   <button
+                    type="button"
                     onClick={handleConfirmSave}
-                    className="w-full bg-primary text-white py-3.5 rounded-xl font-black hover:bg-secondary transition-all shadow-lg"
+                    className="w-full bg-primary text-white py-3.5 rounded-xl font-black hover:bg-secondary transition-all shadow-lg cursor-pointer"
                   >
                     نعم، تأكيد تغيير الارتباط
                   </button>
                   <button
+                    type="button"
                     onClick={() => setShowConfirmModal(false)}
-                    className="w-full bg-surface text-text-muted py-3.5 rounded-xl font-black border border-border hover:bg-background transition-all"
+                    className="w-full bg-surface text-text-muted py-3.5 rounded-xl font-black border border-border hover:bg-background transition-all cursor-pointer"
                   >
                     تراجع، البقاء على الارتباط الحالي
                   </button>

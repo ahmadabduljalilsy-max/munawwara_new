@@ -1,35 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, 
-  Printer, 
-  Download, 
-  IdCard, 
-  Search, 
-  Check, 
-  CheckCircle2, 
-  Users, 
-  Bus, 
-  Globe, 
-  ShieldCheck, 
-  Briefcase, 
-  QrCode, 
-  Layers, 
-  Sparkles,
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback
+} from 'react';
+import { createPortal } from 'react-dom';
+import { motion } from 'motion/react';
+import {
+  X,
+  Printer,
+  FileDown,
+  Search,
+  Check,
+  IdCard,
+  Layers,
+  QrCode,
+  AlertTriangle,
   ChevronRight,
   ChevronLeft,
-  FileText,
-  RotateCcw,
-  Sliders,
-  Palette
+  RotateCw,
+  Info
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import type { CompanyDriver, Worker } from '../types';
 import { resolveDriverType, getDriverClassification } from '../lib/driverUtils';
 import { useLogo, DEFAULT_LOGO } from '../lib/LogoContext';
-import { DmtcLogo } from './DmtcLogo';
 
 interface DriverCardPrintModalProps {
   isOpen: boolean;
@@ -39,6 +35,1128 @@ interface DriverCardPrintModalProps {
   initialSelectedDriver?: CompanyDriver | null;
 }
 
+const CARDS_PER_PAGE = 8;
+const A4_WIDTH_PX = 793.700787; // 210mm at 96dpi
+const A4_HEIGHT_PX = 1122.519685; // 297mm at 96dpi
+const NAME_START_PT = 10;
+const NAME_MIN_PT = 7.5;
+const NAME_STEP_PT = 0.5;
+
+interface FieldFontSizes {
+  iqama: number;
+  nationality: number;
+  bus: number;
+}
+
+const DEFAULT_FIELD_SIZES: FieldFontSizes = {
+  iqama: 8,
+  nationality: 8,
+  bus: 8
+};
+
+const chunkDrivers = (list: CompanyDriver[], size: number): CompanyDriver[][] => {
+  if (list.length === 0) return [];
+  const chunks: CompanyDriver[][] = [];
+  for (let i = 0; i < list.length; i += size) {
+    chunks.push(list.slice(i, i + size));
+  }
+  return chunks;
+};
+
+const nextAnimationFrame = (): Promise<void> =>
+  new Promise(resolve => requestAnimationFrame(() => resolve()));
+
+const getClassificationBadgeStyle = (classification: string): React.CSSProperties => {
+  switch (classification) {
+    case 'النقل المدرسي':
+      return {
+        backgroundColor: '#FEF9C3',
+        color: '#1A1A1A',
+        border: '0.3mm solid #854D0E'
+      };
+    case 'عمرة':
+      return {
+        backgroundColor: '#FEF3C7',
+        color: '#1A1A1A',
+        border: '0.3mm solid #92400E'
+      };
+    case 'النقل الدولي سوريا':
+      return {
+        backgroundColor: '#ECFDF5',
+        color: '#1A1A1A',
+        border: '0.3mm solid #065F46'
+      };
+    case 'النقل الدولي اليمن':
+      return {
+        backgroundColor: '#F3E8FF',
+        color: '#1A1A1A',
+        border: '0.3mm solid #6B21A8'
+      };
+    case 'خروج نهائي':
+      return {
+        backgroundColor: '#FEE2E2',
+        color: '#1A1A1A',
+        border: '0.3mm solid #991B1B'
+      };
+    case 'نقل عمال':
+    default:
+      return {
+        backgroundColor: '#EFF6FF',
+        color: '#1A1A1A',
+        border: '0.3mm solid #1E40AF'
+      };
+  }
+};
+
+const getStatusBadgeStyle = (effType: string): React.CSSProperties => {
+  if (effType === 'مقيم') {
+    return {
+      backgroundColor: '#DCFCE7',
+      color: '#14532D',
+      border: '0.3mm solid #15803D'
+    };
+  }
+  return {
+    backgroundColor: '#F3E8FF',
+    color: '#3B0764',
+    border: '0.3mm solid #6B21A8'
+  };
+};
+
+const CropMarks: React.FC = () => {
+  const markColor = '#9CA3AF';
+  const offset = '-2.8mm';
+  const length = '2.2mm';
+  const thickness = '0.25mm';
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 1
+      }}
+    >
+      {/* Top-Left */}
+      <span
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: offset,
+          width: length,
+          height: thickness,
+          backgroundColor: markColor
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          top: offset,
+          left: 0,
+          width: thickness,
+          height: length,
+          backgroundColor: markColor
+        }}
+      />
+
+      {/* Top-Right */}
+      <span
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: offset,
+          width: length,
+          height: thickness,
+          backgroundColor: markColor
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          top: offset,
+          right: 0,
+          width: thickness,
+          height: length,
+          backgroundColor: markColor
+        }}
+      />
+
+      {/* Bottom-Left */}
+      <span
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: offset,
+          width: length,
+          height: thickness,
+          backgroundColor: markColor
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          bottom: offset,
+          left: 0,
+          width: thickness,
+          height: length,
+          backgroundColor: markColor
+        }}
+      />
+
+      {/* Bottom-Right */}
+      <span
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          right: offset,
+          width: length,
+          height: thickness,
+          backgroundColor: markColor
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          bottom: offset,
+          right: 0,
+          width: thickness,
+          height: length,
+          backgroundColor: markColor
+        }}
+      />
+    </div>
+  );
+};
+
+const countVisualLines = (el: HTMLElement, lineHeightPx: number): number => {
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = Array.from<DOMRect>(range.getClientRects()).filter(
+      r => r.width > 0.5 && r.height > 0.5
+    );
+    if (rects.length === 0) return 1;
+    const lineTops: number[] = [];
+    rects.forEach(r => {
+      if (!lineTops.some(t => Math.abs(t - r.top) < lineHeightPx * 0.45)) {
+        lineTops.push(r.top);
+      }
+    });
+    return Math.max(1, lineTops.length);
+  } catch {
+    return 1;
+  }
+};
+
+interface DriverIdCardProps {
+  driver: CompanyDriver;
+  workers: Worker[];
+  qrUrl?: string;
+  activeLogo: string;
+  showPreviewWarnings?: boolean;
+  recheckTick?: number;
+  forceNamePt?: number;
+  forceFieldSizes?: FieldFontSizes;
+  onNamePtDetected?: (driverId: string, pt: number) => void;
+  onFieldSizesDetected?: (driverId: string, sizes: FieldFontSizes) => void;
+  onOverflowDetected?: (driverId: string, issues: string[]) => void;
+}
+
+const DriverIdCard: React.FC<DriverIdCardProps> = ({
+  driver,
+  workers,
+  qrUrl,
+  activeLogo,
+  showPreviewWarnings = false,
+  recheckTick = 0,
+  forceNamePt,
+  forceFieldSizes,
+  onNamePtDetected,
+  onFieldSizesDetected,
+  onOverflowDetected
+}) => {
+  const effType = resolveDriverType(driver);
+  const classif = getDriverClassification(driver, workers);
+  const serialStr = driver.serialNumber ? String(driver.serialNumber).padStart(3, '0') : '001';
+  const iqamaOrBorder = (driver.iqamaNumber || driver.borderNumber || '').trim() || '—';
+  const nationalityVal = (driver.nationality || '').trim() || '—';
+  const busVal = driver.busNumber && driver.busNumber.trim() ? `#${driver.busNumber.trim()}` : '—';
+  const classifVal = (classif || '').trim() || '—';
+
+  const [measuredNamePt, setMeasuredNamePt] = useState<number>(NAME_START_PT);
+  const [measuredFieldSizes, setMeasuredFieldSizes] =
+    useState<FieldFontSizes>(DEFAULT_FIELD_SIZES);
+  const [overflowIssues, setOverflowIssues] = useState<string[]>([]);
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const companyNameRef = useRef<HTMLSpanElement>(null);
+  const nameVisibleRef = useRef<HTMLDivElement>(null);
+  const iqamaValueRef = useRef<HTMLSpanElement>(null);
+  const nationalityValueRef = useRef<HTMLSpanElement>(null);
+  const busValueRef = useRef<HTMLSpanElement>(null);
+
+  const activeNamePt = forceNamePt !== undefined ? forceNamePt : measuredNamePt;
+  const fieldSizes = forceFieldSizes || measuredFieldSizes;
+
+  // Reset sizing when content or manual recheck changes
+  useEffect(() => {
+    if (!showPreviewWarnings) return;
+    setMeasuredNamePt(NAME_START_PT);
+    setMeasuredFieldSizes(DEFAULT_FIELD_SIZES);
+    setOverflowIssues([]);
+  }, [
+    showPreviewWarnings,
+    recheckTick,
+    driver.id,
+    driver.fullName,
+    iqamaOrBorder,
+    nationalityVal,
+    busVal,
+    classifVal
+  ]);
+
+  // Step-by-step post-font-ready measurement on actual rendered preview elements
+  useEffect(() => {
+    if (!showPreviewWarnings) return;
+    let cancelled = false;
+
+    const runCheck = async () => {
+      try {
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+          await document.fonts.ready;
+        }
+      } catch {
+        // ignore
+      }
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      if (cancelled) return;
+
+      const nameEl = nameVisibleRef.current;
+      let steppedDownName = false;
+
+      // 1. Step down driver name from 10pt -> 7.5pt by 0.5pt until it fits <= 2 lines
+      if (nameEl && nameEl.clientWidth > 0 && nameEl.clientHeight > 0) {
+        const lineHeightPx =
+          parseFloat(getComputedStyle(nameEl).lineHeight) || (measuredNamePt * (96 / 72) * 1.6);
+        const visualLines = countVisualLines(nameEl, lineHeightPx);
+
+        if (visualLines > 2 && measuredNamePt > NAME_MIN_PT) {
+          steppedDownName = true;
+          setMeasuredNamePt(prev => Math.max(NAME_MIN_PT, Number((prev - NAME_STEP_PT).toFixed(1))));
+        }
+      }
+
+      // 2. Step down data fields (8pt -> 6.5pt) if wider than cell
+      const nextFieldSizes: FieldFontSizes = { ...measuredFieldSizes };
+      let fieldsChanged = false;
+      const checkAndShrinkField = (
+        el: HTMLSpanElement | null,
+        key: keyof FieldFontSizes
+      ) => {
+        if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+        if (nextFieldSizes[key] > 6.5 && el.scrollWidth > el.clientWidth + 1) {
+          nextFieldSizes[key] = 6.5;
+          fieldsChanged = true;
+        }
+      };
+
+      checkAndShrinkField(iqamaValueRef.current, 'iqama');
+      checkAndShrinkField(nationalityValueRef.current, 'nationality');
+      checkAndShrinkField(busValueRef.current, 'bus');
+
+      if (fieldsChanged) {
+        setMeasuredFieldSizes(nextFieldSizes);
+      }
+
+      // Wait for next render if font size stepped down
+      if (steppedDownName || fieldsChanged) return;
+
+      // 3. Final verification: check scrollHeight > clientHeight on text elements and card bounds
+      const issues: string[] = [];
+
+      const checkVerticalOverflow = (el: HTMLElement | null, label: string) => {
+        if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+        if (el.scrollHeight > el.clientHeight + 1) {
+          issues.push(label);
+        }
+      };
+
+      if (nameEl && nameEl.clientWidth > 0 && nameEl.clientHeight > 0) {
+        const lineHeightPx =
+          parseFloat(getComputedStyle(nameEl).lineHeight) || (measuredNamePt * (96 / 72) * 1.6);
+        const visualLines = countVisualLines(nameEl, lineHeightPx);
+        if (visualLines > 2 || nameEl.scrollHeight > nameEl.clientHeight + 1) {
+          issues.push('الاسم');
+        }
+      }
+
+      checkVerticalOverflow(companyNameRef.current, 'اسم الشركة');
+
+      const checkFieldOverflow = (
+        el: HTMLSpanElement | null,
+        size: number,
+        label: string
+      ) => {
+        if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+        if (
+          (size <= 6.5 && el.scrollWidth > el.clientWidth + 1) ||
+          el.scrollHeight > el.clientHeight + 1
+        ) {
+          issues.push(label);
+        }
+      };
+
+      checkFieldOverflow(iqamaValueRef.current, measuredFieldSizes.iqama, 'رقم الإقامة');
+      checkFieldOverflow(nationalityValueRef.current, measuredFieldSizes.nationality, 'الجنسية');
+      checkFieldOverflow(busValueRef.current, measuredFieldSizes.bus, 'الحافلة');
+
+      const cardEl = cardRef.current;
+      if (
+        cardEl &&
+        cardEl.clientWidth > 0 &&
+        cardEl.clientHeight > 0 &&
+        cardEl.scrollHeight > cardEl.clientHeight + 1 &&
+        issues.length === 0
+      ) {
+        issues.push('تجاوز حدود البطاقة');
+      }
+
+      setOverflowIssues(prev => {
+        const same =
+          prev.length === issues.length && prev.every((item, idx) => item === issues[idx]);
+        return same ? prev : issues;
+      });
+    };
+
+    runCheck();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showPreviewWarnings,
+    recheckTick,
+    driver.id,
+    driver.fullName,
+    iqamaOrBorder,
+    nationalityVal,
+    busVal,
+    classifVal,
+    measuredNamePt,
+    measuredFieldSizes
+  ]);
+
+  useEffect(() => {
+    if (!showPreviewWarnings) return;
+    onNamePtDetected?.(driver.id, measuredNamePt);
+  }, [showPreviewWarnings, driver.id, measuredNamePt, onNamePtDetected]);
+
+  useEffect(() => {
+    if (!showPreviewWarnings) return;
+    onFieldSizesDetected?.(driver.id, measuredFieldSizes);
+  }, [showPreviewWarnings, driver.id, measuredFieldSizes, onFieldSizesDetected]);
+
+  useEffect(() => {
+    if (!showPreviewWarnings) return;
+    onOverflowDetected?.(driver.id, overflowIssues);
+  }, [showPreviewWarnings, driver.id, overflowIssues, onOverflowDetected]);
+
+  const statusBadgeStyle = getStatusBadgeStyle(effType);
+  const classifBadgeStyle = getClassificationBadgeStyle(classifVal);
+
+  return (
+    <div
+      ref={cardRef}
+      className="driver-id-badge"
+      dir="rtl"
+      style={{
+        width: '85mm',
+        minWidth: '85mm',
+        maxWidth: '85mm',
+        height: '55mm',
+        minHeight: '55mm',
+        maxHeight: '55mm',
+        position: 'relative',
+        backgroundColor: '#FFFFFF',
+        color: '#1A1A1A',
+        border:
+          showPreviewWarnings && overflowIssues.length > 0
+            ? '0.45mm solid #DC2626'
+            : '0.3mm solid #94A3B8',
+        borderRadius: '2mm',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
+        direction: 'rtl',
+        textAlign: 'start',
+        fontFamily: 'inherit',
+        letterSpacing: 'normal',
+        wordSpacing: 'normal',
+        userSelect: 'none',
+        breakInside: 'avoid',
+        pageBreakInside: 'avoid',
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact'
+      }}
+    >
+      {/* 1. Header: min-height 12mm, overflow: visible */}
+      <div
+        style={{
+          minHeight: '12mm',
+          flexShrink: 0,
+          overflow: 'visible',
+          backgroundColor: '#0F274A',
+          borderBottom: '0.45mm solid #F59E0B',
+          padding: '0.6mm 2.5mm',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '2mm',
+          boxSizing: 'border-box',
+          direction: 'rtl'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '1.8mm',
+            minWidth: 0,
+            overflow: 'visible'
+          }}
+        >
+          <div
+            style={{
+              width: '7mm',
+              height: '7mm',
+              minWidth: '7mm',
+              minHeight: '7mm',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '1.2mm',
+              padding: '0.4mm',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}
+          >
+            <img
+              src={activeLogo}
+              alt="شعار درة المنورة"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block'
+              }}
+            />
+          </div>
+          <span
+            ref={companyNameRef}
+            style={{
+              fontSize: '9pt',
+              fontWeight: 600,
+              color: '#FFFFFF',
+              lineHeight: 1.6,
+              whiteSpace: 'nowrap',
+              overflow: 'visible',
+              textAlign: 'start',
+              letterSpacing: 'normal',
+              wordSpacing: 'normal'
+            }}
+          >
+            شركة درة المنورة للنقليات
+          </span>
+        </div>
+
+        <span
+          style={{
+            backgroundColor: '#F59E0B',
+            color: '#1A1A1A',
+            fontSize: '6.5pt',
+            fontWeight: 600,
+            lineHeight: 1.6,
+            paddingBlock: '0.3mm',
+            paddingInline: '2mm',
+            borderRadius: '1mm',
+            border: '0.3mm solid #D97706',
+            whiteSpace: 'nowrap',
+            overflow: 'visible',
+            flexShrink: 0,
+            marginInlineEnd: '0.5mm',
+            letterSpacing: 'normal',
+            wordSpacing: 'normal'
+          }}
+        >
+          بطاقة سائق معتمد
+        </span>
+      </div>
+
+      {/* 2. Body: ~37mm flexible area */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'visible',
+          display: 'flex',
+          flexDirection: 'row',
+          direction: 'rtl',
+          backgroundColor: '#FFFFFF',
+          boxSizing: 'border-box'
+        }}
+      >
+        {/* Data Column (Right in RTL): 5mm badges + 9mm name + 3x5.5mm rows + >=2mm safe bottom margin */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'visible',
+            paddingTop: '1.2mm',
+            paddingBottom: '2.2mm',
+            paddingInlineStart: '2.5mm',
+            paddingInlineEnd: '2mm',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            textAlign: 'start',
+            direction: 'rtl',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* Badges row (minHeight: 5mm, overflow: visible) */}
+          <div
+            style={{
+              minHeight: '5mm',
+              overflow: 'visible',
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '1.4mm',
+              boxSizing: 'border-box'
+            }}
+          >
+            <span
+              style={{
+                ...statusBadgeStyle,
+                fontSize: '6.5pt',
+                fontWeight: 600,
+                lineHeight: 1.6,
+                paddingBlock: '0.3mm',
+                paddingInline: '1.6mm',
+                borderRadius: '0.8mm',
+                whiteSpace: 'nowrap',
+                overflow: 'visible',
+                flexShrink: 0,
+                letterSpacing: 'normal',
+                wordSpacing: 'normal'
+              }}
+            >
+              {effType}
+            </span>
+
+            <span
+              style={{
+                ...classifBadgeStyle,
+                fontSize: '6.5pt',
+                fontWeight: 600,
+                lineHeight: 1.6,
+                paddingBlock: '0.3mm',
+                paddingInline: '1.6mm',
+                borderRadius: '0.8mm',
+                whiteSpace: 'nowrap',
+                overflow: 'visible',
+                flexShrink: 0,
+                letterSpacing: 'normal',
+                wordSpacing: 'normal'
+              }}
+            >
+              {classifVal}
+            </span>
+          </div>
+
+          {/* Driver Name: minHeight 9mm, max 2 lines, auto-steps 10pt -> 7.5pt by 0.5pt, NO -webkit-line-clamp */}
+          <div
+            ref={nameVisibleRef}
+            style={{
+              minHeight: '9mm',
+              fontSize: `${activeNamePt}pt`,
+              fontWeight: 600,
+              lineHeight: 1.6,
+              paddingBlock: '0.3mm',
+              color: '#1A1A1A',
+              textAlign: 'start',
+              overflow: 'visible',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              letterSpacing: 'normal',
+              wordSpacing: 'normal'
+            }}
+          >
+            {driver.fullName || '—'}
+          </div>
+
+          {/* 3 Fixed Data Rows (5.5mm each, overflow: visible, alignItems: baseline) */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.3mm',
+              overflow: 'visible'
+            }}
+          >
+            {/* 1. رقم الإقامة */}
+            <div
+              style={{
+                minHeight: '5.5mm',
+                overflow: 'visible',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: '1.5mm'
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '6.5pt',
+                  fontWeight: 400,
+                  color: '#52667A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  flexShrink: 0,
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                رقم الإقامة
+              </span>
+              <span
+                ref={iqamaValueRef}
+                style={{
+                  direction: 'ltr',
+                  unicodeBidi: 'isolate',
+                  fontSize: `${fieldSizes.iqama}pt`,
+                  fontWeight: 600,
+                  color: '#1A1A1A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  minWidth: 0,
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                {iqamaOrBorder}
+              </span>
+            </div>
+
+            {/* 2. الجنسية */}
+            <div
+              style={{
+                minHeight: '5.5mm',
+                overflow: 'visible',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: '1.5mm'
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '6.5pt',
+                  fontWeight: 400,
+                  color: '#52667A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  flexShrink: 0,
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                الجنسية
+              </span>
+              <span
+                ref={nationalityValueRef}
+                style={{
+                  fontSize: `${fieldSizes.nationality}pt`,
+                  fontWeight: 600,
+                  color: '#1A1A1A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  minWidth: 0,
+                  textAlign: 'start',
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                {nationalityVal}
+              </span>
+            </div>
+
+            {/* 3. الحافلة */}
+            <div
+              style={{
+                minHeight: '5.5mm',
+                overflow: 'visible',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: '1.5mm'
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '6.5pt',
+                  fontWeight: 400,
+                  color: '#52667A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  flexShrink: 0,
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                الحافلة
+              </span>
+              <span
+                ref={busValueRef}
+                style={{
+                  direction: 'ltr',
+                  unicodeBidi: 'isolate',
+                  fontSize: `${fieldSizes.bus}pt`,
+                  fontWeight: 600,
+                  color: '#1A1A1A',
+                  lineHeight: 1.6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'visible',
+                  minWidth: 0,
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: 'normal',
+                  wordSpacing: 'normal'
+                }}
+              >
+                {busVal}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* QR Column (Left in RTL, fixed 26mm width) */}
+        <div
+          style={{
+            width: '26mm',
+            minWidth: '26mm',
+            maxWidth: '26mm',
+            flexShrink: 0,
+            overflow: 'visible',
+            borderInlineStart: '0.25mm solid #CBD5E1',
+            padding: '1mm 1mm 1.5mm 1mm',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.3mm',
+            backgroundColor: '#FFFFFF',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* 22mm x 22mm QR inside 1.5mm white quiet margin */}
+          <div
+            style={{
+              width: '22mm',
+              height: '22mm',
+              padding: '1.5mm',
+              boxSizing: 'content-box',
+              backgroundColor: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            {qrUrl ? (
+              <img
+                src={qrUrl}
+                alt={`رمز تحقق ${driver.fullName}`}
+                style={{
+                  width: '22mm',
+                  height: '22mm',
+                  display: 'block',
+                  objectFit: 'contain'
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: '22mm',
+                  height: '22mm',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94A3B8',
+                  border: '0.25mm solid #CBD5E1'
+                }}
+              >
+                <QrCode style={{ width: '9mm', height: '9mm' }} />
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              fontSize: '6.5pt',
+              fontWeight: 400,
+              color: '#52667A',
+              lineHeight: 1.6,
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              overflow: 'visible',
+              letterSpacing: 'normal',
+              wordSpacing: 'normal'
+            }}
+          >
+            امسح للتحقق الميداني
+          </div>
+
+          <div
+            style={{
+              direction: 'ltr',
+              unicodeBidi: 'isolate',
+              fontSize: '6.5pt',
+              fontWeight: 600,
+              color: '#1A1A1A',
+              lineHeight: 1.6,
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              overflow: 'visible',
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: 'normal',
+              wordSpacing: 'normal'
+            }}
+          >
+            DMTC • #{serialStr}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Footer: min-height 6mm, overflow: visible */}
+      <div
+        style={{
+          minHeight: '6mm',
+          flexShrink: 0,
+          overflow: 'visible',
+          backgroundColor: '#0F274A',
+          borderTop: '0.4mm solid #F59E0B',
+          padding: '0.3mm 2.5mm',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          direction: 'rtl',
+          boxSizing: 'border-box'
+        }}
+      >
+        <span
+          style={{
+            fontSize: '6.5pt',
+            fontWeight: 600,
+            color: '#FEF08A',
+            lineHeight: 1.6,
+            whiteSpace: 'nowrap',
+            overflow: 'visible',
+            letterSpacing: 'normal',
+            wordSpacing: 'normal'
+          }}
+        >
+          معتمد من قسم التشغيل والمتابعة
+        </span>
+
+        <span
+          style={{
+            fontSize: '6.5pt',
+            fontWeight: 400,
+            color: '#FFFFFF',
+            lineHeight: 1.6,
+            whiteSpace: 'nowrap',
+            overflow: 'visible',
+            letterSpacing: 'normal',
+            wordSpacing: 'normal'
+          }}
+        >
+          موسم 1448 هـ - 2027م
+        </span>
+      </div>
+
+      {/* Preview-only overflow warning badge */}
+      {showPreviewWarnings && overflowIssues.length > 0 && (
+        <div
+          className="print:hidden"
+          style={{
+            position: 'absolute',
+            top: '1mm',
+            left: '1mm',
+            backgroundColor: '#DC2626',
+            color: '#FFFFFF',
+            fontSize: '6.5pt',
+            fontWeight: 600,
+            lineHeight: 1.6,
+            padding: '0.2mm 1.5mm',
+            borderRadius: '0.8mm',
+            zIndex: 10,
+            pointerEvents: 'none'
+          }}
+        >
+          تجاوز نص: {overflowIssues.join('، ')}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface A4PrintSheetProps {
+  pageDrivers: CompanyDriver[];
+  mode: 'single' | 'sheet';
+  isLastPage: boolean;
+  workers: Worker[];
+  qrCodeUrls: Record<string, string>;
+  activeLogo: string;
+  showPreviewWarnings?: boolean;
+  recheckTick?: number;
+  namePtMap?: Record<string, number>;
+  fieldSizesMap?: Record<string, FieldFontSizes>;
+  onNamePtDetected?: (driverId: string, pt: number) => void;
+  onFieldSizesDetected?: (driverId: string, sizes: FieldFontSizes) => void;
+  onOverflowDetected?: (driverId: string, issues: string[]) => void;
+}
+
+const A4PrintSheet: React.FC<A4PrintSheetProps> = ({
+  pageDrivers,
+  mode,
+  isLastPage,
+  workers,
+  qrCodeUrls,
+  activeLogo,
+  showPreviewWarnings = false,
+  recheckTick = 0,
+  namePtMap,
+  fieldSizesMap,
+  onNamePtDetected,
+  onFieldSizesDetected,
+  onOverflowDetected
+}) => {
+  return (
+    <div
+      className="a4-print-page"
+      style={{
+        width: '210mm',
+        height: '297mm',
+        minWidth: '210mm',
+        maxWidth: '210mm',
+        minHeight: '297mm',
+        maxHeight: '297mm',
+        backgroundColor: '#FFFFFF',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        pageBreakAfter: isLastPage ? 'auto' : 'always',
+        breakAfter: isLastPage ? 'auto' : 'page',
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact'
+      }}
+    >
+      {mode === 'single' ? (
+        pageDrivers[0] ? (
+          <div
+            style={{
+              position: 'relative',
+              width: '85mm',
+              height: '55mm',
+              breakInside: 'avoid',
+              pageBreakInside: 'avoid',
+              overflow: 'visible'
+            }}
+          >
+            <CropMarks />
+            <DriverIdCard
+              driver={pageDrivers[0]}
+              workers={workers}
+              qrUrl={qrCodeUrls[pageDrivers[0].id]}
+              activeLogo={activeLogo}
+              showPreviewWarnings={showPreviewWarnings}
+              recheckTick={recheckTick}
+              forceNamePt={namePtMap?.[pageDrivers[0].id]}
+              forceFieldSizes={fieldSizesMap?.[pageDrivers[0].id]}
+              onNamePtDetected={onNamePtDetected}
+              onFieldSizesDetected={onFieldSizesDetected}
+              onOverflowDetected={onOverflowDetected}
+            />
+          </div>
+        ) : null
+      ) : (
+        <div
+          dir="rtl"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 85mm)',
+            gridTemplateRows: 'repeat(4, 55mm)',
+            columnGap: '6mm',
+            rowGap: '8mm',
+            width: '176mm',
+            height: '244mm',
+            direction: 'rtl',
+            boxSizing: 'border-box'
+          }}
+        >
+          {pageDrivers.slice(0, CARDS_PER_PAGE).map(driver => (
+            <div
+              key={driver.id}
+              style={{
+                position: 'relative',
+                width: '85mm',
+                height: '55mm',
+                breakInside: 'avoid',
+                pageBreakInside: 'avoid',
+                overflow: 'visible'
+              }}
+            >
+              <CropMarks />
+              <DriverIdCard
+                driver={driver}
+                workers={workers}
+                qrUrl={qrCodeUrls[driver.id]}
+                activeLogo={activeLogo}
+                showPreviewWarnings={showPreviewWarnings}
+                recheckTick={recheckTick}
+                forceNamePt={namePtMap?.[driver.id]}
+                forceFieldSizes={fieldSizesMap?.[driver.id]}
+                onNamePtDetected={onNamePtDetected}
+                onFieldSizesDetected={onFieldSizesDetected}
+                onOverflowDetected={onOverflowDetected}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
   isOpen,
   onClose,
@@ -46,57 +1164,75 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
   workers = [],
   initialSelectedDriver = null
 }) => {
-  // Mode: 'single' (1 card) or 'sheet' (up to 6 cards together on A4)
-  const [mode, setMode] = useState<'single' | 'sheet'>('single');
-  
-  // Selection
+  const [mode, setMode] = useState<'single' | 'sheet'>(
+    initialSelectedDriver ? 'single' : 'sheet'
+  );
   const [selectedSerialInput, setSelectedSerialInput] = useState<string>('');
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [sheetSelectedIds, setSheetSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<string>('all');
   const [filterClassification, setFilterClassification] = useState<string>('all');
-  
-  // Color scheme: 'color' (official DMTC colors) vs 'mono' (high-contrast black & white for scanners)
-  const [printColorScheme, setPrintColorScheme] = useState<'color' | 'mono'>('color');
-
-  // Generated QR codes map (driverId -> base64 dataUrl)
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
 
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [isExportingPng, setIsExportingPng] = useState(false);
+  const [namePtMap, setNamePtMap] = useState<Record<string, number>>({});
+  const [fieldSizesMap, setFieldSizesMap] = useState<Record<string, FieldFontSizes>>({});
+  const [overflowWarningsMap, setOverflowWarningsMap] = useState<Record<string, string[]>>({});
+  const [recheckTick, setRecheckTick] = useState(0);
+
+  const [previewScale, setPreviewScale] = useState<number>(0.7);
+  const [currentPreviewPage, setCurrentPreviewPage] = useState<number>(1);
+  const [printTipMessage, setPrintTipMessage] = useState<string | null>(null);
+
+  const previewViewportRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const qrUrlsRef = useRef<Record<string, string>>({});
+  qrUrlsRef.current = qrCodeUrls;
+
+  const wasOpenRef = useRef(false);
+  const sortedDriversRef = useRef<CompanyDriver[]>([]);
 
   const { logoURL } = useLogo();
   const activeLogo = logoURL || DEFAULT_LOGO;
 
-  const printAreaRef = useRef<HTMLDivElement>(null);
-
-  // Sort drivers by serial number ascending
-  const sortedDrivers = React.useMemo(() => {
+  const sortedDrivers = useMemo(() => {
     return [...drivers].sort((a, b) => {
       const sA = Number(a.serialNumber) || 0;
       const sB = Number(b.serialNumber) || 0;
       return sA - sB;
     });
   }, [drivers]);
+  sortedDriversRef.current = sortedDrivers;
 
-  // Set initial driver when opening
+  // Initialize selection only when modal opens
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      setOverflowWarningsMap({});
+      setNamePtMap({});
+      setFieldSizesMap({});
+      setCurrentPreviewPage(1);
+      setPrintTipMessage(null);
+
+      const list = sortedDriversRef.current;
       if (initialSelectedDriver) {
+        setMode('single');
         setSelectedDriverId(initialSelectedDriver.id);
         setSelectedSerialInput(String(initialSelectedDriver.serialNumber || ''));
         setSheetSelectedIds([initialSelectedDriver.id]);
-      } else if (sortedDrivers.length > 0) {
-        const first = sortedDrivers[0];
-        setSelectedDriverId(first.id);
-        setSelectedSerialInput(String(first.serialNumber || ''));
-        setSheetSelectedIds(sortedDrivers.slice(0, 6).map(d => d.id));
+      } else {
+        setMode('sheet');
+        if (list.length > 0) {
+          const first = list[0];
+          setSelectedDriverId(first.id);
+          setSelectedSerialInput(String(first.serialNumber || ''));
+          setSheetSelectedIds(list.map(d => d.id));
+        } else {
+          setSheetSelectedIds([]);
+        }
       }
     }
-  }, [isOpen, initialSelectedDriver, sortedDrivers]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialSelectedDriver]);
 
-  // Handle serial input change & auto select
   const handleSerialSearch = (serialStr: string) => {
     setSelectedSerialInput(serialStr);
     const num = Number(serialStr.trim());
@@ -108,57 +1244,108 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
     }
   };
 
-  // Generate high-resolution QR Codes for drivers
+  const currentSingleDriver =
+    sortedDrivers.find(d => d.id === selectedDriverId) || sortedDrivers[0];
+
+  const currentSheetDrivers = useMemo(() => {
+    const selectedSet = new Set(sheetSelectedIds);
+    return sortedDrivers.filter(d => selectedSet.has(d.id));
+  }, [sortedDrivers, sheetSelectedIds]);
+
+  const pages = useMemo(() => {
+    if (mode === 'single') {
+      return currentSingleDriver ? [[currentSingleDriver]] : [];
+    }
+    return chunkDrivers(currentSheetDrivers, CARDS_PER_PAGE);
+  }, [mode, currentSingleDriver, currentSheetDrivers]);
+
+  const totalPages = pages.length;
+
+  useEffect(() => {
+    pageRefs.current = pageRefs.current.slice(0, pages.length);
+    setCurrentPreviewPage(prev => (pages.length === 0 ? 1 : Math.min(Math.max(1, prev), pages.length)));
+  }, [pages.length]);
+
+  // Generate QR codes
   useEffect(() => {
     if (!isOpen) return;
+    const driversToEncode =
+      mode === 'single'
+        ? currentSingleDriver
+          ? [currentSingleDriver]
+          : []
+        : currentSheetDrivers;
 
-    const driversToEncode = mode === 'single'
-      ? sortedDrivers.filter(d => d.id === selectedDriverId)
-      : sortedDrivers.filter(d => sheetSelectedIds.includes(d.id));
+    let cancelled = false;
+    driversToEncode.forEach(async driver => {
+      if (qrUrlsRef.current[driver.id]) return;
 
-    driversToEncode.forEach(async (driver) => {
       const effType = resolveDriverType(driver);
       const classif = getDriverClassification(driver, workers);
       const isResident = effType === 'مقيم';
       const idLabel = isResident ? 'رقم الإقامة' : 'رقم الحدود';
-      const rawId = (isResident ? driver.iqamaNumber : driver.borderNumber) || driver.iqamaNumber || driver.borderNumber || '';
+      const rawId =
+        (isResident ? driver.iqamaNumber : driver.borderNumber) ||
+        driver.iqamaNumber ||
+        driver.borderNumber ||
+        '';
       const idVal = rawId || '—';
 
-      // Generate QR Code with pure pitch-black (#000000) for 100% scan rate on all devices & printers
-      if (!qrCodeUrls[driver.id]) {
-        const payload = [
-          `شركة درة المنورة للنقليات - DMTC`,
-          `سائق معتمد: ${driver.fullName}`,
-          `${idLabel}: ${idVal}`,
-          `مسلسل: #${String(driver.serialNumber || '1').padStart(3, '0')} | ${effType} - ${classif}`,
-          `الجوال: ${driver.mobileNumber || 'غير مسجل'}`,
-          driver.busNumber ? `الحافلة: #${driver.busNumber}` : null,
-          `موسم 1448 هـ - 2027م (معتمد رسمياً)`
-        ].filter(Boolean).join('\n');
+      const payload = [
+        'شركة درة المنورة للنقليات - DMTC',
+        `سائق معتمد: ${driver.fullName}`,
+        `${idLabel}: ${idVal}`,
+        `مسلسل: #${String(driver.serialNumber || '1').padStart(3, '0')} | ${effType} - ${classif}`,
+        `الجوال: ${driver.mobileNumber || 'غير مسجل'}`,
+        driver.busNumber ? `الحافلة: #${driver.busNumber}` : null,
+        'موسم 1448 هـ - 2027م (معتمد رسمياً)'
+      ]
+        .filter(Boolean)
+        .join('\n');
 
-        try {
-          const url = await QRCode.toDataURL(payload, {
-            width: 320,
-            margin: 2,
-            color: {
-              dark: '#000000', // Pure pitch black for laser/thermal B&W printouts & mobile scanners
-              light: '#FFFFFF'
-            },
-            errorCorrectionLevel: 'M'
-          });
-          setQrCodeUrls(prev => ({ ...prev, [driver.id]: url }));
-        } catch (err) {
-          console.error('Failed to generate QR for driver', driver.id, err);
+      try {
+        const url = await QRCode.toDataURL(payload, {
+          width: 360,
+          margin: 0,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          },
+          errorCorrectionLevel: 'M'
+        });
+        if (!cancelled) {
+          setQrCodeUrls(prev => (prev[driver.id] ? prev : { ...prev, [driver.id]: url }));
         }
+      } catch (err) {
+        console.error('Failed to generate QR for driver', driver.id, err);
       }
     });
-  }, [isOpen, mode, selectedDriverId, sheetSelectedIds, sortedDrivers, workers, qrCodeUrls]);
 
-  // Filtered drivers for search list
-  const filteredList = React.useMemo(() => {
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, currentSingleDriver, currentSheetDrivers, workers]);
+
+  // Responsive A4 preview scaling
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = previewViewportRef.current;
+    if (!el) return;
+
+    const updateScale = () => {
+      const availableW = Math.max(260, el.clientWidth - 32);
+      const nextScale = Math.min(0.85, availableW / A4_WIDTH_PX);
+      setPreviewScale(nextScale);
+    };
+
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isOpen]);
+
+  const filteredList = useMemo(() => {
     return sortedDrivers.filter(d => {
-      const effType = resolveDriverType(d);
-      if (filterType !== 'all' && effType !== filterType) return false;
       const classif = getDriverClassification(d, workers);
       if (filterClassification !== 'all' && classif !== filterClassification) return false;
       if (!searchTerm.trim()) return true;
@@ -173,1226 +1360,582 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
         (d.nationality && d.nationality.toLowerCase().includes(term))
       );
     });
-  }, [sortedDrivers, searchTerm, filterType, filterClassification, workers]);
+  }, [sortedDrivers, searchTerm, filterClassification, workers]);
 
-  // Toggle selection for 6-card sheet
   const toggleSheetDriver = (id: string) => {
-    setSheetSelectedIds(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(item => item !== id);
-      } else {
-        if (prev.length >= 6) {
-          alert('يمكنك تحديد 6 بطاقات كحد أقصى للطباعة المجتمعة في ورقة A4 واحدة.');
-          return prev;
-        }
-        return [...prev, id];
-      }
+    setSheetSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllFiltered = () => {
+    setSheetSelectedIds(filteredList.map(d => d.id));
+  };
+
+  const clearSelection = () => {
+    setSheetSelectedIds([]);
+  };
+
+  const selectFirstEight = () => {
+    setSheetSelectedIds(filteredList.slice(0, CARDS_PER_PAGE).map(d => d.id));
+  };
+
+  const handleNamePtDetected = useCallback((driverId: string, pt: number) => {
+    setNamePtMap(prev => {
+      if (prev[driverId] === pt) return prev;
+      return { ...prev, [driverId]: pt };
     });
-  };
+  }, []);
 
-  // Quick batch selector (e.g., drivers 1-6, 7-12...)
-  const selectBatch = (startIndex: number) => {
-    const batch = sortedDrivers.slice(startIndex, startIndex + 6).map(d => d.id);
-    setSheetSelectedIds(batch);
-  };
-
-  // Direct Browser Print
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // Helper to safely capture the printable cards canvas without Tailwind oklch errors
-  const captureCardsCanvas = async (scale = 2): Promise<HTMLCanvasElement | null> => {
-    if (!printAreaRef.current) return null;
-    const element = printAreaRef.current;
-
-    const sanitizeColorValue = (val: string | null | undefined): string => {
-      if (!val || typeof val !== 'string') return '';
+  const handleFieldSizesDetected = useCallback((driverId: string, sizes: FieldFontSizes) => {
+    setFieldSizesMap(prev => {
+      const existing = prev[driverId];
       if (
-        val.includes('oklch') ||
-        val.includes('oklab') ||
-        val.includes('color-mix') ||
-        val.includes('light-dark')
+        existing &&
+        existing.iqama === sizes.iqama &&
+        existing.nationality === sizes.nationality &&
+        existing.bus === sizes.bus
       ) {
-        try {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillStyle = val;
-            const parsed = ctx.fillStyle;
-            if (
-              parsed &&
-              !parsed.includes('oklch') &&
-              !parsed.includes('color-mix') &&
-              !parsed.includes('oklab')
-            ) {
-              return parsed;
-            }
-          }
-        } catch {
-          // fallback
-        }
-        return '#0f172a';
+        return prev;
       }
-      return val;
-    };
+      return { ...prev, [driverId]: sizes };
+    });
+  }, []);
 
-    if (document.fonts) {
-      try {
-        await document.fonts.ready;
-      } catch {
-        // ignore
+  const handleOverflowDetected = useCallback((driverId: string, issues: string[]) => {
+    setOverflowWarningsMap(prev => {
+      if (issues.length === 0) {
+        if (!prev[driverId]) return prev;
+        const next = { ...prev };
+        delete next[driverId];
+        return next;
       }
-    }
+      const existing = prev[driverId];
+      if (
+        existing &&
+        existing.length === issues.length &&
+        existing.every((v, i) => v === issues[i])
+      ) {
+        return prev;
+      }
+      return { ...prev, [driverId]: issues };
+    });
+  }, []);
 
-    return await html2canvas(element, {
-      scale,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: '#FFFFFF',
-      windowWidth: 1200,
-      onclone: (clonedDoc) => {
-        // 1. Isolate the printable cards element in clonedDoc.body
-        const clonedEl = clonedDoc.getElementById('printable-driver-cards');
-        if (clonedEl) {
-          clonedDoc.body.innerHTML = '';
-          clonedDoc.body.appendChild(clonedEl);
-          clonedDoc.body.style.margin = '0';
-          clonedDoc.body.style.padding = '12px';
-          clonedDoc.body.style.backgroundColor = '#FFFFFF';
-          clonedDoc.body.style.direction = 'ltr';
+  const activeDriverIdsSet = useMemo(() => {
+    const ids = new Set<string>();
+    pages.forEach(page => page.forEach(d => ids.add(d.id)));
+    return ids;
+  }, [pages]);
 
-          clonedEl.style.position = 'relative';
-          clonedEl.style.direction = 'ltr';
-          clonedEl.style.backgroundColor = '#FFFFFF';
-          clonedEl.style.border = 'none';
-          clonedEl.style.boxShadow = 'none';
-          clonedEl.style.margin = '0 auto';
-
-          if (mode === 'sheet') {
-            clonedEl.style.display = 'grid';
-            clonedEl.style.gridTemplateColumns = '340px 340px';
-            clonedEl.style.justifyContent = 'center';
-            clonedEl.style.gap = '14px';
-            clonedEl.style.width = '710px';
-            clonedEl.style.maxWidth = '710px';
-            clonedEl.style.padding = '8px';
-          } else {
-            clonedEl.style.display = 'flex';
-            clonedEl.style.justifyContent = 'center';
-            clonedEl.style.alignItems = 'center';
-            clonedEl.style.width = '360px';
-            clonedEl.style.maxWidth = '360px';
-            clonedEl.style.padding = '8px';
-          }
+  const activeOverflowWarnings = useMemo(() => {
+    const list: { driver: CompanyDriver; issues: string[]; pageNumber: number }[] = [];
+    pages.forEach((pageDrivers, pIdx) => {
+      pageDrivers.forEach(driver => {
+        const issues = overflowWarningsMap[driver.id];
+        if (issues && issues.length > 0 && activeDriverIdsSet.has(driver.id)) {
+          list.push({ driver, issues, pageNumber: pIdx + 1 });
         }
+      });
+    });
+    return list;
+  }, [pages, overflowWarningsMap, activeDriverIdsSet]);
 
-        // 2. Inject clean Arabic font & printing styles
-        const fontStyle = clonedDoc.createElement('style');
-        fontStyle.textContent = `
-          @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;800;900&display=swap');
-          * {
-            box-sizing: border-box !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body, .driver-id-badge, .driver-id-badge * {
-            font-family: 'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif !important;
-            font-feature-settings: normal !important;
-            letter-spacing: normal !important;
-          }
-          .driver-id-badge {
-            width: 340px !important;
-            min-width: 340px !important;
-            max-width: 340px !important;
-            height: 220px !important;
-            min-height: 220px !important;
-            max-height: 220px !important;
-            box-shadow: none !important;
-          }
-          .badge-authorized-driver {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            height: 20px !important;
-            min-height: 20px !important;
-            max-height: 20px !important;
-            line-height: 1 !important;
-            text-align: center !important;
-            padding: 0 10px !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-          }
-          .badge-authorized-driver span {
-            display: inline-block !important;
-            line-height: 1 !important;
-            position: relative !important;
-            top: -1px !important;
-          }
-        `;
-        clonedDoc.head.appendChild(fontStyle);
+  const jumpToPage = (pageNum: number) => {
+    if (totalPages === 0) return;
+    const target = Math.min(Math.max(1, pageNum), totalPages);
+    setCurrentPreviewPage(target);
+    pageRefs.current[target - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
-        // 3. Remove or sanitize all <style> tags containing oklch definitions from Tailwind v4
-        const styleEls = Array.from(clonedDoc.querySelectorAll('style'));
-        styleEls.forEach((styleTag) => {
-          if (styleTag !== fontStyle && styleTag.textContent && (
-            styleTag.textContent.includes('oklch') ||
-            styleTag.textContent.includes('oklab') ||
-            styleTag.textContent.includes('color-mix') ||
-            styleTag.textContent.includes('light-dark')
-          )) {
-            try {
-              styleTag.textContent = styleTag.textContent.replace(
-                /(oklch|oklab|color-mix|light-dark)\([^;{}]+?\)/gi,
-                (match) => sanitizeColorValue(match)
-              );
-            } catch {
-              styleTag.remove();
-            }
-          }
-        });
-
-        // 4. Remove all external stylesheet link tags in clonedDoc that could contain oklch
-        const linkEls = Array.from(clonedDoc.querySelectorAll('link[rel="stylesheet"]'));
-        linkEls.forEach(link => {
-          try { link.remove(); } catch {}
-        });
-
-        // 5. Remove any oklch box-shadows on cloned nodes
-        const allCloned = Array.from(clonedDoc.querySelectorAll('*'));
-        allCloned.forEach((node) => {
-          const htmlEl = node as HTMLElement;
-          if (htmlEl.style && htmlEl.style.boxShadow && (
-            htmlEl.style.boxShadow.includes('oklch') ||
-            htmlEl.style.boxShadow.includes('color-mix') ||
-            htmlEl.style.boxShadow.includes('oklab')
-          )) {
-            htmlEl.style.boxShadow = 'none';
-          }
-        });
+  const handlePreviewScroll = () => {
+    const container = previewViewportRef.current;
+    if (!container || pages.length <= 1) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let closestIdx = 0;
+    let closestDist = Infinity;
+    pageRefs.current.forEach((node, idx) => {
+      if (!node) return;
+      const dist = Math.abs(node.getBoundingClientRect().top - containerTop);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = idx;
       }
     });
+    setCurrentPreviewPage(closestIdx + 1);
   };
 
-  // Save as High-Res PDF using html2canvas & jspdf with bulletproof oklch sanitization
-  const handleExportPdf = async () => {
-    try {
-      setIsExportingPdf(true);
-      const canvas = await captureCardsCanvas(2.2);
-      if (!canvas) throw new Error('فشل توليد لوحة البطاقة');
-
-      const imgData = canvas.toDataURL('image/png');
-      if (!imgData || imgData.length < 100 || imgData === 'data:,') {
-        throw new Error('فشل توليد صورة البطاقة');
-      }
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      if (mode === 'single') {
-        // High-Quality ID Badge Presentation on A4 (Exact 85mm x 55mm = 8.5cm x 5.5cm)
-        const cardWidthMm = 85;
-        const cardHeightMm = 55;
-        const xPos = (pdfWidth - cardWidthMm) / 2;
-        const yPos = (pdfHeight - cardHeightMm) / 2 - 12;
-
-        // Subtle cutting guide border
-        pdf.setDrawColor(203, 213, 225);
-        pdf.setLineWidth(0.35);
-        pdf.setLineDashPattern([2, 2], 0);
-        pdf.rect(xPos - 1.5, yPos - 1.5, cardWidthMm + 3, cardHeightMm + 3);
-        pdf.setLineDashPattern([], 0);
-
-        pdf.addImage(imgData, 'PNG', xPos, yPos, cardWidthMm, cardHeightMm);
-
-        // Header caption
-        pdf.setFontSize(11);
-        pdf.setTextColor(15, 23, 42);
-        pdf.text('شركة درة المنورة للنقليات - بطاقة هوية سائق معتمد (8.5 سم × 5.5 سم)', pdfWidth / 2, yPos - 8, { align: 'center' });
-
-        // Footer note
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text('مقاس البطاقة المعتمد: 8.5 سم × 5.5 سم • مناسبة لحافظات الهوية القياسية وأجهزة المسح الميداني', pdfWidth / 2, yPos + cardHeightMm + 9, { align: 'center' });
-      } else {
-        // Sheet mode: 6 cards on A4 (2 columns x 3 rows of 85mm x 55mm = 8.5cm x 5.5cm each)
-        const printWidthMm = 176; // 2 cards of 85mm + 6mm gap
-        const printHeightMm = (canvas.height * printWidthMm) / canvas.width;
-        const xPos = (pdfWidth - printWidthMm) / 2;
-        const yPos = Math.max(10, (pdfHeight - printHeightMm) / 2);
-
-        pdf.addImage(imgData, 'PNG', xPos, yPos, printWidthMm, printHeightMm);
-      }
-      
-      const filename = mode === 'single'
-        ? `بطاقة_سائق_${sortedDrivers.find(d => d.id === selectedDriverId)?.fullName || 'معتمد'}.pdf`
-        : `بطاقات_السائقين_مجموعة_${sheetSelectedIds.length}.pdf`;
-
-      pdf.save(filename);
-    } catch (err) {
-      console.error('Failed to export PDF:', err);
-      alert('حدث خطأ أثناء تصدير ملف PDF، يمكنك استخدام خيار حفظ كصورة PNG أو الطباعة المباشرة.');
-    } finally {
-      setIsExportingPdf(false);
-    }
+  const triggerVectorPrint = async () => {
+    if (pages.length === 0) return;
+    setPrintTipMessage(
+      'في نافذة الطباعة: Margins = None، Scale = 100، وأزل Headers and footers.'
+    );
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    setTimeout(() => {
+      window.print();
+    }, 120);
   };
 
-  // Direct PNG Image Download (Great for WhatsApp / Phone sharing)
-  const handleExportPng = async () => {
-    try {
-      setIsExportingPng(true);
-      const canvas = await captureCardsCanvas(2.5);
-      if (!canvas) throw new Error('فشل توليد الصورة');
-
-      const imgData = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = imgData;
-      link.download = mode === 'single'
-        ? `بطاقة_سائق_${sortedDrivers.find(d => d.id === selectedDriverId)?.fullName || 'معتمد'}.png`
-        : `بطاقات_السائقين_مجموعة_${sheetSelectedIds.length}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error('Failed to export PNG:', err);
-      alert('حدث خطأ أثناء تصدير الصورة.');
-    } finally {
-      setIsExportingPng(false);
-    }
+  const handleRecheck = () => {
+    setOverflowWarningsMap({});
+    setRecheckTick(t => t + 1);
   };
 
   if (!isOpen) return null;
 
-  // Selected driver for single mode
-  const currentSingleDriver = sortedDrivers.find(d => d.id === selectedDriverId) || sortedDrivers[0];
-
-  // Selected drivers for sheet mode (up to 6)
-  const currentSheetDrivers = sortedDrivers.filter(d => sheetSelectedIds.includes(d.id));
-
-  // Helper for card classification colors
-  const getClassificationCardStyle = (classification: string, isMonoMode: boolean) => {
-    if (isMonoMode) {
-      return {
-        backgroundColor: '#FFFFFF',
-        color: '#000000',
-        border: '1.5px solid #000000'
-      };
-    }
-    switch (classification) {
-      case 'النقل المدرسي':
-        return {
-          backgroundColor: '#FEF9C3',
-          color: '#854D0E',
-          border: '1.5px solid #FACC15'
-        };
-      case 'عمرة':
-        return {
-          backgroundColor: '#FEF3C7',
-          color: '#92400E',
-          border: '1.5px solid #FDE68A'
-        };
-      case 'النقل الدولي سوريا':
-        return {
-          backgroundColor: '#ECFDF5',
-          color: '#065F46',
-          border: '1.5px solid #A7F3D0'
-        };
-      case 'النقل الدولي اليمن':
-        return {
-          backgroundColor: '#FAF5FF',
-          color: '#6B21A8',
-          border: '1.5px solid #E9D5FF'
-        };
-      case 'نقل عمال':
-      default:
-        return {
-          backgroundColor: '#EFF6FF',
-          color: '#1E40AF',
-          border: '1.5px solid #BFDBFE'
-        };
-    }
-  };
-
-  // Render a single driver badge component with explicit RGB/HEX inline styles
-  const renderDriverCard = (driver: CompanyDriver, indexNumber?: number) => {
-    const effType = resolveDriverType(driver);
-    const classif = getDriverClassification(driver, workers);
-    const qrUrl = qrCodeUrls[driver.id];
-    const isResident = effType === 'مقيم';
-    const idLabel = isResident ? 'رقم الإقامة' : 'رقم الحدود';
-    const rawId = (isResident ? driver.iqamaNumber : driver.borderNumber) || driver.iqamaNumber || driver.borderNumber || '';
-    const idValue = rawId || '—';
-    const isMono = printColorScheme === 'mono';
-    const classifCardStyle = getClassificationCardStyle(classif, isMono);
-
-    return (
-      <div 
-        key={driver.id}
-        className="driver-id-badge"
-        style={{
-          width: '340px',
-          minWidth: '340px',
-          maxWidth: '340px',
-          height: '220px',
-          minHeight: '220px',
-          maxHeight: '220px',
-          position: 'relative',
-          backgroundColor: '#FFFFFF',
-          color: '#0F172A',
-          border: isMono ? '2.5px solid #000000' : '2px solid #CBD5E1',
-          borderRadius: '14px',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          userSelect: 'none',
-          boxSizing: 'border-box',
-          boxShadow: isMono ? 'none' : '0 4px 12px rgba(15, 23, 42, 0.08)',
-          direction: 'ltr',
-          fontFamily: "'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, Arial, sans-serif"
-        }}
-      >
-        {/* Top Header Strip: DMTC Official Brand Banner (LTR for deterministic flex layout) */}
-        <div 
-          style={{
-            background: isMono 
-              ? '#000000' 
-              : 'linear-gradient(90deg, #1E293B 0%, #1A237E 50%, #0D47A1 100%)',
-            color: '#FFFFFF',
-            padding: '4px 10px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: isMono ? '2px solid #000000' : '2px solid #F59E0B',
-            boxSizing: 'border-box',
-            height: '42px',
-            minHeight: '42px',
-            maxHeight: '42px',
-            width: '100%',
-            direction: 'ltr'
-          }}
-        >
-          {/* Left Child: Authorized Driver Badge - Strictly Centered & Non-Spilling */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            flexShrink: 0
-          }}>
-            <div 
-              className="badge-authorized-driver"
-              style={{
-                backgroundColor: isMono ? '#000000' : '#F59E0B',
-                color: isMono ? '#FFFFFF' : '#0F172A',
-                fontSize: '9.5px',
-                fontWeight: 900,
-                height: '20px',
-                minHeight: '20px',
-                maxHeight: '20px',
-                paddingLeft: '10px',
-                paddingRight: '10px',
-                borderRadius: '10px',
-                whiteSpace: 'nowrap',
-                textAlign: 'center',
-                boxSizing: 'border-box',
-                border: isMono ? '1.5px solid #FFFFFF' : '1px solid #D97706',
-                fontFamily: "'Tajawal', Tahoma, Arial, sans-serif",
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: 1,
-                overflow: 'hidden'
-              }}
-            >
-              <span style={{
-                display: 'inline-block',
-                lineHeight: 1,
-                position: 'relative',
-                top: '-1px'
-              }}>
-                بطاقة سائق معتمد
-              </span>
-            </div>
-            <div style={{
-              fontSize: '7px',
-              color: '#FFFFFF',
-              fontWeight: 800,
-              fontFamily: 'Arial, monospace',
-              letterSpacing: '0.4px',
-              marginTop: '1px',
-              paddingLeft: '2px',
-              lineHeight: 1
-            }}>
-              AUTHORIZED DRIVER
-            </div>
-          </div>
-
-          {/* Right Child: Company Title & Official DMTC Logo */}
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '6px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', textAlign: 'right' }}>
-              <div style={{
-                fontSize: '11px',
-                fontWeight: 900,
-                color: '#FFFFFF',
-                lineHeight: 1.2,
-                fontFamily: "'Tajawal', Tahoma, Arial, sans-serif",
-                whiteSpace: 'nowrap'
-              }}>
-                شركة درة المنورة للنقليات
-              </div>
-              <div style={{
-                fontSize: '7px',
-                fontWeight: 800,
-                color: isMono ? '#FFFFFF' : '#FCD34D',
-                lineHeight: 1.1,
-                fontFamily: 'Arial, monospace',
-                letterSpacing: '0.2px',
-                whiteSpace: 'nowrap',
-                marginTop: '1px'
-              }}>
-                DORAT AL MUNAWARAH TRANSPORT
-              </div>
-            </div>
-            <div style={{
-              width: '30px',
-              height: '30px',
-              minWidth: '30px',
-              maxWidth: '30px',
-              backgroundColor: '#FFFFFF',
-              borderRadius: '6px',
-              padding: '2px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: isMono ? '1.5px solid #000000' : '1.5px solid rgba(255, 255, 255, 0.5)',
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              flexShrink: 0
-            }}>
-              <img 
-                src={activeLogo} 
-                alt="DMTC Logo" 
-                style={{ 
-                  width: '26px', 
-                  height: '26px', 
-                  maxWidth: '26px', 
-                  maxHeight: '26px', 
-                  objectFit: 'contain', 
-                  display: 'block' 
-                }} 
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Card Body: Info + QR Code */}
-        <div 
-          style={{
-            padding: '6px 10px',
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'stretch',
-            justifyContent: 'space-between',
-            gap: '10px',
-            backgroundColor: '#FFFFFF',
-            background: isMono 
-              ? '#FFFFFF' 
-              : 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 60%, #F0F4F8 100%)',
-            boxSizing: 'border-box',
-            width: '100%',
-            direction: 'ltr',
-            overflow: 'hidden'
-          }}
-        >
-          {/* Left Column: Dedicated High-Resolution QR Code */}
-          <div style={{
-            width: '90px',
-            minWidth: '90px',
-            maxWidth: '90px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRight: isMono ? '1.5px solid #000000' : '1.5px solid #E2E8F0',
-            paddingRight: '8px',
-            boxSizing: 'border-box',
-            flexShrink: 0
-          }}>
-            {/* High-Resolution QR Code with Pure White Quiet Zone */}
-            <div style={{
-              width: '80px',
-              height: '80px',
-              backgroundColor: '#FFFFFF',
-              padding: '3px',
-              borderRadius: '7px',
-              border: isMono ? '2px solid #000000' : '1.5px solid #0F172A',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              boxShadow: isMono ? 'none' : '0 2px 4px rgba(0,0,0,0.06)'
-            }}>
-              {qrUrl ? (
-                <img 
-                  src={qrUrl} 
-                  alt="Driver QR Code" 
-                  style={{ width: '74px', height: '74px', objectFit: 'contain', display: 'block' }}
-                />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', color: '#94A3B8' }}>
-                  <QrCode style={{ width: '36px', height: '36px' }} />
-                </div>
-              )}
-            </div>
-
-            <div style={{
-              fontSize: '8px',
-              fontWeight: 900,
-              color: isMono ? '#000000' : '#334155',
-              textAlign: 'center',
-              marginTop: '4px',
-              fontFamily: "'Tajawal', Tahoma, sans-serif",
-              whiteSpace: 'nowrap'
-            }}>
-              امسح للتحقق الميداني
-            </div>
-
-            <div style={{
-              fontSize: '7.5px',
-              fontWeight: 900,
-              fontFamily: 'monospace',
-              color: isMono ? '#000000' : '#0F172A',
-              backgroundColor: isMono ? '#FFFFFF' : '#F1F5F9',
-              padding: '1px 5px',
-              borderRadius: '4px',
-              border: isMono ? '1.5px solid #000000' : '1px solid #CBD5E1',
-              marginTop: '3px',
-              letterSpacing: '0.3px',
-              whiteSpace: 'nowrap'
-            }}>
-              DMTC • #{driver.serialNumber ? String(driver.serialNumber).padStart(3, '0') : '001'}
-            </div>
-          </div>
-
-          {/* Right Column: Driver Details (RTL, text right, flex 1) */}
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            textAlign: 'right',
-            direction: 'rtl',
-            boxSizing: 'border-box',
-            minWidth: 0,
-            overflow: 'hidden'
-          }}>
-            <div>
-              {/* Badges row: Serial, Type, Classification */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px', flexWrap: 'wrap' }}>
-                <span style={{
-                  padding: '1.5px 5px',
-                  backgroundColor: isMono ? '#000000' : '#0F172A',
-                  color: isMono ? '#FFFFFF' : '#FBBF24',
-                  borderRadius: '4px',
-                  fontFamily: 'monospace',
-                  fontSize: '9.5px',
-                  fontWeight: 900,
-                  border: isMono ? '1px solid #000000' : '1px solid #334155',
-                  display: 'inline-block'
-                }}>
-                  #{driver.serialNumber ? String(driver.serialNumber).padStart(3, '0') : '001'}
-                </span>
-                <span style={{
-                  padding: '1.5px 6px',
-                  borderRadius: '12px',
-                  fontSize: '8.5px',
-                  fontWeight: 900,
-                  border: isMono ? '1.5px solid #000000' : `1.5px solid ${isResident ? '#10B981' : '#A855F7'}`,
-                  backgroundColor: isMono ? '#FFFFFF' : (isResident ? '#ECFDF5' : '#FAF5FF'),
-                  color: isMono ? '#000000' : (isResident ? '#065F46' : '#6B21A8'),
-                  fontFamily: "'Tajawal', Tahoma, sans-serif",
-                  display: 'inline-block'
-                }}>
-                  {effType}
-                </span>
-                <span style={{
-                  padding: '1.5px 5.5px',
-                  borderRadius: '4px',
-                  fontSize: '8px',
-                  fontWeight: 800,
-                  backgroundColor: classifCardStyle.backgroundColor,
-                  color: classifCardStyle.color,
-                  border: classifCardStyle.border,
-                  fontFamily: "'Tajawal', Tahoma, sans-serif",
-                  display: 'inline-block',
-                  whiteSpace: 'nowrap'
-                }}>
-                  {classif}
-                </span>
-              </div>
-
-              {/* Driver Full Name */}
-              <div style={{
-                fontSize: '13.5px',
-                lineHeight: '1.25',
-                fontWeight: 900,
-                color: '#000000',
-                fontFamily: "'Tajawal', Tahoma, sans-serif",
-                marginBottom: '3px',
-                wordBreak: 'break-word',
-                textAlign: 'right'
-              }}>
-                {driver.fullName}
-              </div>
-            </div>
-
-            {/* Essential Data Grid */}
-            <div style={{
-              backgroundColor: isMono ? '#FFFFFF' : '#F1F5F9',
-              padding: '4px 7px',
-              borderRadius: '7px',
-              border: isMono ? '1.5px solid #000000' : '1px solid #CBD5E1',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2.5px',
-              boxSizing: 'border-box'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '9px' }}>
-                <span style={{ fontWeight: 800, color: isMono ? '#000000' : '#475569', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  <IdCard style={{ width: '11px', height: '11px', color: isMono ? '#000000' : '#0066F6', minWidth: '11px' }} />
-                  <span style={{ fontFamily: "'Tajawal', Tahoma, sans-serif" }}>{idLabel}:</span>
-                </span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#000000', fontSize: '10.5px' }}>
-                  {idValue}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '9px' }}>
-                <span style={{ fontWeight: 800, color: isMono ? '#000000' : '#475569', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  <Globe style={{ width: '11px', height: '11px', color: isMono ? '#000000' : '#64748B', minWidth: '11px' }} />
-                  <span style={{ fontFamily: "'Tajawal', Tahoma, sans-serif" }}>الجنسية:</span>
-                </span>
-                <span style={{ fontWeight: 800, color: '#000000', fontFamily: "'Tajawal', Tahoma, sans-serif" }}>
-                  {driver.nationality || 'غير محدد'}
-                </span>
-              </div>
-
-              {driver.busNumber && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '9px' }}>
-                  <span style={{ fontWeight: 800, color: isMono ? '#000000' : '#475569', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <Bus style={{ width: '11px', height: '11px', color: isMono ? '#000000' : '#0284C7', minWidth: '11px' }} />
-                    <span style={{ fontFamily: "'Tajawal', Tahoma, sans-serif" }}>الحافلة:</span>
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 900, color: isMono ? '#000000' : '#0369A1' }}>
-                    #{driver.busNumber}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Footer: Official Seal & Verification Strip */}
-        <div 
-          style={{
-            backgroundColor: isMono ? '#000000' : '#0F172A',
-            color: '#FFFFFF',
-            padding: '3px 10px',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '7.5px',
-            fontWeight: 800,
-            borderTop: isMono ? '2px solid #000000' : '2px solid #F59E0B',
-            boxSizing: 'border-box',
-            height: '22px',
-            minHeight: '22px',
-            maxHeight: '22px',
-            width: '100%',
-            direction: 'ltr'
-          }}
-        >
-          <div style={{ color: isMono ? '#FFFFFF' : '#94A3B8', fontFamily: 'monospace', fontWeight: 700 }}>
-            موسم 1448 هـ - 2027م
-          </div>
-
-          <div style={{
-            color: isMono ? '#FFFFFF' : '#FBBF24',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: '4px',
-            fontWeight: 900,
-            fontFamily: "'Tajawal', Tahoma, sans-serif"
-          }}>
-            <span>معتمد من قسم التشغيل والمتابعة</span>
-            <ShieldCheck style={{ width: '12px', height: '12px', color: isMono ? '#FFFFFF' : '#34D399', minWidth: '12px' }} />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-      {/* Print Specific CSS: ensures ONLY the cards are printed on A4 paper at exact 8.5cm x 5.5cm */}
+    <>
+      {/* Dedicated Print Styles + Vector Print Portal */}
       <style>{`
+        #driver-cards-print-portal {
+          display: none;
+        }
         @media print {
-          body * {
-            visibility: hidden !important;
+          @page {
+            size: A4 portrait;
+            margin: 0;
           }
-          #printable-driver-cards,
-          #printable-driver-cards * {
-            visibility: visible !important;
-          }
-          #printable-driver-cards {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            padding: ${mode === 'single' ? '25mm 10mm' : '8mm 6mm'} !important;
+          html, body {
             margin: 0 !important;
-            background: white !important;
-            display: ${mode === 'single' ? 'flex' : 'grid'} !important;
-            ${mode === 'single' ? 'justify-content: center !important; align-items: center !important;' : 'grid-template-columns: repeat(2, 85mm) !important; justify-content: center !important; gap: 6mm !important;'}
-          }
-          .driver-id-badge {
-            width: 85mm !important;
-            min-width: 85mm !important;
-            max-width: 85mm !important;
-            height: 55mm !important;
-            min-height: 55mm !important;
-            max-height: 55mm !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            box-shadow: none !important;
-            border: 1.5px solid #64748b !important;
+            padding: 0 !important;
+            background: #FFFFFF !important;
+            background-image: none !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .badge-authorized-driver {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            height: 20px !important;
-            line-height: 1 !important;
-            text-align: center !important;
-            padding: 0 10px !important;
+          #root {
+            display: none !important;
           }
-          .badge-authorized-driver span {
-            display: inline-block !important;
-            line-height: 1 !important;
-            position: relative !important;
-            top: -1px !important;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 8mm 6mm;
+          #driver-cards-print-portal {
+            display: block !important;
+            position: static !important;
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #FFFFFF !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="bg-surface rounded-3xl border border-border shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <div id="driver-cards-print-portal" dir="rtl">
+            {pages.map((pageDrivers, idx) => (
+              <A4PrintSheet
+                key={`print-page-${idx}`}
+                pageDrivers={pageDrivers}
+                mode={mode}
+                isLastPage={idx === pages.length - 1}
+                workers={workers}
+                qrCodeUrls={qrCodeUrls}
+                activeLogo={activeLogo}
+                showPreviewWarnings={false}
+                namePtMap={namePtMap}
+                fieldSizesMap={fieldSizesMap}
+              />
+            ))}
+          </div>,
+          document.body
+        )}
+
+      {/* Modal UI */}
+      <div
+        className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
         dir="rtl"
       >
-        {/* Modal Top Header */}
-        <div className="p-4 sm:p-5 border-b border-border bg-gradient-to-r from-blue-50/50 via-indigo-50/30 to-transparent dark:from-slate-800/40 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
-              <Printer className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-tight">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.97, y: 10 }}
+          transition={{ duration: 0.16 }}
+          className="bg-surface text-text-main rounded-2xl border border-border shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden"
+          dir="rtl"
+        >
+          {/* Top Modal Header */}
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary-light text-primary flex items-center justify-center shrink-0">
+                <Printer className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-bold text-text-main truncate">
                   طباعة بطاقات السائقين المعتمدة
                 </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200">
-                  مقاس معتمد 8.5 × 5.5 سم • رمز QR
-                </span>
+                <p className="text-xs font-semibold text-text-muted truncate mt-0.5">
+                  ورق A4 عمودي · 8 بطاقات في الصفحة · مقاس البطاقة 85mm × 55mm
+                </p>
               </div>
-              <p className="text-xs text-text-muted font-bold mt-0.5">
-                توليد بطاقة هوية السائق بمقاس 8.5 سم × 5.5 سم مع رمز QR ورقم الإقامة/الحدود وخيار طباعة 6 بطاقات في صفحة A4
-              </p>
             </div>
-          </div>
 
-          <button 
-            type="button"
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-text-muted hover:text-slate-900 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Mode Selector Tabs (Single vs 6 Sheet) */}
-        <div className="px-5 pt-3 pb-2 border-b border-border bg-slate-50/50 dark:bg-slate-900/40 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl shadow-2xs">
             <button
               type="button"
-              onClick={() => setMode('single')}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                mode === 'single'
-                  ? 'bg-surface text-primary shadow-xs'
-                  : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
-              }`}
+              onClick={onClose}
+              aria-label="إغلاق"
+              className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-xl text-text-muted hover:text-text-main hover:bg-background transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
             >
-              <IdCard className="w-4 h-4" />
-              <span>بطاقة مفردة (سائق واحد)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('sheet')}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
-                mode === 'sheet'
-                  ? 'bg-surface text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>طباعة 6 بطاقات مجتمعة (ورقة A4)</span>
-              <span className="px-1.5 py-0.2 bg-indigo-600 text-white rounded-full text-[10px] font-mono">
-                {sheetSelectedIds.length}/6
-              </span>
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Print Style / Color Scheme Switcher */}
-          <div className="flex items-center bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setPrintColorScheme('color')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                printColorScheme === 'color'
-                  ? 'bg-surface text-amber-700 dark:text-amber-400 shadow-xs font-black'
-                  : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title="بطاقة ملونة بألوان درة المنورة الرسمية"
-            >
-              <Palette className="w-3.5 h-3.5" />
-              <span>ملون رسمي</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrintColorScheme('mono')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                printColorScheme === 'mono'
-                  ? 'bg-surface text-slate-950 dark:text-white shadow-xs font-black'
-                  : 'text-text-muted hover:text-slate-900 dark:hover:text-white'
-              }`}
-              title="نمط أبيض وأسود عالي التباين للطابعات العادية وأجهزة المسح"
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>أبيض وأسود (عالي التباين للمسح)</span>
-            </button>
-          </div>
+          {/* Main Workspace */}
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            {/* Right Sidebar: Driver Selection */}
+            <aside className="w-full lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-e border-border bg-background/40 p-4 flex flex-col gap-3 overflow-y-auto max-h-[38vh] lg:max-h-none">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-background border border-border rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setMode('sheet')}
+                  className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    mode === 'sheet'
+                      ? 'bg-primary text-white shadow-2xs'
+                      : 'text-text-muted hover:text-text-main'
+                  }`}
+                >
+                  <Layers className="w-4 h-4 shrink-0" />
+                  <span>مجمّعة (8/صفحة)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('single')}
+                  className={`min-h-[40px] px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    mode === 'single'
+                      ? 'bg-primary text-white shadow-2xs'
+                      : 'text-text-muted hover:text-text-main'
+                  }`}
+                >
+                  <IdCard className="w-4 h-4 shrink-0" />
+                  <span>بطاقة مفردة</span>
+                </button>
+              </div>
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black transition-all shadow-sm shadow-emerald-600/20 flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <Printer className="w-4 h-4" />
-              <span>طباعة الآن ({mode === 'single' ? 'بطاقة واحدة' : `${sheetSelectedIds.length} بطاقات`})</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isExportingPdf || isExportingPng}
-              onClick={handleExportPdf}
-              className="px-3.5 py-2 bg-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-border rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              title="تصدير كملف PDF عالي الجودة جاهز للطباعة"
-            >
-              <Download className="w-4 h-4 text-primary" />
-              <span>{isExportingPdf ? 'جاري التصدير...' : 'حفظ PDF'}</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isExportingPdf || isExportingPng}
-              onClick={handleExportPng}
-              className="px-3 py-2 bg-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-border rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="تنزيل كصورة PNG عالية الدقة"
-            >
-              <FileText className="w-4 h-4 text-emerald-600" />
-              <span>{isExportingPng ? 'جاري الحفظ...' : 'حفظ PNG'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col lg:flex-row gap-5">
-          {/* Controls & Selection Sidebar (Left in RTL = Right Column) */}
-          <div className="w-full lg:w-80 shrink-0 flex flex-col gap-3.5 bg-slate-50/70 dark:bg-slate-900/50 p-4 rounded-2xl border border-border">
-            {mode === 'single' ? (
-              <>
-                <div>
-                  <label className="text-xs font-black text-slate-900 dark:text-white block mb-1.5">
-                    اختر السائق بحسب الرقم التسلسلي:
-                  </label>
-                  <div className="relative">
-                    <input 
+              {mode === 'single' ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-text-main block mb-1.5">
+                      الرقم التسلسلي للسائق
+                    </label>
+                    <input
                       type="number"
                       min="1"
-                      placeholder="أدخل الرقم التسلسلي (مثال: 1)..."
+                      placeholder="مثال: 1..."
                       value={selectedSerialInput}
-                      onChange={(e) => handleSerialSearch(e.target.value)}
-                      className="w-full pr-3 pl-10 py-2.5 bg-surface border border-border focus:border-primary rounded-xl outline-none text-sm font-mono font-black"
+                      onChange={e => handleSerialSearch(e.target.value)}
+                      className="w-full min-h-[44px] px-3 bg-surface border border-border focus:border-primary rounded-xl outline-none text-sm font-semibold tabular-nums"
                     />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-text-muted">
-                      #رقم
-                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-text-muted block mb-1.5">
+                      أو اختر السائق من القائمة
+                    </label>
+                    <select
+                      value={selectedDriverId}
+                      onChange={e => {
+                        setSelectedDriverId(e.target.value);
+                        const d = sortedDrivers.find(item => item.id === e.target.value);
+                        if (d) setSelectedSerialInput(String(d.serialNumber || ''));
+                      }}
+                      className="w-full min-h-[44px] px-3 bg-surface border border-border rounded-xl text-xs font-semibold outline-none focus:border-primary"
+                    >
+                      {sortedDrivers.map(d => (
+                        <option key={d.id} value={d.id}>
+                          #{d.serialNumber || 1} — {d.fullName}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-text-main">تحديد السائقين</span>
+                    <span className="font-bold text-primary tabular-nums">
+                      {currentSheetDrivers.length} سائق · {totalPages} صفحة
+                    </span>
+                  </div>
 
-                {/* Dropdown list by serial & name */}
-                <div>
-                  <label className="text-xs font-bold text-text-muted block mb-1">
-                    أو اختر من القائمة:
-                  </label>
-                  <select
-                    value={selectedDriverId}
-                    onChange={(e) => {
-                      setSelectedDriverId(e.target.value);
-                      const d = sortedDrivers.find(item => item.id === e.target.value);
-                      if (d) setSelectedSerialInput(String(d.serialNumber || ''));
-                    }}
-                    className="w-full p-2.5 bg-surface border border-border rounded-xl text-xs font-bold outline-none focus:border-primary shadow-xs"
-                  >
-                    {sortedDrivers.map(d => {
-                      const cl = getDriverClassification(d, workers);
-                      return (
-                        <option key={d.id} value={d.id}>
-                          #{d.serialNumber || 1} - {d.fullName} ({resolveDriverType(d)} • {cl})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                <div className="pt-2 border-t border-border/60">
-                  <span className="text-[11px] font-bold text-text-muted block mb-1">
-                    بيانات السائق المحدد:
-                  </span>
-                  {currentSingleDriver && (
-                    <div className="p-2.5 bg-surface rounded-xl border border-border text-xs space-y-1">
-                      <div className="font-black text-slate-900 dark:text-white text-sm">
-                        {currentSingleDriver.fullName}
-                      </div>
-                      <div className="text-[11px] text-text-muted flex items-center justify-between">
-                        <span>الرقم التسلسلي:</span>
-                        <span className="font-mono font-black text-primary">#{currentSingleDriver.serialNumber || 1}</span>
-                      </div>
-                      <div className="text-[11px] text-text-muted flex items-center justify-between">
-                        <span>{resolveDriverType(currentSingleDriver) === 'موسمي' ? 'رقم الحدود:' : 'رقم الإقامة:'}</span>
-                        <span className="font-mono font-bold">{currentSingleDriver.iqamaNumber || currentSingleDriver.borderNumber || '—'}</span>
-                      </div>
-                      <div className="text-[11px] text-text-muted flex items-center justify-between">
-                        <span>التصنيف:</span>
-                        <span className={`font-bold ${
-                          getDriverClassification(currentSingleDriver, workers) === 'عمرة'
-                            ? 'text-amber-600'
-                            : getDriverClassification(currentSingleDriver, workers) === 'النقل الدولي سوريا'
-                            ? 'text-teal-600'
-                            : getDriverClassification(currentSingleDriver, workers) === 'النقل الدولي اليمن'
-                            ? 'text-purple-600'
-                            : 'text-blue-600'
-                        }`}>
-                          {getDriverClassification(currentSingleDriver, workers)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* Sheet Mode Controls (Selecting 6 Drivers) */
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-900 dark:text-white">
-                    تحديد السائقين (6 كحد أقصى):
-                  </span>
-                  <span className="text-xs font-mono font-black px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-                    {sheetSelectedIds.length} / 6
-                  </span>
-                </div>
-
-                {/* Quick Batch Buttons */}
-                <div>
-                  <span className="text-[10px] font-bold text-text-muted block mb-1">اختيار مجموعات سريعة:</span>
                   <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
-                      onClick={() => selectBatch(0)}
-                      className="px-2 py-1.5 bg-surface border border-border hover:border-primary text-[10px] font-bold rounded-lg transition-colors cursor-pointer text-center"
+                      onClick={selectAllFiltered}
+                      className="min-h-[38px] px-2 bg-surface border border-border hover:border-primary text-xs font-bold rounded-xl transition-colors cursor-pointer"
                     >
-                      #1 إلى #6
+                      تحديد الكل
                     </button>
                     <button
                       type="button"
-                      onClick={() => selectBatch(6)}
-                      className="px-2 py-1.5 bg-surface border border-border hover:border-primary text-[10px] font-bold rounded-lg transition-colors cursor-pointer text-center"
+                      onClick={selectFirstEight}
+                      className="min-h-[38px] px-2 bg-surface border border-border hover:border-primary text-xs font-bold rounded-xl transition-colors cursor-pointer"
                     >
-                      #7 إلى #12
+                      أول 8
                     </button>
                     <button
                       type="button"
-                      onClick={() => selectBatch(12)}
-                      className="px-2 py-1.5 bg-surface border border-border hover:border-primary text-[10px] font-bold rounded-lg transition-colors cursor-pointer text-center"
+                      onClick={clearSelection}
+                      className="min-h-[38px] px-2 bg-surface border border-border hover:border-red-400 text-xs font-bold text-text-muted hover:text-red-600 rounded-xl transition-colors cursor-pointer"
                     >
-                      #13 إلى #18
+                      مسح
                     </button>
                   </div>
-                </div>
 
-                {/* Search & Filter in list */}
-                <div className="space-y-1.5">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                    <input 
-                      type="text"
-                      placeholder="ابحث بالاسم، الرقم، أو التصنيف..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pr-8 pl-3 py-2 bg-surface border border-border rounded-xl text-xs outline-none"
-                    />
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="ابحث بالاسم، الرقم، الإقامة..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full min-h-[40px] pr-9 pl-3 bg-surface border border-border focus:border-primary rounded-xl text-xs outline-none"
+                      />
+                    </div>
+                    <select
+                      value={filterClassification}
+                      onChange={e => setFilterClassification(e.target.value)}
+                      className="w-full min-h-[40px] px-3 bg-surface border border-border rounded-xl text-xs font-semibold outline-none"
+                    >
+                      <option value="all">كل التصنيفات</option>
+                      <option value="نقل عمال">نقل عمال</option>
+                      <option value="النقل المدرسي">النقل المدرسي</option>
+                      <option value="عمرة">عمرة</option>
+                      <option value="النقل الدولي سوريا">النقل الدولي سوريا</option>
+                      <option value="النقل الدولي اليمن">النقل الدولي اليمن</option>
+                    </select>
                   </div>
-                  <select
-                    value={filterClassification}
-                    onChange={(e) => setFilterClassification(e.target.value)}
-                    className="w-full p-2 bg-surface border border-border rounded-xl text-xs font-bold outline-none shadow-2xs"
-                  >
-                    <option value="all">كافة التصنيفات (الكل)</option>
-                    <option value="نقل عمال">🚌 نقل عمال</option>
-                    <option value="النقل المدرسي">🏫 النقل المدرسي</option>
-                    <option value="عمرة">🕌 عمرة</option>
-                    <option value="النقل الدولي سوريا">🌍 النقل الدولي سوريا</option>
-                    <option value="النقل الدولي اليمن">🌍 النقل الدولي اليمن</option>
-                  </select>
-                </div>
 
-                {/* Driver Checkbox List */}
-                <div className="flex-1 max-h-[300px] overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar">
-                  {filteredList.map(driver => {
-                    const isChecked = sheetSelectedIds.includes(driver.id);
-                    const driverClass = getDriverClassification(driver, workers);
-                    return (
-                      <div
-                        key={driver.id}
-                        onClick={() => toggleSheetDriver(driver.id)}
-                        className={`p-2 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition-all ${
-                          isChecked 
-                            ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-400 text-indigo-900 dark:text-indigo-200 font-bold' 
-                            : 'bg-surface border-border hover:bg-slate-100/60'
-                        }`}
+                  <div className="flex-1 min-h-[160px] overflow-y-auto space-y-1.5 pe-0.5 custom-scrollbar">
+                    {filteredList.map(driver => {
+                      const isChecked = sheetSelectedIds.includes(driver.id);
+                      const driverClass = getDriverClassification(driver, workers);
+                      const selectedPos = isChecked
+                        ? currentSheetDrivers.findIndex(d => d.id === driver.id) + 1
+                        : 0;
+                      const cardPageNum =
+                        selectedPos > 0 ? Math.floor((selectedPos - 1) / CARDS_PER_PAGE) + 1 : 0;
+
+                      return (
+                        <button
+                          key={driver.id}
+                          type="button"
+                          onClick={() => toggleSheetDriver(driver.id)}
+                          className={`w-full p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 text-right transition-colors cursor-pointer ${
+                            isChecked
+                              ? 'bg-primary-light border-primary/50 text-primary font-bold'
+                              : 'bg-surface border-border text-text-main hover:bg-background font-semibold'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                                isChecked
+                                  ? 'bg-primary border-primary text-white'
+                                  : 'border-slate-300 dark:border-slate-600'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3" />}
+                            </span>
+                            <span
+                              dir="ltr"
+                              className="text-xs font-semibold text-text-muted tabular-nums shrink-0"
+                            >
+                              #{driver.serialNumber || 1}
+                            </span>
+                            <span className="truncate">{driver.fullName}</span>
+                          </div>
+                          <span className="text-xs text-text-muted shrink-0 truncate max-w-[90px]">
+                            {cardPageNum > 0 ? `ص${cardPageNum} · ${driverClass}` : driverClass}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {filteredList.length === 0 && (
+                      <p className="text-center text-xs text-text-muted py-6">
+                        لا يوجد سائقون مطابقون للبحث
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </aside>
+
+            {/* Left Canvas: Print Preview */}
+            <div className="flex-1 min-w-0 flex flex-col bg-slate-100 dark:bg-slate-950/60 overflow-hidden">
+              {/* Preview Toolbar: Page Counter + "حفظ PDF" + "طباعة" */}
+              <div className="px-4 py-3 bg-surface border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-text-main tabular-nums">
+                    صفحة {totalPages === 0 ? 0 : currentPreviewPage} من {totalPages}
+                  </span>
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={currentPreviewPage <= 1}
+                        onClick={() => jumpToPage(currentPreviewPage - 1)}
+                        aria-label="الصفحة السابقة"
+                        className="min-w-[36px] min-h-[36px] inline-flex items-center justify-center rounded-lg border border-border bg-surface text-text-main disabled:opacity-40 hover:bg-background cursor-pointer"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
-                            isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
-                          }`}>
-                            {isChecked && <Check className="w-3 h-3" />}
-                          </span>
-                          <span className="font-mono text-[10px] font-black text-text-muted shrink-0">
-                            #{driver.serialNumber || 1}
-                          </span>
-                          <span className="truncate">{driver.fullName}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold ${
-                            driverClass === 'عمرة'
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                              : driverClass === 'النقل الدولي سوريا'
-                              ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300'
-                              : driverClass === 'النقل الدولي اليمن'
-                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
-                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                          }`}>
-                            {driverClass}
-                          </span>
-                          <span className="text-[10px] text-text-muted">
-                            {resolveDriverType(driver)}
-                          </span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={currentPreviewPage >= totalPages}
+                        onClick={() => jumpToPage(currentPreviewPage + 1)}
+                        aria-label="الصفحة التالية"
+                        className="min-w-[36px] min-h-[36px] inline-flex items-center justify-center rounded-lg border border-border bg-surface text-text-main disabled:opacity-40 hover:bg-background cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={totalPages === 0}
+                    onClick={triggerVectorPrint}
+                    className="min-h-[44px] px-4 inline-flex items-center gap-2 bg-surface hover:bg-background disabled:opacity-45 text-text-main border border-border rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <FileDown className="w-4 h-4 text-primary" />
+                    <span>حفظ PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={totalPages === 0}
+                    onClick={triggerVectorPrint}
+                    className="min-h-[44px] px-5 inline-flex items-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-45 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>طباعة</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Short Print Settings Guidance Message */}
+              {printTipMessage && (
+                <div className="mx-4 mt-3 px-3.5 py-2.5 rounded-xl bg-primary-light border border-primary/30 text-primary text-xs font-bold flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>{printTipMessage}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPrintTipMessage(null)}
+                    aria-label="إغلاق الرسالة"
+                    className="p-1 rounded-lg hover:bg-primary/10 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Overflow Warning Banner (only shown if at least 1 card overflows) */}
+              {activeOverflowWarnings.length > 0 && (
+                <div className="mx-4 mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-red-900 dark:text-red-200 text-xs space-y-2 shrink-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                      <span>
+                        نص أطول من المساحة المتاحة في {activeOverflowWarnings.length} بطاقة:
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRecheck}
+                      className="min-h-[34px] px-3 inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-red-900/50 border border-red-300 dark:border-red-700 text-red-800 dark:text-red-100 text-xs font-bold hover:bg-red-100/70 transition-colors cursor-pointer"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>إعادة الفحص</span>
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeOverflowWarnings.map(({ driver, issues, pageNumber }) => (
+                      <button
+                        key={driver.id}
+                        type="button"
+                        onClick={() => jumpToPage(pageNumber)}
+                        className="px-2.5 py-1 rounded-lg bg-white dark:bg-red-900/40 border border-red-200 dark:border-red-700 text-xs font-semibold hover:underline cursor-pointer"
+                      >
+                        {driver.fullName} ({issues.join('، ')}) — صفحة {pageNumber}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Scrollable A4 Preview Sheets */}
+              <div
+                ref={previewViewportRef}
+                onScroll={handlePreviewScroll}
+                className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-6"
+              >
+                {pages.length > 0 ? (
+                  pages.map((pageDrivers, idx) => (
+                    <div
+                      key={`preview-page-${idx}`}
+                      ref={el => {
+                        pageRefs.current[idx] = el;
+                      }}
+                      className="flex flex-col items-center gap-2 shrink-0"
+                    >
+                      <span className="text-xs font-semibold text-text-muted tabular-nums">
+                        صفحة {idx + 1} من {totalPages}
+                      </span>
+                      <div
+                        dir="ltr"
+                        style={{
+                          width: `${A4_WIDTH_PX * previewScale}px`,
+                          height: `${A4_HEIGHT_PX * previewScale}px`,
+                          position: 'relative',
+                          overflow: 'hidden',
+                          borderRadius: '6px',
+                          border: '1px solid #CBD5E1',
+                          backgroundColor: '#FFFFFF'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '210mm',
+                            height: '297mm',
+                            transform: `scale(${previewScale})`,
+                            transformOrigin: 'top left'
+                          }}
+                        >
+                          <A4PrintSheet
+                            pageDrivers={pageDrivers}
+                            mode={mode}
+                            isLastPage={idx === pages.length - 1}
+                            workers={workers}
+                            qrCodeUrls={qrCodeUrls}
+                            activeLogo={activeLogo}
+                            showPreviewWarnings={true}
+                            recheckTick={recheckTick}
+                            onNamePtDetected={handleNamePtDetected}
+                            onFieldSizesDetected={handleFieldSizesDetected}
+                            onOverflowDetected={handleOverflowDetected}
+                          />
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* Print Tips */}
-            <div className="mt-auto p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300">
-              <span className="font-black block mb-0.5">💡 نصائح الطباعة:</span>
-              <ul className="list-disc list-inside space-y-0.5 text-[10px]">
-                <li>عند الطباعة، اختر مقاس الورق A4 والاتجاه الرأسي (Portrait).</li>
-                <li>تأكد من تفعيل "طباعة رسومات الخلفية" (Background graphics) في خيارات الطابعة.</li>
-                <li>رمز QR عالي الدقة والتباين وقابل للمسح الفوري بكاميرا الهاتف وأجهزة التحقق الميداني.</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Cards Preview Area (Right in RTL = Left Canvas) */}
-          <div className="flex-1 bg-slate-100 dark:bg-slate-950/60 p-4 sm:p-6 rounded-2xl border border-border flex flex-col items-center justify-start overflow-y-auto">
-            <div className="w-full flex items-center justify-between mb-3 px-1">
-              <span className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-600" />
-                <span>معاينة الطباعة المعتمدة {mode === 'sheet' ? '(شبكة 6 بطاقات A4)' : '(بطاقة واحدة)'}</span>
-              </span>
-              <span className="text-[11px] font-bold text-text-muted bg-surface/80 px-2 py-0.5 rounded-md border border-border">
-                المقاس المعتمد: 8.5 سم × 5.5 سم (85mm × 55mm)
-              </span>
-            </div>
-
-            {/* Print Canvas Container */}
-            <div 
-              ref={printAreaRef}
-              id="printable-driver-cards"
-              style={{
-                backgroundColor: '#FFFFFF',
-                boxSizing: 'border-box'
-              }}
-              className={
-                mode === 'single'
-                  ? "w-full max-w-sm flex items-center justify-center p-2 rounded-2xl border border-slate-200"
-                  : "w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-white rounded-2xl border border-slate-200"
-              }
-            >
-              {mode === 'single' ? (
-                currentSingleDriver ? renderDriverCard(currentSingleDriver) : (
-                  <div className="p-8 text-center text-text-muted">لا يوجد سائق محدد</div>
-                )
-              ) : (
-                currentSheetDrivers.length > 0 ? (
-                  currentSheetDrivers.map((driver, idx) => renderDriverCard(driver, idx + 1))
+                    </div>
+                  ))
                 ) : (
-                  <div className="col-span-2 p-12 text-center text-text-muted">
-                    الرجاء تحديد سائق أو أكثر (حتى 6 سائقين) لمعاينتها وطباعتها مجتمعة
+                  <div className="my-auto text-center py-12 px-4">
+                    <p className="text-sm font-bold text-text-muted">
+                      الرجاء تحديد سائق واحد على الأقل لمعاينة صفحة الطباعة
+                    </p>
                   </div>
-                )
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </motion.div>
-    </div>
+        </motion.div>
+      </div>
+    </>
   );
 };

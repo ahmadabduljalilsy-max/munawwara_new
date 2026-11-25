@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { Worker, Bus, WorkerPreviousWork, CompanyDriver } from '../types';
 import { isSchoolTransportLocation } from '../lib/driverUtils';
-import { normalizeBusLocation } from '../lib/locationUtils';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface WorkerFormProps {
   worker: Worker | null;

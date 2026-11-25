@@ -1,31 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import {
-  initializeFirestore,
-  getFirestore,
-  doc,
-  getDocFromServer,
-  persistentLocalCache,
-  persistentMultipleTabManager
-} from 'firebase/firestore';
+import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Use long-polling transport for rock-solid stability inside preview iframes/proxies
-// combined with persistent multi-tab IndexedDB cache for instant stale-while-revalidate startup.
+// Use long-polling transport for rock-solid stability inside preview iframes and proxies
 let firestoreInstance;
 try {
-  firestoreInstance = initializeFirestore(
-    app,
-    {
-      experimentalForceLongPolling: true,
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    },
-    firebaseConfig.firestoreDatabaseId
-  );
+  firestoreInstance = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  }, firebaseConfig.firestoreDatabaseId);
 } catch {
   firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 }
@@ -41,14 +26,16 @@ export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
 export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test successful");
   } catch (error) {
     if (error instanceof Error) {
       if (error.message.includes('the client is offline')) {
-        console.warn('Firestore client is offline; using offline cache.');
+        console.warn("Firestore client is offline; using offline cache.");
       } else if (error.message.includes('unavailable')) {
-        console.warn('Firestore temporarily unreachable; connection will be retried automatically.');
+        console.warn("Firestore temporarily unreachable; connection will be retried automatically.");
       }
     }
   }
 }
 testConnection();
+

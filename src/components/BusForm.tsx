@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { X, Save, Bus as BusIcon, History, Calendar, MapPin, ArrowRight } from 'lucide-react';
 import type { Bus } from '../types';
-import { normalizeBusLocation } from '../lib/locationUtils';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface BusFormProps {
   bus?: Bus | null;

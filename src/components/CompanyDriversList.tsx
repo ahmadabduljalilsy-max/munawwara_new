@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -48,21 +48,14 @@ import {
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isDriverEndedInMonitoring, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama } from '../lib/driverUtils';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { useDebounce } from '../lib/useDebounce';
+import { CompanyDriverDetailsModal } from './CompanyDriverDetailsModal';
+import { DriverResponseLinkModal } from './DriverResponseLinkModal';
+import { DriverCardPrintModal } from './DriverCardPrintModal';
+import { downloadCompanyDriversTemplate, exportDriverResponsesToExcel } from '../lib/excelService';
 import { CompanyDriversSkeleton, useDelayedLoading } from './Skeleton';
 import { EmptyState } from './EmptyState';
 import { AnimatedNumber } from './AnimatedNumber';
 import { useToast } from './ToastContext';
-
-const LazyCompanyDriverDetailsModal = lazy(() =>
-  import('./CompanyDriverDetailsModal').then(m => ({ default: m.CompanyDriverDetailsModal }))
-);
-const LazyDriverResponseLinkModal = lazy(() =>
-  import('./DriverResponseLinkModal').then(m => ({ default: m.DriverResponseLinkModal }))
-);
-const LazyDriverCardPrintModal = lazy(() =>
-  import('./DriverCardPrintModal').then(m => ({ default: m.DriverCardPrintModal }))
-);
 
 interface CompanyDriversListProps {
   drivers: CompanyDriver[];
@@ -104,7 +97,6 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   const showSkeleton = useDelayedLoading(isLoading, 200);
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedNationality, setSelectedNationality] = useState<string>('');
@@ -265,48 +257,12 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
     return Array.from(new Set(drivers.map(d => d.nationality).filter(Boolean))).sort();
   }, [drivers]);
 
-  // Pre-index responses by driverId and driverSerialNumber for O(1) lookup per row
-  const responsesByDriver = useMemo(() => {
-    const byId = new Map<string, DriverResponse[]>();
-    const bySerial = new Map<number, DriverResponse[]>();
-    for (const r of driverResponses) {
-      if (r.driverId) {
-        const arr = byId.get(r.driverId);
-        if (arr) arr.push(r);
-        else byId.set(r.driverId, [r]);
-      }
-      if (r.driverSerialNumber) {
-        const arr = bySerial.get(r.driverSerialNumber);
-        if (arr) arr.push(r);
-        else bySerial.set(r.driverSerialNumber, [r]);
-      }
-    }
-    return { byId, bySerial };
-  }, [driverResponses]);
-
-  const getDriverResponses = React.useCallback((driver: CompanyDriver): DriverResponse[] => {
-    const fromId = driver.id ? responsesByDriver.byId.get(driver.id) : undefined;
-    const fromSerial = driver.serialNumber ? responsesByDriver.bySerial.get(driver.serialNumber) : undefined;
-    if (!fromId && !fromSerial) return [];
-    if (fromId && !fromSerial) return fromId;
-    if (!fromId && fromSerial) return fromSerial;
-    const seen = new Set<string>();
-    const combined: DriverResponse[] = [];
-    for (const r of [...(fromId || []), ...(fromSerial || [])]) {
-      if (!seen.has(r.id)) {
-        seen.add(r.id);
-        combined.push(r);
-      }
-    }
-    return combined;
-  }, [responsesByDriver]);
-
   // Filtered drivers
   const filteredDrivers = useMemo(() => {
-    const search = debouncedSearchTerm.trim().toLowerCase();
     return drivers.filter(driver => {
       const classification = getDriverClassification(driver, workers);
       const effectiveType = resolveDriverType(driver);
+      const search = searchTerm.trim().toLowerCase();
       const matchesSearch = !search || (
         (driver.fullName || '').toLowerCase().includes(search) ||
         (driver.nationality || '').toLowerCase().includes(search) ||
@@ -332,7 +288,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
       return matchesSearch && matchesType && matchesStatus && matchesNationality && matchesClassification;
     });
-  }, [drivers, workers, debouncedSearchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
+  }, [drivers, workers, searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification]);
 
   // Filtered stats for live driver count display
   const filteredStats = useMemo(() => {
@@ -430,7 +386,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
   // Reset page when filtering or sorting
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification, sortBy]);
+  }, [searchTerm, selectedType, selectedStatus, selectedNationality, selectedClassification, sortBy]);
 
   const totalPages = Math.ceil(sortedDrivers.length / itemsPerPage);
 
@@ -609,9 +565,8 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                   {isAdmin && (
                     <button
                       type="button"
-                      onClick={async () => {
+                      onClick={() => {
                         setIsMoreMenuOpen(false);
-                        const { downloadCompanyDriversTemplate } = await import('../lib/excelService');
                         downloadCompanyDriversTemplate();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
@@ -639,9 +594,8 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
 
                   <button
                     type="button"
-                    onClick={async () => {
+                    onClick={() => {
                       setIsMoreMenuOpen(false);
-                      const { exportDriverResponsesToExcel } = await import('../lib/excelService');
                       exportDriverResponsesToExcel(driverResponses, 'ردود_وحركات_السائقين.xlsx', drivers);
                     }}
                     className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-right cursor-pointer"
@@ -1231,7 +1185,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                     const isFinalExit = classification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
                     const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
                     const expiryInfo = getDriverExpiryInfo(driver);
-                    const driverRespList = getDriverResponses(driver);
+                    const driverRespList = driverResponses.filter(
+                      r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
+                    );
                     const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
                     const hasIqama = Boolean(driver.iqamaNumber && driver.iqamaNumber.trim());
                     const hasBorder = Boolean(driver.borderNumber && driver.borderNumber.trim());
@@ -1572,7 +1528,9 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                 const isFinalExit = classification === 'خروج نهائي' || driver.status === 'خروج نهائي' || driver.status === 'مستبعد';
                 const cleanPhone = cleanSaudiPhone(driver.mobileNumber);
                 const expiryInfo = getDriverExpiryInfo(driver);
-                const driverRespList = getDriverResponses(driver);
+                const driverRespList = driverResponses.filter(
+                  r => r.driverId === driver.id || (driver.serialNumber && r.driverSerialNumber === driver.serialNumber)
+                );
                 const latestResp = driverRespList.length > 0 ? driverRespList[0] : null;
                 const isSelected = selectedIds.includes(driver.id);
 
@@ -1588,6 +1546,7 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
                 return (
                   <motion.div
                     key={driver.id}
+                    layout
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.96 }}
@@ -2034,66 +1993,54 @@ export const CompanyDriversList: React.FC<CompanyDriversListProps> = ({
       />
 
       {/* Driver Details Modal - بطاقة السائق المتكاملة متضمنة خيارات نشط / في إجازة / مستبعد وتبويب ردود السائق */}
-      {activeDetailDriver && (
-        <Suspense fallback={null}>
-          <LazyCompanyDriverDetailsModal 
-            driver={activeDetailDriver}
-            workers={workers}
-            isOpen={!!activeDetailDriver}
-            isLoading={isLoading}
-            isAdmin={isAdmin}
-            onClose={() => setSelectedDriverForDetails(null)}
-            onEdit={onEdit}
-            onDelete={(d) => setDeleteModal({ 
-              isOpen: true, 
-              id: d.id, 
-              name: d.fullName, 
-              isAll: false 
-            })}
-            onStatusChange={onStatusChange}
-            driverResponses={driverResponses}
-            onAddResponse={(d) => {
-              if (onOpenDriverResponse) {
-                onOpenDriverResponse(d);
-              }
-            }}
-            onDeleteResponse={onDeleteDriverResponse}
-            onPrintCard={(d) => {
-              setCardModalInitialDriver(d);
-              setIsPrintCardModalOpen(true);
-            }}
-          />
-        </Suspense>
-      )}
+      <CompanyDriverDetailsModal 
+        driver={activeDetailDriver}
+        workers={workers}
+        isOpen={!!activeDetailDriver}
+        isLoading={isLoading}
+        isAdmin={isAdmin}
+        onClose={() => setSelectedDriverForDetails(null)}
+        onEdit={onEdit}
+        onDelete={(d) => setDeleteModal({ 
+          isOpen: true, 
+          id: d.id, 
+          name: d.fullName, 
+          isAll: false 
+        })}
+        onStatusChange={onStatusChange}
+        driverResponses={driverResponses}
+        onAddResponse={(d) => {
+          if (onOpenDriverResponse) {
+            onOpenDriverResponse(d);
+          }
+        }}
+        onDeleteResponse={onDeleteDriverResponse}
+        onPrintCard={(d) => {
+          setCardModalInitialDriver(d);
+          setIsPrintCardModalOpen(true);
+        }}
+      />
 
       {/* Driver Response Link & Google Sheets Integration Modal */}
-      {isResponseLinkModalOpen && (
-        <Suspense fallback={null}>
-          <LazyDriverResponseLinkModal 
-            isOpen={isResponseLinkModalOpen}
-            onClose={() => setIsResponseLinkModalOpen(false)}
-            driverResponses={driverResponses}
-            drivers={drivers}
-            onOpenPublicPageDirectly={onOpenPublicResponsePage}
-          />
-        </Suspense>
-      )}
+      <DriverResponseLinkModal 
+        isOpen={isResponseLinkModalOpen}
+        onClose={() => setIsResponseLinkModalOpen(false)}
+        driverResponses={driverResponses}
+        drivers={drivers}
+        onOpenPublicPageDirectly={onOpenPublicResponsePage}
+      />
 
       {/* Driver Card Print Modal (Single or 6 Cards Batch with QR & Barcode) */}
-      {isPrintCardModalOpen && (
-        <Suspense fallback={null}>
-          <LazyDriverCardPrintModal 
-            isOpen={isPrintCardModalOpen}
-            onClose={() => {
-              setIsPrintCardModalOpen(false);
-              setCardModalInitialDriver(null);
-            }}
-            drivers={drivers}
-            workers={workers}
-            initialSelectedDriver={cardModalInitialDriver}
-          />
-        </Suspense>
-      )}
+      <DriverCardPrintModal 
+        isOpen={isPrintCardModalOpen}
+        onClose={() => {
+          setIsPrintCardModalOpen(false);
+          setCardModalInitialDriver(null);
+        }}
+        drivers={drivers}
+        workers={workers}
+        initialSelectedDriver={cardModalInitialDriver}
+      />
     </div>
   );
 };

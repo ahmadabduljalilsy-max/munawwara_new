@@ -103,7 +103,7 @@ export const AuthPage: React.FC = () => {
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <div className="bg-white p-1 rounded-md shadow-2xs">
-                <img src="https://www.google.com/favicon.ico" alt="Google" loading="lazy" decoding="async" className="w-4 h-4" />
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4" />
               </div>
             )}
             <span>

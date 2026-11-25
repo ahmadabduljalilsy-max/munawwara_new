@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { CompanyDriver, DriverType, DriverStatus, DriverClassification, Bus as BusType, Worker } from '../types';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker, isSchoolTransportLocation } from '../lib/driverUtils';
-import { normalizeBusLocation } from '../lib/locationUtils';
+import { normalizeBusLocation } from '../lib/excelService';
 import { Activity, UserX, Clock, Calendar, AlertTriangle } from 'lucide-react';
 
 interface CompanyDriverFormModalProps {

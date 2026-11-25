@@ -57,7 +57,7 @@ import {
   LabelList
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, DriverResponse, CompanyDriver } from '../types';
-import { normalizeBusLocation } from '../lib/locationUtils';
+import { exportDashboardStatsToExcel, exportLocationModelStatsToExcel, normalizeBusLocation } from '../lib/excelService';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, isWorkerActiveInMonitoring, isDriverEndedInMonitoring } from '../lib/driverUtils';
 import { DmtcLogo } from './DmtcLogo';
 import { DashboardSkeleton, useDelayedLoading } from './Skeleton';
@@ -152,14 +152,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []);
 
-  const handleExportExcel = async () => {
-    const { exportDashboardStatsToExcel } = await import('../lib/excelService');
+  const handleExportExcel = () => {
     exportDashboardStatsToExcel(buses, workers);
     setIsExportModalOpen(false);
   };
 
-  const handleExportLocationModels = async (locFilter: string = 'all') => {
-    const { exportLocationModelStatsToExcel } = await import('../lib/excelService');
+  const handleExportLocationModels = (locFilter: string = 'all') => {
     exportLocationModelStatsToExcel(buses, workers, locFilter);
   };
 
@@ -1532,11 +1530,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Progress Bar */}
                     <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-border/40">
                       <motion.div 
-                        initial={{ scaleX: 0 }}
-                        animate={{ scaleX: 1 }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.percentage}%` }}
                         transition={{ duration: 0.6, delay: idx * 0.05 }}
                         className="h-full rounded-full"
-                        style={{ width: `${item.percentage}%`, transformOrigin: 'right', backgroundColor: itemColor }}
+                        style={{ backgroundColor: itemColor }}
                       />
                     </div>
                   </div>
@@ -1959,11 +1957,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Progress bar */}
                     <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2">
                       <motion.div 
-                        initial={{ scaleX: 0 }}
-                        animate={{ scaleX: 1 }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.percentage}%` }}
                         transition={{ duration: 0.5, ease: 'easeOut' }}
                         className="h-full rounded-full" 
-                        style={{ width: `${item.percentage}%`, transformOrigin: 'right', backgroundColor: item.color }} 
+                        style={{ backgroundColor: item.color }} 
                       />
                     </div>
 
@@ -2539,10 +2537,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                            <motion.div 
-                             initial={{ scaleX: 0 }}
-                             animate={{ scaleX: 1 }}
+                             initial={{ width: 0 }}
+                             animate={{ width: `${percentage}%` }}
                              className="h-full rounded-full"
-                             style={{ width: `${percentage}%`, transformOrigin: 'right', backgroundColor: COLORS[idx % COLORS.length] }}
+                             style={{ backgroundColor: COLORS[idx % COLORS.length] }}
                            />
                         </div>
                      </div>

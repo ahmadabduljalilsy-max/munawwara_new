@@ -43,7 +43,7 @@ import {
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { CompanyDriver, DriverType, DriverStatus, DriverResponse, DriverResponseType, Worker } from '../types';
-import { copyDriverResponsesToGoogleSheetsClipboard } from '../lib/locationUtils';
+import { copyDriverResponsesToGoogleSheetsClipboard, exportDriverResponsesToExcel } from '../lib/excelService';
 import { resolveDriverType, getDriverClassification, isDriverActiveInMonitoring, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama } from '../lib/driverUtils';
 import { DriverDetailsSkeleton, useDelayedLoading } from './Skeleton';
 import { EmptyState } from './EmptyState';
@@ -1113,10 +1113,7 @@ export const CompanyDriverDetailsModal: React.FC<CompanyDriverDetailsModalProps>
                         </button>
                         <button
                           type="button"
-                          onClick={async () => {
-                            const { exportDriverResponsesToExcel } = await import('../lib/excelService');
-                            exportDriverResponsesToExcel(myResponses, `ردود_السائق_${driver.fullName.replace(/\s+/g, '_')}.xlsx`, [driver]);
-                          }}
+                          onClick={() => exportDriverResponsesToExcel(myResponses, `ردود_السائق_${driver.fullName.replace(/\s+/g, '_')}.xlsx`, [driver])}
                           className="p-1.5 bg-surface border border-border hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-text-muted hover:text-slate-900 transition-colors cursor-pointer"
                           title="تصدير ردود هذا السائق إلى ملف Excel"
                         >

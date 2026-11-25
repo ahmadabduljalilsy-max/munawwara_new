@@ -3,47 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
-import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { LogoProvider, useLogo } from './lib/LogoContext';
+import { AuthPage } from './components/AuthPage';
 import { Layout } from './components/Layout';
+import { Dashboard } from './components/Dashboard';
+import { FleetList } from './components/FleetList';
+import { AdminPanel } from './components/AdminPanel';
+import { BusForm } from './components/BusForm';
+import { ReportTemplate } from './components/ReportTemplates';
+import { WorkerList } from './components/WorkerList';
+import { WorkerForm } from './components/WorkerForm';
+import { SalaryList } from './components/SalaryList';
+import { CompanyDriversList } from './components/CompanyDriversList';
+import { CompanyDriverFormModal } from './components/CompanyDriverFormModal';
+import { DriverResponseModal } from './components/DriverResponseModal';
+import { PublicDriverResponsePage } from './components/PublicDriverResponsePage';
+import { WelcomeAnnouncementModal } from './components/WelcomeAnnouncementModal';
+import { WorkLocationsDashboard } from './components/WorkLocationsDashboard';
+import { AdministrativeReports } from './components/AdministrativeReports';
 import { ToastProvider, useToast } from './components/ToastContext';
 import { AnimatePresence, motion } from 'motion/react';
-import { db, testConnection } from './lib/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, setDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { db, auth, testConnection } from './lib/firebase';
+import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, setDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
-import {
-  queryClient,
-  queryKeys,
-  useVisibilityPausedBusStream,
-  fetchWorkersList,
-  fetchWorkersFull,
-  fetchWorkerDetails,
-  fetchSalariesList,
-  fetchCompanyDriversList,
-  fetchDriverResponsesList
-} from './lib/firestoreQueries';
-import {
-  LazyAuthPage,
-  LazyDashboard,
-  LazyFleetList,
-  LazyAdminPanel,
-  LazyBusForm,
-  LazyReportTemplate,
-  LazyWorkerList,
-  LazyWorkerForm,
-  LazySalaryList,
-  LazyCompanyDriversList,
-  LazyCompanyDriverFormModal,
-  LazyDriverResponseModal,
-  LazyPublicDriverResponsePage,
-  LazyWelcomeAnnouncementModal,
-  LazyWorkLocationsDashboard,
-  LazyAdministrativeReports
-} from './lib/lazyPages';
+import { parseExcel, parseWorkersExcel, exportToExcel, exportWorkersToExcel, exportSalariesToExcel, exportCompanyDriversToExcel, parseCompanyDriversExcel } from './lib/excelService';
 import { getGoogleSheetSettings, syncResponseToGoogleSheet } from './lib/googleSheetService';
-import { getDriverClassification, getMatchingWorkerByIqama, isSchoolTransportLocation } from './lib/driverUtils';
+import { generatePdf } from './lib/pdfService';
+import { isDriverActiveInMonitoring, isDriverEndedInMonitoring, getDriverClassification, getMatchingActiveMonitoringWorker, getMatchingWorkerByIqama, isSchoolTransportLocation } from './lib/driverUtils';
 import type { Bus, Worker, SalaryRecord, CompanyDriver, DriverStatus, DriverResponse } from './types';
 
 function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: () => void }) {
@@ -52,6 +40,14 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   const { showToast } = useToast();
   const loading = authLoading || logoLoading;
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [buses, setBuses] = useState<Bus[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
+  const [companyDrivers, setCompanyDrivers] = useState<CompanyDriver[]>([]);
+  const [driverResponses, setDriverResponses] = useState<DriverResponse[]>([]);
+  const [busesLoaded, setBusesLoaded] = useState(false);
+  const [workersLoaded, setWorkersLoaded] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(false);
   const [pendingDeletedDriverIds, setPendingDeletedDriverIds] = useState<string[]>([]);
   const [isDriverResponseModalOpen, setIsDriverResponseModalOpen] = useState(false);
   const [prefilledResponseDriver, setPrefilledResponseDriver] = useState<CompanyDriver | null>(null);
@@ -64,8 +60,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   const [reportConfig, setReportConfig] = useState<{title: string, buses?: Bus[], workers?: Worker[], salaries?: SalaryRecord[], stats: any}|null>(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [selectedLocationForView, setSelectedLocationForView] = useState<string | null>(null);
-  const connectionTestedRef = useRef(false);
-  const backfilledDriversRef = useRef(false);
 
   // Check if current URL is targeting the public driver response page (no auth required)
   const [isPublicResponsePage, setIsPublicResponsePage] = useState(() => {
@@ -107,7 +101,110 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     return () => window.removeEventListener('popstate', handleUrlActions);
   }, []);
 
-  const isAuthenticatedApproved = Boolean(user && profile?.approved);
+  useEffect(() => {
+    if (user && profile?.approved) {
+      // Test connection once
+      testConnection().catch(e => console.error("Initial connection test failed", e));
+
+      const pathBuses = 'buses';
+      const qBuses = query(collection(db, pathBuses));
+      const unsubBuses = onSnapshot(qBuses, (snapshot) => {
+        const fleet = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bus));
+        setBuses(fleet);
+        setBusesLoaded(true);
+      }, (error) => {
+        setBusesLoaded(true);
+        handleFirestoreError(error, OperationType.GET, pathBuses);
+      });
+
+      const pathWorkers = 'workers';
+      const qWorkers = query(collection(db, pathWorkers));
+      const unsubWorkers = onSnapshot(qWorkers, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Worker));
+        setWorkers(list);
+        setWorkersLoaded(true);
+      }, (error) => {
+        setWorkersLoaded(true);
+        handleFirestoreError(error, OperationType.GET, pathWorkers);
+      });
+
+      let unsubSalaries = () => {};
+      const isPrivileged = profile?.role === 'admin';
+      if (isPrivileged) {
+        const pathSalaries = 'salaries';
+        const qSalaries = query(collection(db, pathSalaries));
+        unsubSalaries = onSnapshot(qSalaries, (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalaryRecord));
+          setSalaries(list);
+        }, (error) => handleFirestoreError(error, OperationType.GET, pathSalaries));
+      }
+
+      let unsubCompanyDrivers = () => {};
+      const isAdminUser = profile?.role === 'admin';
+      if (isAdminUser) {
+        const pathCompanyDrivers = 'company_drivers';
+        const qCompanyDrivers = query(collection(db, pathCompanyDrivers));
+        unsubCompanyDrivers = onSnapshot(qCompanyDrivers, async (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CompanyDriver));
+          
+          // Guarantee unique sequential serial numbers starting from 1 with no repeats
+          const missingSerial = list.filter(d => !d.serialNumber || isNaN(Number(d.serialNumber)) || Number(d.serialNumber) <= 0);
+          if (missingSerial.length > 0) {
+            const assignedNumbers = list
+              .filter(d => d.serialNumber && !isNaN(Number(d.serialNumber)) && Number(d.serialNumber) > 0)
+              .map(d => Number(d.serialNumber));
+            let nextNum = assignedNumbers.length > 0 ? Math.max(...assignedNumbers) + 1 : 1;
+
+            try {
+              const batch = writeBatch(db);
+              for (const driver of missingSerial) {
+                batch.update(doc(db, 'company_drivers', driver.id), {
+                  serialNumber: nextNum++,
+                  updatedAt: serverTimestamp()
+                });
+              }
+              await batch.commit();
+            } catch (err) {
+              console.error('Error backfilling serial numbers:', err);
+            }
+          }
+
+          list.sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0));
+          setCompanyDrivers(list);
+          setDriversLoaded(true);
+        }, (error) => {
+          setDriversLoaded(true);
+          handleFirestoreError(error, OperationType.GET, pathCompanyDrivers);
+        });
+      } else {
+        setDriversLoaded(true);
+      }
+
+      // Realtime listener for driver responses
+      let unsubDriverResponses = () => {};
+      const pathResponses = 'driver_responses';
+      const qResponses = query(collection(db, pathResponses));
+      unsubDriverResponses = onSnapshot(qResponses, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DriverResponse));
+        // Sort newest responses first
+        list.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || a.createdDate || 0).getTime();
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || b.createdDate || 0).getTime();
+          return timeB - timeA;
+        });
+        setDriverResponses(list);
+      }, (error) => handleFirestoreError(error, OperationType.GET, pathResponses));
+
+      return () => {
+        unsubBuses();
+        unsubWorkers();
+        unsubSalaries();
+        unsubCompanyDrivers();
+        unsubDriverResponses();
+      };
+    }
+  }, [user, profile]);
+
   const isSuperAdmin = profile?.role === 'admin';
   const isBusSupervisor = profile?.role === 'bus_supervisor' || profile?.role === 'inspector' || profile?.role === 'supervisor' || profile?.role === 'operator';
   const isReadOnly = profile?.role === 'readonly';
@@ -115,75 +212,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
   // Only super admin has edit privileges (adding, editing, deleting, importing)
   // Readonly users are strictly prevented from any edits or changes
   const canEdit = isSuperAdmin;
-
-  useEffect(() => {
-    if (isAuthenticatedApproved && !connectionTestedRef.current) {
-      connectionTestedRef.current = true;
-      testConnection().catch(e => console.error("Initial connection test failed", e));
-    }
-  }, [isAuthenticatedApproved]);
-
-  // Live onSnapshot ONLY for `buses` with visibility pause/resume & 1.5s batched updates
-  const { buses, busesLoaded } = useVisibilityPausedBusStream(isAuthenticatedApproved);
-
-  // Workers via React Query + Firestore persistent cache (bounded cursor fetches + lightweight projection)
-  const { data: workers = [], isFetched: workersLoaded } = useQuery({
-    queryKey: queryKeys.workers,
-    queryFn: fetchWorkersList,
-    enabled: isAuthenticatedApproved
-  });
-
-  // Salaries fetched only when accessing Salaries or Monitoring (where renumbering/linking needs salaries)
-  const { data: salaries = [] } = useQuery({
-    queryKey: queryKeys.salaries,
-    queryFn: fetchSalariesList,
-    enabled: isAuthenticatedApproved && isSuperAdmin && (activeTab === 'salaries' || activeTab === 'monitoring')
-  });
-
-  // Company Drivers fetched via React Query for super admins
-  const { data: companyDrivers = [], isFetched: driversFetched } = useQuery({
-    queryKey: queryKeys.companyDrivers,
-    queryFn: async () => {
-      const list = await fetchCompanyDriversList();
-      if (!backfilledDriversRef.current) {
-        const missingSerial = list.filter(d => !d.serialNumber || isNaN(Number(d.serialNumber)) || Number(d.serialNumber) <= 0);
-        if (missingSerial.length > 0) {
-          backfilledDriversRef.current = true;
-          const assignedNumbers = list
-            .filter(d => d.serialNumber && !isNaN(Number(d.serialNumber)) && Number(d.serialNumber) > 0)
-            .map(d => Number(d.serialNumber));
-          let nextNum = assignedNumbers.length > 0 ? Math.max(...assignedNumbers) + 1 : 1;
-
-          try {
-            const batch = writeBatch(db);
-            for (const driver of missingSerial) {
-              driver.serialNumber = nextNum;
-              batch.update(doc(db, 'company_drivers', driver.id), {
-                serialNumber: nextNum++,
-                updatedAt: serverTimestamp()
-              });
-            }
-            await batch.commit();
-            list.sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0));
-          } catch (err) {
-            console.error('Error backfilling serial numbers:', err);
-          }
-        } else {
-          backfilledDriversRef.current = true;
-        }
-      }
-      return list;
-    },
-    enabled: isAuthenticatedApproved && isSuperAdmin
-  });
-  const driversLoaded = !isSuperAdmin || driversFetched;
-
-  // Driver Responses fetched via React Query
-  const { data: driverResponses = [] } = useQuery({
-    queryKey: queryKeys.driverResponses,
-    queryFn: fetchDriverResponsesList,
-    enabled: isAuthenticatedApproved
-  });
 
   // Protect tabs based on user role:
   // 1. Bus Supervisor: restricted ONLY to Dashboard (الصفحة الرئيسية فقط)
@@ -248,13 +276,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       staleDrivers.slice(0, 100).forEach(item => {
         batch.update(doc(db, 'company_drivers', item.id), item.data);
       });
-      batch.commit()
-        .then(() => {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
-        })
-        .catch(err => {
-          console.warn('Auto-sync drivers with monitoring notice:', err);
-        });
+      batch.commit().catch(err => {
+        console.warn('Auto-sync drivers with monitoring notice:', err);
+      });
     }
   }, [companyDrivers, workers, canEdit]);
 
@@ -291,32 +315,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     return list.slice(0, 10);
   }, [workers]);
 
-  const handleOpenDriverResponse = useCallback((driver?: CompanyDriver) => {
-    setPrefilledResponseDriver(driver || null);
-    setIsDriverResponseModalOpen(true);
-  }, []);
-
-  const handleOpenEditWorker = useCallback((w: Worker) => {
-    setEditingWorker(w);
-    setIsWorkerFormOpen(true);
-    void queryClient.fetchQuery({
-      queryKey: queryKeys.workerDetail(w.id),
-      queryFn: () => fetchWorkerDetails(w.id),
-      staleTime: 30_000
-    }).then((full) => {
-      if (full) {
-        setEditingWorker(prev => (prev && prev.id === w.id ? full : prev));
-      }
-    });
-  }, []);
-
   // Public standalone driver response portal (no authentication required)
   if (isPublicResponsePage) {
-    return (
-      <Suspense fallback={null}>
-        <LazyPublicDriverResponsePage />
-      </Suspense>
-    );
+    return <PublicDriverResponsePage />;
   }
 
   if (loading) return (
@@ -337,13 +338,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       </div>
     </div>
   );
-  if (!user || !profile?.approved) {
-    return (
-      <Suspense fallback={null}>
-        <LazyAuthPage />
-      </Suspense>
-    );
-  }
+  if (!user || !profile?.approved) return <AuthPage />;
 
   const handleSaveBus = async (data: Partial<Bus>) => {
     try {
@@ -510,10 +505,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
         // If the worker number changed, update all corresponding salary records
         if (targetWorkerRecord && targetWorkerRecord.workerNumber !== cleaned.workerNumber) {
-          const allSalaries = salaries.length > 0
-            ? salaries
-            : await queryClient.fetchQuery({ queryKey: queryKeys.salaries, queryFn: fetchSalariesList });
-          const assocSalaries = allSalaries.filter(s => s.workerId === activeWorkerId);
+          const assocSalaries = salaries.filter(s => s.workerId === activeWorkerId);
           assocSalaries.forEach(salary => {
             batch.update(doc(db, 'salaries', salary.id), {
               workerNumber: cleaned.workerNumber,
@@ -586,17 +578,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       });
 
       await batch.commit();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workers });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workersFull });
-      if (activeWorkerId) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.workerDetail(activeWorkerId) });
-      }
-      if (matchedCompanyDrivers.length > 0) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
-      }
-      if (targetWorkerRecord && targetWorkerRecord.workerNumber !== cleaned.workerNumber) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.salaries });
-      }
       setIsWorkerFormOpen(false);
       setEditingWorker(null);
     } catch (error) {
@@ -612,7 +593,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         updatedAt: serverTimestamp(),
         createdBy: user?.uid
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.salaries });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'salaries');
     }
@@ -624,7 +604,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         ...updates,
         updatedAt: serverTimestamp()
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.salaries });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `salaries/${id}`);
     }
@@ -678,12 +657,18 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       }
 
       await batch.commit();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workers });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workersFull });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
       alert('تم حذف بيانات العامل بنجاح وتحديث تصنيف السائق المرتبط إلى عمرة.');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `workers/${id}`);
+    }
+  };
+
+  const handleDeleteContract = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'contracts', id));
+      alert('تم حذف العقد بنجاح.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `contracts/${id}`);
     }
   };
 
@@ -717,8 +702,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         batch.delete(doc(db, 'workers', worker.id));
       });
       await batch.commit();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workers });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workersFull });
       alert('تم حذف جميع بيانات العمال بنجاح.');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'workers');
@@ -737,10 +720,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     if (!confirmRenumber) return;
 
     try {
-      const allSalaries = salaries.length > 0
-        ? salaries
-        : await queryClient.fetchQuery({ queryKey: queryKeys.salaries, queryFn: fetchSalariesList });
-
       // Sort workers to preserve order as much as possible (numerical sorting first, name fallback)
       const sortedWorkers = [...workers].sort((a, b) => {
         const numA = parseInt(a.workerNumber, 10);
@@ -773,7 +752,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         });
 
         // Find and update all associated salary records in Firestore to match
-        const assocSalaries = allSalaries.filter(s => s.workerId === worker.id);
+        const assocSalaries = salaries.filter(s => s.workerId === worker.id);
         assocSalaries.forEach(salary => {
           updates.push({
             ref: doc(db, 'salaries', salary.id),
@@ -798,9 +777,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           }
           await chunkBatch.commit();
         }
-        void queryClient.invalidateQueries({ queryKey: queryKeys.workers });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.workersFull });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.salaries });
         alert(`تمت إعادة ترقيم العمال بنجاح وتحديث كافة سجلات الرواتب التابعة لهم. (تم تحديث إجمالي ${updates.length} مستنداً)`);
       } else {
         alert('جميع العمال مرتبون تسلسلياً بالفعل، لا توجد تغييرات مطلوبة.');
@@ -815,7 +791,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { parseExcel } = await import('./lib/excelService');
       const data = await parseExcel(file);
       let added = 0;
       let updated = 0;
@@ -864,7 +839,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { parseWorkersExcel } = await import('./lib/excelService');
       const data = await parseWorkersExcel(file);
       let added = 0;
       let updated = 0;
@@ -951,8 +925,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         await batch.commit();
       }
       
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workers });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workersFull });
       alert(`تمت العملية بنجاح: إضافة ${added} عامل جديد وتحديث ${updated} عامل موجود`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'workers');
@@ -1076,8 +1048,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           }
         }
 
-        void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
-
         showToast({
           message: 'تم تحديث بيانات السائق',
           onUndo: async () => {
@@ -1092,7 +1062,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
                 updatedAt: serverTimestamp()
               });
             }
-            void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
           }
         });
       } else {
@@ -1114,13 +1083,11 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           updatedAt: serverTimestamp(),
           createdBy: user.uid
         });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
 
         showToast({
           message: 'تم تحديث بيانات السائق',
           onUndo: async () => {
             await deleteDoc(doc(db, 'company_drivers', createdRef.id));
-            void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
           }
         });
       }
@@ -1216,7 +1183,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           }
           await chunkBatch.commit();
         }
-        void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
         alert(`تمت مزامنة وتحديث بيانات السائقين بنجاح!
 • إجمالي السائقين المحدثين: ${updatedCount} سائق
 • تصنيف العمرة (منتهي عمله بالرقابة / عمرة): ${umrahCount}
@@ -1246,7 +1212,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         updatedAt: serverTimestamp(),
         createdBy: user?.uid
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.driverResponses });
 
       // Background sync to Google Sheet if configured
       getGoogleSheetSettings().then(settings => {
@@ -1280,10 +1245,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
     try {
       await deleteDoc(doc(db, 'driver_responses', cleanId));
-      queryClient.setQueryData<DriverResponse[]>(
-        queryKeys.driverResponses,
-        (prev) => (prev || []).filter(r => r.id !== cleanId)
-      );
+      setDriverResponses(prev => prev.filter(r => r.id !== cleanId));
 
       showToast({
         message: 'تم حذف الرد',
@@ -1291,10 +1253,9 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
           ? async () => {
               const { id: _ignored, ...rest } = deletedResponse;
               await setDoc(doc(db, 'driver_responses', cleanId), cleanData(rest));
-              queryClient.setQueryData<DriverResponse[]>(queryKeys.driverResponses, (prev) => {
-                const list = prev || [];
-                if (list.some(r => r.id === cleanId)) return list;
-                const next = [deletedResponse, ...list];
+              setDriverResponses(prev => {
+                if (prev.some(r => r.id === cleanId)) return prev;
+                const next = [deletedResponse, ...prev];
                 next.sort((a, b) => {
                   const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || a.createdDate || 0).getTime();
                   const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || b.createdDate || 0).getTime();
@@ -1346,7 +1307,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         updateData.finalExitDate = new Date().toISOString();
       }
       await updateDoc(doc(db, 'company_drivers', id), updateData);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
 
       showToast({
         message: 'تم حفظ الحالة',
@@ -1355,7 +1315,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
             ...previousSnapshot,
             updatedAt: serverTimestamp()
           });
-          void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
         }
       });
     } catch (error) {
@@ -1379,7 +1338,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
       onExpire: async () => {
         try {
           await deleteDoc(doc(db, 'company_drivers', id));
-          void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
         } catch (error) {
           setPendingDeletedDriverIds(prev => prev.filter(x => x !== id));
           showToast({
@@ -1387,7 +1345,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
             variant: 'error',
             onRetry: async () => {
               await deleteDoc(doc(db, 'company_drivers', id));
-              void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
             }
           });
           handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
@@ -1409,7 +1366,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         }
         await batch.commit();
       }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'company_drivers');
     }
@@ -1419,7 +1375,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { parseCompanyDriversExcel } = await import('./lib/excelService');
       const data = await parseCompanyDriversExcel(file, workers);
       let added = 0;
       let updated = 0;
@@ -1483,7 +1438,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
         await batch.commit();
       }
 
-      void queryClient.invalidateQueries({ queryKey: queryKeys.companyDrivers });
       alert(`تم استيراد سائقي الشركة بنجاح: إضافة ${added} سائق جديد وتحديث ${updated} سائق موجود.`);
       e.target.value = '';
     } catch (error) {
@@ -1511,22 +1465,13 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
     // Wait for state to reflect in hidden element
     setTimeout(async () => {
-      const { generatePdf } = await import('./lib/pdfService');
       await generatePdf('pdf-report', `${title}.pdf`);
     }, 500);
   };
 
   const handleGenerateWorkerPdf = async (title: string, data: Worker[]) => {
-    const fullWorkers = await queryClient.fetchQuery({
-      queryKey: queryKeys.workersFull,
-      queryFn: fetchWorkersFull,
-      staleTime: 60_000
-    });
-    const fullMap = new Map<string, Worker>(fullWorkers.map(w => [w.id, w]));
-    const hydratedData = data.map(w => fullMap.get(w.id) || w);
-
     const today = new Date().toISOString().split('T')[0];
-    const activeData = hydratedData.filter(w => !w.endDate || w.endDate >= today);
+    const activeData = data.filter(w => !w.endDate || w.endDate >= today);
     
     const clientCounts = activeData.reduce((acc: any, w) => {
       acc[w.clientName] = (acc[w.clientName] || 0) + 1;
@@ -1535,7 +1480,7 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
 
     setReportConfig({
       title,
-      workers: hydratedData, // Keep all hydrated data for the list
+      workers: data, // Keep all data for the list
       stats: {
         'إجمالي العمال (النشطين)': activeData.length,
         'عدد العملاء النشطين': Object.keys(clientCounts).length,
@@ -1545,7 +1490,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     });
 
     setTimeout(async () => {
-      const { generatePdf } = await import('./lib/pdfService');
       await generatePdf('pdf-report', `${title}.pdf`);
     }, 500);
   };
@@ -1558,7 +1502,6 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
     });
 
     setTimeout(async () => {
-      const { generatePdf } = await import('./lib/pdfService');
       await generatePdf('pdf-report', `${config.title}.pdf`);
     }, 500);
   };
@@ -1574,207 +1517,187 @@ function AppContent({ onOpenPublicResponsePage }: { onOpenPublicResponsePage?: (
            transition={{ duration: 0.2, ease: "easeInOut" }}
            className="w-full h-full"
         >
-          <Suspense fallback={null}>
-            {activeTab === 'dashboard' && (
-              <LazyDashboard 
-                buses={buses} 
-                workers={workers} 
-                profile={profile} 
-                workersCount={activeWorkersCount}
-                driverResponses={driverResponses}
-                companyDrivers={visibleCompanyDrivers}
-                isLoading={!busesLoaded || !workersLoaded}
-                onOpenResponsePage={onOpenPublicResponsePage}
-                onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
-                onNavigateToDrivers={() => setActiveTab('drivers')}
-                onNavigateToFleet={() => setActiveTab('fleet')}
-                onNavigateToReports={isSuperAdmin ? () => setActiveTab('reports') : undefined}
-                onNavigateToLocations={() => { setSelectedLocationForView(null); setActiveTab('locations'); }}
-                onNavigateToLocation={(locName) => { setSelectedLocationForView(locName); setActiveTab('locations'); }}
-              />
-            )}
-            {activeTab === 'locations' && (
-              <LazyWorkLocationsDashboard
-                buses={buses}
-                workers={workers}
-                companyDrivers={visibleCompanyDrivers}
-                isAdmin={isSuperAdmin}
-                canEdit={canEdit}
-                initialSelectedLocation={selectedLocationForView}
-                onClearInitialLocation={() => setSelectedLocationForView(null)}
-                onAddBus={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
-                onEditBus={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
-                onNavigateToFleet={() => setActiveTab('fleet')}
-                onNavigateToDrivers={() => setActiveTab('drivers')}
-              />
-            )}
-            {activeTab === 'fleet' && (
-              <LazyFleetList 
-                buses={buses} 
-                isAdmin={isSuperAdmin} 
-                isSystemAdmin={isSuperAdmin}
-                canEdit={canEdit}
-                onAdd={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
-                onEdit={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
-                onDelete={isSuperAdmin ? handleDeleteBus : undefined}
-                onDeleteAll={isSuperAdmin ? handleDeleteAllBuses : undefined}
-                onImport={canEdit ? handleImportExcel : undefined}
-                onExport={async (data) => {
-                  const { exportToExcel } = await import('./lib/excelService');
-                  await exportToExcel(data);
-                }}
-                onGenerateFullPdf={(data) => handleGeneratePdf('تقرير أسطول الحافلات الشامل', data)}
-                onGenerateFilteredPdf={(filtered) => handleGeneratePdf('تقرير أسطول الحافلات (بناءً على الفلترة)', filtered)}
-                onGenerateBusPdf={(bus) => handleGeneratePdf(`تقرير تفصيلي للحافلة - ${bus.operationalNumber}`, [bus])}
-              />
-            )}
-            {activeTab === 'salaries' && canEdit && (
-              <LazySalaryList 
-                workers={workers}
-                salaries={salaries}
-                isAdmin={isSuperAdmin}
-                onSaveSalary={handleSaveSalary}
-                onUpdateSalary={handleUpdateSalary}
-                onExportExcel={async (data) => {
-                  const { exportSalariesToExcel } = await import('./lib/excelService');
-                  await exportSalariesToExcel(data);
-                }}
-                onGeneratePDF={handleGenerateSalaryPdf}
-              />
-            )}
-            {activeTab === 'admin' && isSuperAdmin && <LazyAdminPanel />}
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+              buses={buses} 
+              workers={workers} 
+              profile={profile} 
+              workersCount={activeWorkersCount}
+              driverResponses={driverResponses}
+              companyDrivers={visibleCompanyDrivers}
+              isLoading={!busesLoaded || !workersLoaded}
+              onOpenResponsePage={onOpenPublicResponsePage}
+              onOpenAnnouncement={() => setIsAnnouncementModalOpen(true)}
+              onNavigateToDrivers={() => setActiveTab('drivers')}
+              onNavigateToFleet={() => setActiveTab('fleet')}
+              onNavigateToReports={isSuperAdmin ? () => setActiveTab('reports') : undefined}
+              onNavigateToLocations={() => { setSelectedLocationForView(null); setActiveTab('locations'); }}
+              onNavigateToLocation={(locName) => { setSelectedLocationForView(locName); setActiveTab('locations'); }}
+            />
+          )}
+          {activeTab === 'locations' && (
+            <WorkLocationsDashboard
+              buses={buses}
+              workers={workers}
+              companyDrivers={visibleCompanyDrivers}
+              isAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              initialSelectedLocation={selectedLocationForView}
+              onClearInitialLocation={() => setSelectedLocationForView(null)}
+              onAddBus={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
+              onEditBus={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
+              onNavigateToFleet={() => setActiveTab('fleet')}
+              onNavigateToDrivers={() => setActiveTab('drivers')}
+            />
+          )}
+          {activeTab === 'fleet' && (
+            <FleetList 
+              buses={buses} 
+              isAdmin={isSuperAdmin} 
+              isSystemAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              onAdd={canEdit ? () => { setEditingBus(null); setIsFormOpen(true); } : undefined}
+              onEdit={canEdit ? (bus) => { setEditingBus(bus); setIsFormOpen(true); } : undefined}
+              onDelete={isSuperAdmin ? handleDeleteBus : undefined}
+              onDeleteAll={isSuperAdmin ? handleDeleteAllBuses : undefined}
+              onImport={canEdit ? handleImportExcel : undefined}
+              onExport={(data) => exportToExcel(data)}
+              onGenerateFullPdf={(data) => handleGeneratePdf('تقرير أسطول الحافلات الشامل', data)}
+              onGenerateFilteredPdf={(filtered) => handleGeneratePdf('تقرير أسطول الحافلات (بناءً على الفلترة)', filtered)}
+              onGenerateBusPdf={(bus) => handleGeneratePdf(`تقرير تفصيلي للحافلة - ${bus.operationalNumber}`, [bus])}
+            />
+          )}
+          {activeTab === 'salaries' && canEdit && (
+            <SalaryList 
+              workers={workers}
+              salaries={salaries}
+              isAdmin={isSuperAdmin}
+              onSaveSalary={handleSaveSalary}
+              onUpdateSalary={handleUpdateSalary}
+              onExportExcel={(data) => exportSalariesToExcel(data)}
+              onGeneratePDF={handleGenerateSalaryPdf}
+            />
+          )}
+          {activeTab === 'admin' && isSuperAdmin && <AdminPanel />}
 
-            {activeTab === 'reports' && isSuperAdmin && (
-              <LazyAdministrativeReports 
-                buses={buses}
-                companyDrivers={visibleCompanyDrivers}
-                workers={workers}
-                driverResponses={driverResponses}
-                profile={profile}
-                isAdmin={isSuperAdmin}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-              />
-            )}
+          {activeTab === 'reports' && isSuperAdmin && (
+            <AdministrativeReports 
+              buses={buses}
+              companyDrivers={visibleCompanyDrivers}
+              workers={workers}
+              driverResponses={driverResponses}
+              profile={profile}
+              isAdmin={isSuperAdmin}
+              onNavigateToTab={(tab) => setActiveTab(tab)}
+            />
+          )}
 
-            {activeTab === 'drivers' && isSuperAdmin && (
-              <LazyCompanyDriversList 
-                drivers={visibleCompanyDrivers}
-                workers={workers}
-                isAdmin={isSuperAdmin}
-                isLoading={!driversLoaded}
-                driverResponses={driverResponses}
-                onOpenDriverResponse={handleOpenDriverResponse}
-                onOpenPublicResponsePage={onOpenPublicResponsePage}
-                onDeleteDriverResponse={handleDeleteDriverResponse}
-                onAdd={() => { setEditingCompanyDriver(null); setIsCompanyDriverFormOpen(true); }}
-                onEdit={(driver) => { setEditingCompanyDriver(driver); setIsCompanyDriverFormOpen(true); }}
-                onDelete={handleDeleteCompanyDriver}
-                onDeleteAll={handleDeleteAllCompanyDrivers}
-                onStatusChange={handleUpdateCompanyDriverStatus}
-                onImport={handleImportCompanyDriversExcel}
-                onExport={async (data) => {
-                  const { exportCompanyDriversToExcel } = await import('./lib/excelService');
-                  await exportCompanyDriversToExcel(data, workers);
-                }}
-                onSyncWithMonitoring={handleSyncCompanyDriversWithMonitoring}
-              />
-            )}
+          {activeTab === 'drivers' && isSuperAdmin && (
+            <CompanyDriversList 
+              drivers={visibleCompanyDrivers}
+              workers={workers}
+              isAdmin={isSuperAdmin}
+              isLoading={!driversLoaded}
+              driverResponses={driverResponses}
+              onOpenDriverResponse={(driver) => {
+                setPrefilledResponseDriver(driver || null);
+                setIsDriverResponseModalOpen(true);
+              }}
+              onOpenPublicResponsePage={onOpenPublicResponsePage}
+              onDeleteDriverResponse={handleDeleteDriverResponse}
+              onAdd={() => { setEditingCompanyDriver(null); setIsCompanyDriverFormOpen(true); }}
+              onEdit={(driver) => { setEditingCompanyDriver(driver); setIsCompanyDriverFormOpen(true); }}
+              onDelete={handleDeleteCompanyDriver}
+              onDeleteAll={handleDeleteAllCompanyDrivers}
+              onStatusChange={handleUpdateCompanyDriverStatus}
+              onImport={handleImportCompanyDriversExcel}
+              onExport={(data) => exportCompanyDriversToExcel(data, workers)}
+              onSyncWithMonitoring={handleSyncCompanyDriversWithMonitoring}
+            />
+          )}
 
-            {activeTab === 'monitoring' && (
-              <LazyWorkerList 
-                workers={workers}
-                isAdmin={isSuperAdmin}
-                canEdit={canEdit}
-                onAdd={canEdit ? () => { setEditingWorker(null); setIsWorkerFormOpen(true); } : undefined}
-                onEdit={canEdit ? handleOpenEditWorker : undefined}
-                onDelete={isSuperAdmin ? handleDeleteWorker : undefined}
-                onDeleteAll={isSuperAdmin ? handleDeleteAllWorkers : undefined}
-                onImport={canEdit ? handleImportWorkersExcel : undefined}
-                onExportExcel={async (data) => {
-                  const fullWorkers = await queryClient.fetchQuery({
-                    queryKey: queryKeys.workersFull,
-                    queryFn: fetchWorkersFull,
-                    staleTime: 60_000
-                  });
-                  const fullMap = new Map<string, Worker>(fullWorkers.map(w => [w.id, w]));
-                  const hydrated = data.map(w => fullMap.get(w.id) || w);
-                  const { exportWorkersToExcel } = await import('./lib/excelService');
-                  await exportWorkersToExcel(hydrated);
-                }}
-                onExportPdf={(data) => handleGenerateWorkerPdf('تقرير الرقابة والمتابعة - العمال', data)}
-                onRenumberWorkers={isSuperAdmin ? handleRenumberWorkers : undefined}
-              />
-            )}
-          </Suspense>
+          {activeTab === 'monitoring' && (
+            <WorkerList 
+              workers={workers}
+              isAdmin={isSuperAdmin}
+              canEdit={canEdit}
+              onAdd={canEdit ? () => { setEditingWorker(null); setIsWorkerFormOpen(true); } : undefined}
+              onEdit={canEdit ? (w) => { setEditingWorker(w); setIsWorkerFormOpen(true); } : undefined}
+              onDelete={isSuperAdmin ? handleDeleteWorker : undefined}
+              onDeleteAll={isSuperAdmin ? handleDeleteAllWorkers : undefined}
+              onImport={canEdit ? handleImportWorkersExcel : undefined}
+              onExportExcel={(data) => exportWorkersToExcel(data)}
+              onExportPdf={(data) => handleGenerateWorkerPdf('تقرير الرقابة والمتابعة - العمال', data)}
+              onRenumberWorkers={isSuperAdmin ? handleRenumberWorkers : undefined}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
 
-      <Suspense fallback={null}>
-        {isFormOpen && (
-          <LazyBusForm 
-            bus={editingBus} 
-            onSave={handleSaveBus} 
-            onClose={() => { setIsFormOpen(false); setEditingBus(null); }} 
-          />
-        )}
-
-        {isWorkerFormOpen && (
-          <LazyWorkerForm 
-            worker={editingWorker}
-            allWorkers={workers}
-            buses={buses}
-            companyDrivers={companyDrivers}
-            onSave={handleSaveWorker}
-            onClose={() => { setIsWorkerFormOpen(false); setEditingWorker(null); }} 
-          />
-        )}
-
-        {isCompanyDriverFormOpen && (
-          <LazyCompanyDriverFormModal 
-            driver={editingCompanyDriver}
-            existingDrivers={companyDrivers}
-            buses={buses}
-            workers={workers}
-            isOpen={isCompanyDriverFormOpen}
-            onSave={handleSaveCompanyDriver}
-            onClose={() => { setIsCompanyDriverFormOpen(false); setEditingCompanyDriver(null); }} 
-          />
-        )}
-
-        {isDriverResponseModalOpen && (
-          <LazyDriverResponseModal
-            isOpen={isDriverResponseModalOpen}
-            onClose={() => {
-              setIsDriverResponseModalOpen(false);
-              setPrefilledResponseDriver(null);
-            }}
-            drivers={companyDrivers}
-            buses={buses}
-            prefilledDriver={prefilledResponseDriver}
-            onSave={handleSaveDriverResponse}
-          />
-        )}
-
-        {/* Hidden report template for PDF generation */}
-        {reportConfig && (
-          <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-            <LazyReportTemplate 
-              title={reportConfig.title} 
-              buses={reportConfig.buses} 
-              workers={reportConfig.workers}
-              salaries={reportConfig.salaries}
-              generatedBy={profile.displayName || 'مستخدم النظام'}
-              stats={reportConfig.stats}
-            />
-          </div>
-        )}
-
-        {/* First-visit & On-demand Welcome Announcement Modal */}
-        <LazyWelcomeAnnouncementModal 
-          forceOpen={isAnnouncementModalOpen}
-          onClose={() => setIsAnnouncementModalOpen(false)}
+      {isFormOpen && (
+        <BusForm 
+          bus={editingBus} 
+          onSave={handleSaveBus} 
+          onClose={() => { setIsFormOpen(false); setEditingBus(null); }} 
         />
-      </Suspense>
+      )}
+
+      {isWorkerFormOpen && (
+        <WorkerForm 
+          worker={editingWorker}
+          allWorkers={workers}
+          buses={buses}
+          companyDrivers={companyDrivers}
+          onSave={handleSaveWorker}
+          onClose={() => { setIsWorkerFormOpen(false); setEditingWorker(null); }}
+        />
+      )}
+
+      {isCompanyDriverFormOpen && (
+        <CompanyDriverFormModal 
+          driver={editingCompanyDriver}
+          existingDrivers={companyDrivers}
+          buses={buses}
+          workers={workers}
+          isOpen={isCompanyDriverFormOpen}
+          onSave={handleSaveCompanyDriver}
+          onClose={() => { setIsCompanyDriverFormOpen(false); setEditingCompanyDriver(null); }}
+        />
+      )}
+
+      {isDriverResponseModalOpen && (
+        <DriverResponseModal
+          isOpen={isDriverResponseModalOpen}
+          onClose={() => {
+            setIsDriverResponseModalOpen(false);
+            setPrefilledResponseDriver(null);
+          }}
+          drivers={companyDrivers}
+          buses={buses}
+          prefilledDriver={prefilledResponseDriver}
+          onSave={handleSaveDriverResponse}
+        />
+      )}
+
+      {/* Hidden report template for PDF generation */}
+      <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+        {reportConfig && (
+          <ReportTemplate 
+            title={reportConfig.title} 
+            buses={reportConfig.buses} 
+            workers={reportConfig.workers}
+            salaries={reportConfig.salaries}
+            generatedBy={profile.displayName || 'مستخدم النظام'}
+            stats={reportConfig.stats}
+          />
+        )}
+      </div>
+
+      {/* First-visit & On-demand Welcome Announcement Modal */}
+      <WelcomeAnnouncementModal 
+        forceOpen={isAnnouncementModalOpen}
+        onClose={() => setIsAnnouncementModalOpen(false)}
+      />
     </Layout>
   );
 }
@@ -1809,50 +1732,48 @@ export default function App() {
     };
   }, []);
 
+  if (showPublicResponse) {
+    return (
+      <LogoProvider>
+        <PublicDriverResponsePage 
+          onBackToDashboard={() => {
+            setShowPublicResponse(false);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('action');
+              url.searchParams.delete('mode');
+              url.searchParams.delete('view');
+              url.searchParams.delete('page');
+              url.hash = '';
+              window.history.pushState({}, '', url.pathname + (url.search ? url.search : ''));
+            } catch {
+              // ignore
+            }
+          }} 
+        />
+        <WelcomeAnnouncementModal />
+      </LogoProvider>
+    );
+  }
+
   return (
-    <QueryClientProvider client={queryClient}>
-      {showPublicResponse ? (
+    <ToastProvider>
+      <AuthProvider>
         <LogoProvider>
-          <Suspense fallback={null}>
-            <LazyPublicDriverResponsePage 
-              onBackToDashboard={() => {
-                setShowPublicResponse(false);
-                try {
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('action');
-                  url.searchParams.delete('mode');
-                  url.searchParams.delete('view');
-                  url.searchParams.delete('page');
-                  url.hash = '';
-                  window.history.pushState({}, '', url.pathname + (url.search ? url.search : ''));
-                } catch {
-                  // ignore
-                }
-              }} 
-            />
-            <LazyWelcomeAnnouncementModal />
-          </Suspense>
+          <AppContent 
+            onOpenPublicResponsePage={() => {
+              setShowPublicResponse(true);
+              try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('action', 'driver-response');
+                window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+              } catch {
+                // ignore
+              }
+            }} 
+          />
         </LogoProvider>
-      ) : (
-        <ToastProvider>
-          <AuthProvider>
-            <LogoProvider>
-              <AppContent 
-                onOpenPublicResponsePage={() => {
-                  setShowPublicResponse(true);
-                  try {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('action', 'driver-response');
-                    window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
-                  } catch {
-                    // ignore
-                  }
-                }} 
-              />
-            </LogoProvider>
-          </AuthProvider>
-        </ToastProvider>
-      )}
-    </QueryClientProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }

@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 import type { Bus } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { normalizeBusLocation } from '../lib/locationUtils';
-import { useDebounce } from '../lib/useDebounce';
+import { normalizeBusLocation } from '../lib/excelService';
 import { EmptyState } from './EmptyState';
 
 interface FleetListProps {
@@ -58,7 +57,6 @@ export const FleetList: React.FC<FleetListProps> = ({
   onGenerateBusPdf
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [filters, setFilters] = useState({
     location: '',
     model: '',
@@ -91,8 +89,8 @@ export const FleetList: React.FC<FleetListProps> = ({
   });
 
   const filteredBuses = useMemo(() => {
-    const searchLower = debouncedSearchTerm.toLowerCase();
     return buses.filter(bus => {
+      const searchLower = searchTerm.toLowerCase();
       const busLoc = normalizeBusLocation(bus.location);
       const matchesSearch = 
         bus.operationalNumber.toLowerCase().includes(searchLower) ||
@@ -109,12 +107,12 @@ export const FleetList: React.FC<FleetListProps> = ({
 
       return matchesSearch && matchesLocation && matchesModel && matchesCategory && matchesStatus && matchesColor && matchesSeats;
     });
-  }, [buses, debouncedSearchTerm, filters]);
+  }, [buses, searchTerm, filters]);
 
   // Reset to page 1 when search or filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, filters]);
+  }, [searchTerm, filters]);
 
   const totalPages = Math.ceil(filteredBuses.length / itemsPerPage);
 
@@ -380,17 +378,18 @@ export const FleetList: React.FC<FleetListProps> = ({
 
       {/* Cards Grid Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        <AnimatePresence>
+        <AnimatePresence mode="popLayout">
           {paginatedBuses.map((bus, index) => {
             const badge = getStatusBadge(bus.technicalStatus);
             const busColorHex = getBusColorHex(bus.color);
             return (
               <motion.div
                 key={bus.id}
+                layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2, delay: Math.min(index * 0.015, 0.2) }}
+                transition={{ duration: 0.2, delay: index * 0.03 }}
                 className="group bg-surface rounded-2xl border border-border shadow-sm hover:shadow-xl transition-all overflow-hidden flex flex-col relative"
                 style={{ 
                   borderColor: busColorHex ? `${busColorHex}40` : undefined,

@@ -45,8 +45,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import type { Bus as BusType, Worker as WorkerType, CompanyDriver } from '../types';
-import { normalizeBusLocation } from '../lib/locationUtils';
-import { useDebounce } from '../lib/useDebounce';
+import { normalizeBusLocation } from '../lib/excelService';
 import { EmptyState } from './EmptyState';
 import { AnimatedNumber } from './AnimatedNumber';
 
@@ -152,7 +151,6 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
 
   // Filters for All Locations view
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -161,7 +159,6 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
   // Details Page Tab: 'buses' | 'drivers' | 'analytics'
   const [detailsTab, setDetailsTab] = useState<'buses' | 'drivers' | 'analytics'>('buses');
   const [detailsBusSearch, setDetailsBusSearch] = useState('');
-  const debouncedDetailsBusSearch = useDebounce(detailsBusSearch, 300);
   const [detailsBusCategory, setDetailsBusCategory] = useState('');
   const [detailsBusStatus, setDetailsBusStatus] = useState('');
   const [detailsDriverSearch, setDetailsDriverSearch] = useState('');
@@ -292,8 +289,8 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
 
   // Filtered locations
   const filteredLocations = useMemo(() => {
-    const search = debouncedSearchTerm.trim().toLowerCase();
     return allLocationsList.filter(loc => {
+      const search = searchTerm.trim().toLowerCase();
       const matchesSearch = !search || 
         loc.name.toLowerCase().includes(search) || 
         loc.city.toLowerCase().includes(search);
@@ -308,7 +305,7 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
 
       return matchesSearch && matchesCity && matchesCategory && matchesStatus;
     });
-  }, [allLocationsList, debouncedSearchTerm, selectedCity, selectedCategory, selectedStatus]);
+  }, [allLocationsList, searchTerm, selectedCity, selectedCategory, selectedStatus]);
 
   // Top locations data for the trend/rate chart
   const operationalChartData = useMemo(() => {
@@ -341,8 +338,8 @@ export const WorkLocationsDashboard: React.FC<WorkLocationsDashboardProps> = ({
   // Buses inside selected location filtered by search/category/status
   const filteredLocationBuses = useMemo(() => {
     if (!selectedLocationData) return [];
-    const search = debouncedDetailsBusSearch.trim().toLowerCase();
     return selectedLocationData.buses.filter(bus => {
+      const search = detailsBusSearch.trim().toLowerCase();
       const opNum = (bus.operationalNumber || '').toLowerCase();
       const plate = (bus.plateNumber || '').toLowerCase();
       const cat = (bus.category || '').toLowerCase();

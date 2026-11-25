@@ -17,9 +17,7 @@ import {
 import { Worker } from '../types';
 import { differenceInDays, parseISO, formatDistanceStrict } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import { normalizeBusLocation } from '../lib/locationUtils';
-import { useQuery } from '@tanstack/react-query';
-import { fetchWorkerDetails, queryKeys } from '../lib/firestoreQueries';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface WorkerDetailsModalProps {
   worker: Worker | null;
@@ -78,15 +76,6 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
 }) => {
   const [copiedField, setCopiedField] = useState<'mobile' | 'iqama' | null>(null);
 
-  const { data: fullWorker } = useQuery({
-    queryKey: queryKeys.workerDetail(worker?.id || ''),
-    queryFn: () => fetchWorkerDetails(worker!.id),
-    enabled: isOpen && Boolean(worker?.id),
-    initialData: worker ?? undefined,
-  });
-
-  const activeWorker = fullWorker || worker;
-
   useEffect(() => {
     if (!isOpen) return;
     const handleEsc = (e: KeyboardEvent) => {
@@ -96,7 +85,7 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
 
-  if (!activeWorker) return null;
+  if (!worker) return null;
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -141,18 +130,18 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
     setTimeout(() => setCopiedField(null), 1800);
   };
 
-  const daysRemaining = getRemainingDays(activeWorker.endDate || '');
+  const daysRemaining = getRemainingDays(worker.endDate || '');
   const isTerminated = daysRemaining !== null && daysRemaining < 0;
   const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 30;
-  const displayName = formatWorkerName(activeWorker.name);
-  const iqamaVal = activeWorker.iqamaNumber || activeWorker.nationalId || '';
-  const totalDays = calculateDays(activeWorker.startDate, activeWorker.endDate);
-  const friendlyDuration = activeWorker.startDate ? calculateFriendlyDuration(activeWorker.startDate, activeWorker.endDate) : '';
-  const categoryValue = sanitizeLabel(activeWorker.clientName);
-  const companyValue = sanitizeLabel(activeWorker.recruitmentCompany);
-  const workplaceValue = sanitizeLabel(normalizeBusLocation(activeWorker.workplace));
-  const previousBusesList = activeWorker.previousBuses
-    ? activeWorker.previousBuses.split(/[\s,،\-]+/).map(s => s.trim()).filter(Boolean)
+  const displayName = formatWorkerName(worker.name);
+  const iqamaVal = worker.iqamaNumber || worker.nationalId || '';
+  const totalDays = calculateDays(worker.startDate, worker.endDate);
+  const friendlyDuration = worker.startDate ? calculateFriendlyDuration(worker.startDate, worker.endDate) : '';
+  const categoryValue = sanitizeLabel(worker.clientName);
+  const companyValue = sanitizeLabel(worker.recruitmentCompany);
+  const workplaceValue = sanitizeLabel(normalizeBusLocation(worker.workplace));
+  const previousBusesList = worker.previousBuses
+    ? worker.previousBuses.split(/[\s,،\-]+/).map(s => s.trim()).filter(Boolean)
     : [];
 
   return (
@@ -197,8 +186,8 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-text-muted tabular-nums">
-                  {activeWorker.workerNumber && <span>الرقم الوظيفي: {activeWorker.workerNumber}</span>}
-                  {activeWorker.workerNumber && iqamaVal && <span aria-hidden="true">·</span>}
+                  {worker.workerNumber && <span>الرقم الوظيفي: {worker.workerNumber}</span>}
+                  {worker.workerNumber && iqamaVal && <span aria-hidden="true">·</span>}
                   {iqamaVal && <span>الإقامة: {iqamaVal}</span>}
                 </div>
               </div>
@@ -226,8 +215,8 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                   <Clock className="w-4 h-4 shrink-0" />
                   <span>
                     {isTerminated
-                      ? `انتهى العقد منذ ${Math.abs(daysRemaining || 0)} يوم (${formatDateUnified(activeWorker.endDate)})`
-                      : `ينتهي العقد خلال ${daysRemaining} يوم (${formatDateUnified(activeWorker.endDate)})`}
+                      ? `انتهى العقد منذ ${Math.abs(daysRemaining || 0)} يوم (${formatDateUnified(worker.endDate)})`
+                      : `ينتهي العقد خلال ${daysRemaining} يوم (${formatDateUnified(worker.endDate)})`}
                   </span>
                 </div>
               )}
@@ -238,13 +227,13 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                   <div>
                     <p className="text-xs font-bold text-text-muted">رقم الجوال</p>
                     <p className="text-sm font-bold text-text-main tabular-nums mt-0.5" dir="ltr">
-                      {activeWorker.mobileNumber || '—'}
+                      {worker.mobileNumber || '—'}
                     </p>
                   </div>
-                  {activeWorker.mobileNumber && (
+                  {worker.mobileNumber && (
                     <button
                       type="button"
-                      onClick={() => handleCopy(activeWorker.mobileNumber, 'mobile')}
+                      onClick={() => handleCopy(worker.mobileNumber, 'mobile')}
                       className="min-h-[44px] px-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:bg-primary-light rounded-xl transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                     >
                       {copiedField === 'mobile' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
@@ -300,10 +289,10 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                   <div>
                     <p className="text-xs font-bold text-text-muted">الحافلة الحالية</p>
                     <div className="mt-1">
-                      {activeWorker.assignedBusId ? (
+                      {worker.assignedBusId ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 tabular-nums">
                           <BusIcon className="w-3.5 h-3.5" />
-                          <span>حافلة {activeWorker.assignedBusOperationalNumber}</span>
+                          <span>حافلة {worker.assignedBusOperationalNumber}</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
@@ -325,13 +314,13 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                   <div>
                     <p className="text-xs font-bold text-text-muted">تاريخ البدء</p>
                     <p className="text-sm font-bold text-text-main tabular-nums mt-0.5">
-                      {formatDateUnified(activeWorker.startDate) || '—'}
+                      {formatDateUnified(worker.startDate) || '—'}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs font-bold text-text-muted">تاريخ الانتهاء</p>
                     <p className="text-sm font-bold text-text-main tabular-nums mt-0.5">
-                      {activeWorker.endDate ? formatDateUnified(activeWorker.endDate) : 'مستمر'}
+                      {worker.endDate ? formatDateUnified(worker.endDate) : 'مستمر'}
                     </p>
                   </div>
                   {totalDays > 0 && (
@@ -342,11 +331,11 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                       </p>
                     </div>
                   )}
-                  {activeWorker.basicSalary !== undefined && activeWorker.basicSalary > 0 && (
+                  {worker.basicSalary !== undefined && worker.basicSalary > 0 && (
                     <div>
                       <p className="text-xs font-bold text-text-muted">الراتب الأساسي</p>
                       <p className="text-sm font-bold text-text-main tabular-nums mt-0.5">
-                        {activeWorker.basicSalary.toLocaleString()} ريال
+                        {worker.basicSalary.toLocaleString()} ريال
                       </p>
                     </div>
                   )}
@@ -382,16 +371,16 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                     <History className="w-4 h-4 text-primary" />
                     <h4>أرشيف الأعمال السابقة</h4>
                   </div>
-                  {activeWorker.workHistory && activeWorker.workHistory.length > 0 && (
+                  {worker.workHistory && worker.workHistory.length > 0 && (
                     <span className="text-xs font-bold text-text-muted tabular-nums">
-                      {activeWorker.workHistory.length} سجل
+                      {worker.workHistory.length} سجل
                     </span>
                   )}
                 </div>
 
-                {activeWorker.workHistory && activeWorker.workHistory.length > 0 ? (
+                {worker.workHistory && worker.workHistory.length > 0 ? (
                   <div className="divide-y divide-border">
-                    {activeWorker.workHistory.map((item, index) => {
+                    {worker.workHistory.map((item, index) => {
                       const itemDays = item.startDate ? calculateDays(item.startDate, item.endDate) : 0;
                       const projectTitle = sanitizeLabel(item.clientOrProject);
                       return (
@@ -428,11 +417,11 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
               </section>
 
               {/* Notes */}
-              {activeWorker.notes && (
+              {worker.notes && (
                 <section className="bg-surface border border-border rounded-2xl shadow-xs p-4 space-y-2">
                   <h4 className="text-sm font-bold text-text-main">ملاحظات</h4>
                   <p className="text-xs text-text-muted leading-relaxed whitespace-pre-line">
-                    {activeWorker.notes}
+                    {worker.notes}
                   </p>
                 </section>
               )}
@@ -446,7 +435,7 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                     type="button"
                     onClick={() => {
                       onClose();
-                      onEdit(activeWorker);
+                      onEdit(worker);
                     }}
                     className="min-h-[44px] px-4 inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-primary/20 outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                   >
@@ -459,7 +448,7 @@ export const WorkerDetailsModal: React.FC<WorkerDetailsModalProps> = ({
                     type="button"
                     onClick={() => {
                       onClose();
-                      onDelete(activeWorker);
+                      onDelete(worker);
                     }}
                     className="min-h-[44px] px-4 inline-flex items-center gap-2 bg-surface border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl text-xs font-bold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                   >

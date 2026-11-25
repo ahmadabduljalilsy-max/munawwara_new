@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bus, Worker, SalaryRecord } from '../types';
 import { useLogo, DEFAULT_LOGO } from '../lib/LogoContext';
-import { normalizeBusLocation } from '../lib/locationUtils';
+import { normalizeBusLocation } from '../lib/excelService';
 
 interface ReportProps {
   title: string;

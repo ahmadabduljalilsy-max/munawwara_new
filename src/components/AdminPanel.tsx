@@ -30,11 +30,11 @@ import {
   ShieldAlert,
   Check
 } from 'lucide-react';
-import { collection, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { useLogo } from '../lib/LogoContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
-import { fetchUsersList, queryClient } from '../lib/firestoreQueries';
 import type { AppUser, UserRole } from '../types';
 
 type SortField = 'displayName' | 'email' | 'role';
@@ -77,7 +77,7 @@ const isUserAuthorizedForDriverResponse = (user: AppUser, adminEmails: string[])
   return Boolean(user.canSubmitDriverResponses);
 };
 
-const UserCard: React.FC<UserCardProps> = React.memo(({ 
+const UserCard: React.FC<UserCardProps> = ({ 
   user, 
   isPending, 
   onApprove, 
@@ -93,6 +93,7 @@ const UserCard: React.FC<UserCardProps> = React.memo(({
 
   return (
     <motion.div 
+      layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className="bg-surface p-5 rounded-[28px] border border-border shadow-xs flex flex-col hover:shadow-md transition-all group relative overflow-hidden h-full"
@@ -262,10 +263,10 @@ const UserCard: React.FC<UserCardProps> = React.memo(({
       <div className="absolute inset-0 pointer-events-none opacity-[0.02] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:12px_12px] -z-10" />
     </motion.div>
   );
-});
+};
 
 export const AdminPanel: React.FC = () => {
-  const { logoURL: currentLogo, refreshLogo } = useLogo();
+  const { logoURL: currentLogo } = useLogo();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'all' | 'active' | 'pending'>('all');
@@ -291,13 +292,11 @@ export const AdminPanel: React.FC = () => {
   const handleExportBackup = async () => {
     setIsExporting(true);
     try {
-      // 1. Fetch all collections from Firestore in parallel on-demand
-      const [busesSnap, workersSnap, salariesSnap, usersSnap] = await Promise.all([
-        getDocs(collection(db, 'buses')),
-        getDocs(collection(db, 'workers')),
-        getDocs(collection(db, 'salaries')),
-        getDocs(collection(db, 'users'))
-      ]);
+      // 1. Fetch all collections from Firestore on-demand
+      const busesSnap = await getDocs(collection(db, 'buses'));
+      const workersSnap = await getDocs(collection(db, 'workers'));
+      const salariesSnap = await getDocs(collection(db, 'salaries'));
+      const usersSnap = await getDocs(collection(db, 'users'));
 
       const busesData = busesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const workersData = workersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -364,8 +363,7 @@ export const AdminPanel: React.FC = () => {
         'تاريخ الإنشاء': u.createdAt || ''
       }));
 
-      // 3. Create Excel workbook and worksheets (dynamic import)
-      const XLSX = await import('xlsx');
+      // 3. Create Excel workbook and worksheets
       const wb = XLSX.utils.book_new();
 
       const wsBuses = XLSX.utils.json_to_sheet(formattedBuses);
@@ -416,10 +414,7 @@ export const AdminPanel: React.FC = () => {
     setImportProgress('جاري قراءة وتحليل ملف النسخة الاحتياطية...');
 
     try {
-      const [data, XLSX] = await Promise.all([
-        file.arrayBuffer(),
-        import('xlsx')
-      ]);
+      const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 
       let importedBusesCount = 0;
@@ -756,26 +751,28 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const loadAdminData = React.useCallback(async () => {
-    try {
-      const [userData, settingsSnap] = await Promise.all([
-        fetchUsersList(),
-        getDoc(doc(db, 'settings', 'app'))
-      ]);
-      setUsers(userData);
-      if (settingsSnap.exists() && settingsSnap.data()?.logoURL) {
-        setAppLogo(settingsSnap.data()?.logoURL);
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, 'users');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void loadAdminData();
-  }, [loadAdminData]);
+    // Sync Users
+    const pathUsers = 'users';
+    const unsubUsers = onSnapshot(collection(db, pathUsers), (snapshot) => {
+      const userData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as AppUser));
+      setUsers(userData);
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, OperationType.GET, pathUsers));
+
+    // Sync App Settings
+    const pathSettings = 'settings/app';
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'app'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data()?.logoURL) {
+        setAppLogo(docSnap.data()?.logoURL);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, pathSettings));
+
+    return () => {
+      unsubUsers();
+      unsubSettings();
+    };
+  }, []);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -796,8 +793,6 @@ export const AdminPanel: React.FC = () => {
             logoURL: base64String,
             updatedAt: new Date().toISOString()
           }, { merge: true });
-          setAppLogo(base64String);
-          await refreshLogo();
           setIsUpdatingLogo(false);
           alert('تم تحديث شعار التطبيق بنجاح');
         } catch (error) {
@@ -821,8 +816,6 @@ export const AdminPanel: React.FC = () => {
         updates.canSubmitDriverResponses = true;
       }
       await updateDoc(doc(db, 'users', uid), updates);
-      setUsers(prev => prev.map(u => (u.uid === uid ? { ...u, ...updates } : u)));
-      void queryClient.invalidateQueries();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
@@ -837,7 +830,6 @@ export const AdminPanel: React.FC = () => {
         updates.canSubmitDriverResponses = true;
       }
       await updateDoc(doc(db, 'users', uid), updates);
-      setUsers(prev => prev.map(u => (u.uid === uid ? { ...u, ...updates } : u)));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
@@ -845,11 +837,9 @@ export const AdminPanel: React.FC = () => {
 
   const handleToggleResponsePermission = async (uid: string, currentVal?: boolean) => {
     try {
-      const nextVal = !currentVal;
       await updateDoc(doc(db, 'users', uid), {
-        canSubmitDriverResponses: nextVal
+        canSubmitDriverResponses: !currentVal
       });
-      setUsers(prev => prev.map(u => (u.uid === uid ? { ...u, canSubmitDriverResponses: nextVal } : u)));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
     }
@@ -859,7 +849,6 @@ export const AdminPanel: React.FC = () => {
     if (window.confirm('هل أنت متأكد من إلغاء تفعيل هذا المستخدم؟')) {
       try {
         await updateDoc(doc(db, 'users', uid), { approved: false });
-        setUsers(prev => prev.map(u => (u.uid === uid ? { ...u, approved: false } : u)));
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${uid}`);
       }
@@ -877,7 +866,6 @@ export const AdminPanel: React.FC = () => {
 
     try {
       await deleteDoc(doc(db, 'users', userToDelete.uid));
-      setUsers(prev => prev.filter(u => u.uid !== userToDelete.uid));
       alert('تم حذف المستخدم بنجاح.');
       setUserToDelete(null);
     } catch (error) {

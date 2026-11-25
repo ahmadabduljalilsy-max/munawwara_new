@@ -1,0 +1,110 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "workers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workplace", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clientName", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recruitmentCompany", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedBusId", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "company_drivers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverClassification", "order": "ASCENDING" },
+        { "fieldPath": "serialNumber", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "company_drivers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "driverClassification", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "company_drivers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nationality", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "buses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "location", "order": "ASCENDING" },
+        { "fieldPath": "technicalStatus", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "buses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "model", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "workLocation", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "driver_responses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "driver_responses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "responseType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

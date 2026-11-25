@@ -25,6 +25,7 @@ import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { DmtcLogo } from './DmtcLogo';
 import { EmptyState } from './EmptyState';
+import { prefetchTab } from '../lib/lazyPages';
 
 export interface LayoutAlertItem {
   id: string;
@@ -201,6 +202,7 @@ export const Layout: React.FC<{
                   setHoveredItem(null);
                 }}
                 onMouseEnter={(e) => {
+                  prefetchTab(item.id);
                   if (!isSidebarExpanded) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     setHoveredItem({
@@ -210,6 +212,7 @@ export const Layout: React.FC<{
                     });
                   }
                 }}
+                onFocus={() => prefetchTab(item.id)}
                 onMouseLeave={() => {
                   if (!isSidebarExpanded) setHoveredItem(null);
                 }}
@@ -265,7 +268,7 @@ export const Layout: React.FC<{
             <div className="p-2.5 bg-surface dark:bg-slate-800/80 rounded-2xl border border-border flex items-center gap-2.5 shadow-2xs">
                <div className="w-10 h-10 rounded-xl overflow-hidden bg-blue-50 dark:bg-blue-950 flex items-center justify-center border border-blue-200/80 dark:border-blue-800 shrink-0 text-primary font-black text-sm shadow-2xs">
                   {profile?.photoURL ? (
-                    <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                    <img src={profile.photoURL} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   ) : (
                     profile?.displayName?.charAt(0) || 'U'
                   )}
@@ -308,7 +311,7 @@ export const Layout: React.FC<{
               title={profile?.displayName || 'المستخدم'}
             >
               {profile?.photoURL ? (
-                <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                <img src={profile.photoURL} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
               ) : (
                 profile?.displayName?.charAt(0) || 'U'
               )}
@@ -456,7 +459,7 @@ export const Layout: React.FC<{
                
                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/50 flex items-center justify-center text-primary font-black border border-blue-200/80 dark:border-blue-800/40 overflow-hidden shadow-2xs">
                   {profile?.photoURL ? (
-                    <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                    <img src={profile.photoURL} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   ) : (
                     profile?.displayName?.charAt(0) || 'U'
                   )}
@@ -489,6 +492,8 @@ export const Layout: React.FC<{
                   setActiveTab(item.id);
                   setIsMoreDrawerOpen(false);
                 }}
+                onMouseEnter={() => prefetchTab(item.id)}
+                onTouchStart={() => prefetchTab(item.id)}
                 className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-2xl transition-all cursor-pointer outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isActive
                     ? 'bg-blue-50 dark:bg-blue-950/60 text-primary font-black'
@@ -561,6 +566,8 @@ export const Layout: React.FC<{
                           setActiveTab(item.id);
                           setIsMoreDrawerOpen(false);
                         }}
+                        onMouseEnter={() => prefetchTab(item.id)}
+                        onFocus={() => prefetchTab(item.id)}
                         className={`flex items-center justify-between px-3.5 py-3 rounded-2xl transition-all cursor-pointer outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                           isActive
                             ? 'bg-blue-50 dark:bg-blue-950/60 text-primary border border-blue-200/80 dark:border-blue-800 font-black'
@@ -596,7 +603,7 @@ export const Layout: React.FC<{
                 <div className="p-2.5 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-border flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-blue-50 dark:bg-blue-950 flex items-center justify-center border border-blue-200/80 dark:border-blue-800 shrink-0 text-primary font-black text-sm">
                     {profile?.photoURL ? (
-                      <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
+                      <img src={profile.photoURL} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : (
                       profile?.displayName?.charAt(0) || 'U'
                     )}

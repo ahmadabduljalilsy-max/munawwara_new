@@ -22,7 +22,6 @@ import {
   RotateCw,
   Info
 } from 'lucide-react';
-import QRCode from 'qrcode';
 import type { CompanyDriver, Worker } from '../types';
 import { resolveDriverType, getDriverClassification } from '../lib/driverUtils';
 import { useLogo, DEFAULT_LOGO } from '../lib/LogoContext';
@@ -1277,49 +1276,54 @@ export const DriverCardPrintModal: React.FC<DriverCardPrintModalProps> = ({
         : currentSheetDrivers;
 
     let cancelled = false;
-    driversToEncode.forEach(async driver => {
-      if (qrUrlsRef.current[driver.id]) return;
+    (async () => {
+      const { default: QRCode } = await import('qrcode');
+      if (cancelled) return;
+      for (const driver of driversToEncode) {
+        if (cancelled) break;
+        if (qrUrlsRef.current[driver.id]) continue;
 
-      const effType = resolveDriverType(driver);
-      const classif = getDriverClassification(driver, workers);
-      const isResident = effType === 'مقيم';
-      const idLabel = isResident ? 'رقم الإقامة' : 'رقم الحدود';
-      const rawId =
-        (isResident ? driver.iqamaNumber : driver.borderNumber) ||
-        driver.iqamaNumber ||
-        driver.borderNumber ||
-        '';
-      const idVal = rawId || '—';
+        const effType = resolveDriverType(driver);
+        const classif = getDriverClassification(driver, workers);
+        const isResident = effType === 'مقيم';
+        const idLabel = isResident ? 'رقم الإقامة' : 'رقم الحدود';
+        const rawId =
+          (isResident ? driver.iqamaNumber : driver.borderNumber) ||
+          driver.iqamaNumber ||
+          driver.borderNumber ||
+          '';
+        const idVal = rawId || '—';
 
-      const payload = [
-        'شركة درة المنورة للنقليات - DMTC',
-        `سائق معتمد: ${driver.fullName}`,
-        `${idLabel}: ${idVal}`,
-        `مسلسل: #${String(driver.serialNumber || '1').padStart(3, '0')} | ${effType} - ${classif}`,
-        `الجوال: ${driver.mobileNumber || 'غير مسجل'}`,
-        driver.busNumber ? `الحافلة: #${driver.busNumber}` : null,
-        'موسم 1448 هـ - 2027م (معتمد رسمياً)'
-      ]
-        .filter(Boolean)
-        .join('\n');
+        const payload = [
+          'شركة درة المنورة للنقليات - DMTC',
+          `سائق معتمد: ${driver.fullName}`,
+          `${idLabel}: ${idVal}`,
+          `مسلسل: #${String(driver.serialNumber || '1').padStart(3, '0')} | ${effType} - ${classif}`,
+          `الجوال: ${driver.mobileNumber || 'غير مسجل'}`,
+          driver.busNumber ? `الحافلة: #${driver.busNumber}` : null,
+          'موسم 1448 هـ - 2027م (معتمد رسمياً)'
+        ]
+          .filter(Boolean)
+          .join('\n');
 
-      try {
-        const url = await QRCode.toDataURL(payload, {
-          width: 360,
-          margin: 0,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
-        });
-        if (!cancelled) {
-          setQrCodeUrls(prev => (prev[driver.id] ? prev : { ...prev, [driver.id]: url }));
+        try {
+          const url = await QRCode.toDataURL(payload, {
+            width: 360,
+            margin: 0,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          });
+          if (!cancelled) {
+            setQrCodeUrls(prev => (prev[driver.id] ? prev : { ...prev, [driver.id]: url }));
+          }
+        } catch (err) {
+          console.error('Failed to generate QR for driver', driver.id, err);
         }
-      } catch (err) {
-        console.error('Failed to generate QR for driver', driver.id, err);
       }
-    });
+    })();
 
     return () => {
       cancelled = true;

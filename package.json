@@ -13,6 +13,8 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@tanstack/react-query": "^5.108.4",
+    "@tanstack/react-virtual": "^3.14.28",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
@@ -31,10 +33,12 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.8.1",
+    "rollup-plugin-visualizer": "^7.3.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
+    "vite-plugin-compression2": "^2.5.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

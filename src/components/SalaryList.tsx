@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   CircleDollarSign, 
   Search, 
@@ -21,7 +22,8 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { Worker, SalaryRecord } from '../types';
-import { normalizeBusLocation } from '../lib/excelService';
+import { normalizeBusLocation } from '../lib/locationUtils';
+import { useDebounce } from '../lib/useDebounce';
 import { calculateWorkerWorkingDays, calculateSalaryComponents } from '../lib/salaryCalculator';
 
 interface SalaryListProps {
@@ -44,6 +46,8 @@ export const SalaryList: React.FC<SalaryListProps> = ({
   onGeneratePDF
 }) => {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
   const [selectedYear, setSelectedYear] = useState(() => {
     const d = new Date();
     return d.getFullYear().toString();
@@ -130,8 +134,9 @@ export const SalaryList: React.FC<SalaryListProps> = ({
         }
       }
 
-      const matchesSearch = w.name.toLowerCase().includes(search.toLowerCase()) || 
-                           w.workerNumber.includes(search);
+      const searchLower = debouncedSearch.toLowerCase();
+      const matchesSearch = w.name.toLowerCase().includes(searchLower) || 
+                           w.workerNumber.includes(debouncedSearch);
       const matchesCompany = companyFilter === 'all' || w.recruitmentCompany === companyFilter;
       
       const currentSalary = localSalaries[w.id] || monthSalariesMap[w.id];
@@ -143,7 +148,20 @@ export const SalaryList: React.FC<SalaryListProps> = ({
 
       return matchesSearch && matchesCompany && matchesLocation && matchesStatus;
     });
-  }, [workers, search, companyFilter, locationFilter, statusFilter, selectedMonth, monthSalariesMap, localSalaries]);
+  }, [workers, debouncedSearch, companyFilter, locationFilter, statusFilter, selectedMonth, monthSalariesMap, localSalaries]);
+
+  const shouldVirtualize = filteredWorkers.length > 50;
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? filteredWorkers.length : 0,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 88,
+    overscan: 8
+  });
+  const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
+  const paddingTop = shouldVirtualize && virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom = shouldVirtualize && virtualRows.length > 0
+    ? Math.max(0, rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end)
+    : 0;
 
   /**
    * حساب بيانات الراتب الكاملة للعامل مع مراعاة أيام العمل
@@ -666,7 +684,10 @@ export const SalaryList: React.FC<SalaryListProps> = ({
            )}
         </div>
 
-        <div className="overflow-x-auto">
+        <div
+          ref={tableScrollRef}
+          className={shouldVirtualize ? 'overflow-x-auto max-h-[75vh] overflow-y-auto' : 'overflow-x-auto'}
+        >
           <table className="w-full text-right">
              <thead>
                 <tr className="bg-background border-b border-border">
@@ -684,12 +705,25 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                 </tr>
              </thead>
              <tbody className="divide-y divide-border/50">
-                {filteredWorkers.map(worker => {
+                {shouldVirtualize && paddingTop > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={11} style={{ height: paddingTop, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+                {(shouldVirtualize
+                  ? virtualRows.map(vRow => ({ worker: filteredWorkers[vRow.index], vIndex: vRow.index }))
+                  : filteredWorkers.map((worker, vIndex) => ({ worker, vIndex }))
+                ).map(({ worker, vIndex }) => {
                   const data = getWorkerSalaryData(worker);
                   const isModified = data.isModified;
 
                   return (
-                    <tr key={worker.id} className={`hover:bg-primary/[0.01] transition-colors ${isModified ? 'bg-amber-50/20' : ''}`}>
+                    <tr
+                      key={worker.id}
+                      data-index={shouldVirtualize ? vIndex : undefined}
+                      ref={shouldVirtualize ? rowVirtualizer.measureElement : undefined}
+                      className={`hover:bg-primary/[0.01] transition-colors ${isModified ? 'bg-amber-50/20' : ''}`}
+                    >
                        {/* Worker Details & Date Badges */}
                        <td className="px-5 py-4">
                           <div className="flex flex-col">
@@ -868,6 +902,11 @@ export const SalaryList: React.FC<SalaryListProps> = ({
                     </tr>
                   );
                 })}
+                {shouldVirtualize && paddingBottom > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={11} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+                  </tr>
+                )}
              </tbody>
           </table>
         </div>

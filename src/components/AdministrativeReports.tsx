@@ -28,9 +28,6 @@ import {
   generateOperationalReportDataset, 
   OperationalReportData 
 } from '../lib/operationalReportService';
-import { 
-  generateOperationalReportDocxBlob 
-} from '../lib/docxReportGenerator';
 
 interface AdministrativeReportsProps {
   buses: BusType[];
@@ -172,6 +169,7 @@ export const AdministrativeReports: React.FC<AdministrativeReportsProps> = ({
       setGenerationStep('4/5: بناء مستند Microsoft Word باللغة العربية وتنسيق الجداول والفصول الـ 16...');
       setGenerationProgress(90);
 
+      const { generateOperationalReportDocxBlob } = await import('../lib/docxReportGenerator');
       const blob = await generateOperationalReportDocxBlob(reportData, {
         includeMasterTables,
         selectedChapters,
@@ -517,8 +515,9 @@ export const AdministrativeReports: React.FC<AdministrativeReportsProps> = ({
               <div className="w-full bg-blue-100 dark:bg-blue-900/50 rounded-full h-2.5 overflow-hidden">
                 <motion.div
                   className="bg-primary h-2.5 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${generationProgress}%` }}
+                  style={{ width: `${generationProgress}%`, transformOrigin: 'right' }}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
                   transition={{ duration: 0.3 }}
                 />
               </div>

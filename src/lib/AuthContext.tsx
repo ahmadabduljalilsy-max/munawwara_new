@@ -78,20 +78,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfile(currentProfile);
             }
 
-            // Listen for profile changes
-            unsubSnapshot = onSnapshot(userDocRef, (doc) => {
-              if (doc.exists()) {
-                const data = doc.data() as AppUser;
-                // Double safety for super admin
-                if (ADMIN_EMAILS.includes(user.email || '') && (data.role !== 'admin' || !data.approved)) {
-                  setProfile({ ...data, role: 'admin', approved: true });
-                } else {
-                  setProfile(data);
+            // Listen for profile changes only while waiting for approval
+            if (!currentProfile.approved) {
+              unsubSnapshot = onSnapshot(userDocRef, (doc) => {
+                if (doc.exists()) {
+                  const data = doc.data() as AppUser;
+                  if (ADMIN_EMAILS.includes(user.email || '') && (data.role !== 'admin' || !data.approved)) {
+                    setProfile({ ...data, role: 'admin', approved: true });
+                  } else {
+                    setProfile(data);
+                  }
+                  if (data.approved && unsubSnapshot) {
+                    unsubSnapshot();
+                    unsubSnapshot = null;
+                  }
                 }
-              }
-            }, (error) => {
-              console.error('Snapshot error:', error);
-            });
+              }, (error) => {
+                console.error('Snapshot error:', error);
+              });
+            }
           }
         } else {
           setProfile(null);

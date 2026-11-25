@@ -31,7 +31,8 @@ import { Worker } from '../types';
 import { differenceInDays, parseISO } from 'date-fns';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { WorkerDetailsModal } from './WorkerDetailsModal';
-import { normalizeBusLocation } from '../lib/excelService';
+import { normalizeBusLocation } from '../lib/locationUtils';
+import { useDebounce } from '../lib/useDebounce';
 
 interface WorkerListProps {
   workers: Worker[];
@@ -120,6 +121,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   onRenumberWorkers
 }) => {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [contractQuickFilter, setContractQuickFilter] = useState<ContractQuickFilter>('none');
   const [showFilters, setShowFilters] = useState(false);
@@ -385,7 +387,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
   // Final filtered & sorted workers
   const filteredWorkers = useMemo(() => {
-    const searchTerm = search.toLowerCase().trim();
+    const searchTerm = debouncedSearch.toLowerCase().trim();
 
     return regionWorkers
       .filter(w => {
@@ -435,7 +437,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         const cmp = valA.localeCompare(valB, 'ar');
         return sortOrder === 'asc' ? cmp : -cmp;
       });
-  }, [regionWorkers, filters.busStatus, contractQuickFilter, search, sortField, sortOrder, today]);
+  }, [regionWorkers, filters.busStatus, contractQuickFilter, debouncedSearch, sortField, sortOrder, today]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -456,7 +458,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filters, contractQuickFilter]);
+  }, [debouncedSearch, filters, contractQuickFilter]);
 
   const regionActiveCount = useMemo(
     () => regionWorkers.filter(w => !w.endDate || w.endDate >= today).length,

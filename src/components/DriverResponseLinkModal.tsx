@@ -30,10 +30,7 @@ import {
   getGoogleAppsScriptTemplate,
   fetchAndSyncGoogleSheetResponses
 } from '../lib/googleSheetService';
-import { 
-  exportDriverResponsesToExcel, 
-  copyDriverResponsesToGoogleSheetsClipboard 
-} from '../lib/excelService';
+import { copyDriverResponsesToGoogleSheetsClipboard } from '../lib/locationUtils';
 
 interface DriverResponseLinkModalProps {
   isOpen: boolean;
@@ -191,11 +188,12 @@ export const DriverResponseLinkModal: React.FC<DriverResponseLinkModalProps> = (
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (driverResponses.length === 0) {
       alert('لا توجد ردود مسجلة بعد لتصديرها.');
       return;
     }
+    const { exportDriverResponsesToExcel } = await import('../lib/excelService');
     exportDriverResponsesToExcel(driverResponses, 'ردود_السائقين_درة_المنورة.xlsx', drivers);
   };
 

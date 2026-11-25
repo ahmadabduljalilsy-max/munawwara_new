@@ -1,6 +1,5 @@
 import React from 'react';
-import { useLogo } from '../lib/LogoContext';
-import dmtcOfficialSvg from '../assets/images/dmtc_official_logo.svg';
+import { useLogo, DEFAULT_LOGO } from '../lib/LogoContext';
 
 interface DmtcLogoProps {
   className?: string;
@@ -16,7 +15,7 @@ export const DmtcLogo: React.FC<DmtcLogoProps> = ({
   showBadge = false
 }) => {
   const { logoURL } = useLogo();
-  const currentLogoSrc = logoURL || dmtcOfficialSvg;
+  const currentLogoSrc = logoURL || DEFAULT_LOGO;
 
   // Dimensions for full vertical lockup (matching du (1).png)
   const fullDimensions = {
@@ -48,6 +47,7 @@ export const DmtcLogo: React.FC<DmtcLogoProps> = ({
             alt="DMTC Logo" 
             className="w-full h-full object-contain filter drop-shadow-sm select-none"
             loading="eager"
+            decoding="async"
           />
         </div>
         <div className="flex flex-col text-right leading-none">
@@ -77,6 +77,7 @@ export const DmtcLogo: React.FC<DmtcLogoProps> = ({
           alt="شركة درة المنورة للنقليات - DMTC" 
           className="w-full h-full object-contain filter drop-shadow-md select-none"
           loading="eager"
+          decoding="async"
         />
       </div>
 

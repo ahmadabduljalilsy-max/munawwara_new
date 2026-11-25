@@ -1,44 +1,30 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Search, 
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  Search,
   Filter,
-  Plus, 
-  FileDown, 
-  Download, 
+  Plus,
+  FileDown,
+  Download,
   Upload,
-  RefreshCw, 
-  User, 
-  Calendar,
-  Building2,
-  Phone,
-  ClipboardList,
-  Edit,
-  Trash2,
+  RefreshCw,
   ChevronDown,
-  ChevronUp,
   X,
-  Bus as BusIcon,
-  Eye,
   AlertTriangle,
-  Clock,
   BarChart3,
-  PieChart as LucidePieChart,
-  TrendingUp,
-  AlertCircle,
-  Check,
-  History
+  MoreVertical,
+  Columns3,
+  RotateCcw
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  PieChart as RechartsPieChart, 
-  Pie, 
-  Cell,
-  Legend
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Worker } from '../types';
@@ -61,12 +47,71 @@ interface WorkerListProps {
   onRenumberWorkers?: () => void;
 }
 
-export const WorkerList: React.FC<WorkerListProps> = ({ 
-  workers, 
-  isAdmin, 
+type ContractQuickFilter = 'none' | 'expiring_soon' | 'expired_active';
+
+interface RegionItem {
+  name: string;
+  count: number;
+}
+
+interface RegionNode {
+  type: 'group' | 'single';
+  key: string;
+  label: string;
+  totalCount: number;
+  items: RegionItem[];
+}
+
+const formatWorkerName = (name?: string) => {
+  if (!name) return '';
+  const cleaned = name.replace(/(?:^|\s)أسد(?:\s|$)/g, ' ').trim();
+  return cleaned.replace(/[A-Za-z]+/g, (word) =>
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  );
+};
+
+const sanitizeText = (val?: string) => {
+  return (val || '').replace(/(?:^|\s)أسد(?:\s|$)/g, ' ').trim();
+};
+
+const formatDateUnified = (dateStr?: string) => {
+  if (!dateStr) return '';
+  const trimmed = String(dateStr).trim();
+  if (!trimmed) return '';
+  const ymdMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymdMatch) {
+    const [, y, m, d] = ymdMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return trimmed;
+};
+
+const DEFAULT_FILTERS = {
+  busStatus: 'all' as 'all' | 'linked' | 'unlinked',
+  workerStatus: 'active' as 'active' | 'all' | 'terminated',
+  workplace: '',
+  clientName: '',
+  recruitmentCompany: ''
+};
+
+export const WorkerList: React.FC<WorkerListProps> = ({
+  workers,
+  isAdmin,
   canEdit = isAdmin,
-  onAdd, 
-  onEdit, 
+  onAdd,
+  onEdit,
   onDelete,
   onDeleteAll,
   onExportExcel,
@@ -75,56 +120,142 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   onRenumberWorkers
 }) => {
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({
-    workplace: '',
-    clientName: '',
-    recruitmentCompany: '',
-    busStatus: 'all' as 'all' | 'linked' | 'unlinked',
-    workerStatus: 'active' as 'all' | 'active' | 'terminated'
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [contractQuickFilter, setContractQuickFilter] = useState<ContractQuickFilter>('none');
   const [showFilters, setShowFilters] = useState(false);
+  const [sortOption, setSortOption] = useState<'workplace' | 'name' | 'startDate' | 'workerNumber'>('workplace');
+
+  const [expandedRegionGroups, setExpandedRegionGroups] = useState<Set<string>>(new Set());
+  const hasAutoOpenedFirstGroup = useRef(false);
+
   const [sortField, setSortField] = useState<keyof Worker>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 10;
+  const PAGE_SIZE = 15;
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     id: string | null;
     name?: string;
-  }>({
-    isOpen: false,
-    id: null
-  });
+  }>({ isOpen: false, id: null });
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [isRenumberConfirmOpen, setIsRenumberConfirmOpen] = useState(false);
   const [selectedWorkerForDetails, setSelectedWorkerForDetails] = useState<Worker | null>(null);
 
-  const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
-  const [groupBy, setGroupBy] = useState<'workplace' | 'clientName'>('workplace');
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
 
-  const workplaces = useMemo(() => {
-    const set = new Set<string>();
-    workers.forEach(w => {
-      set.add(normalizeBusLocation(w.workplace));
-    });
-    return Array.from(set).sort();
-  }, [workers]);
-  const clients = useMemo(() => Array.from(new Set(workers.map(w => w.clientName))).filter(Boolean).sort(), [workers]);
-  const companies = useMemo(() => Array.from(new Set(workers.map(w => w.recruitmentCompany))).filter(Boolean).sort(), [workers]);
+  const [optionalColumns, setOptionalColumns] = useState({
+    workplace: false,
+    company: false,
+    endDate: false,
+    contractStatus: false,
+    previousBuses: false,
+    category: false
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(e.target as Node)) {
+        setIsColumnsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
+  const getRemainingDays = (endDate?: string) => {
+    if (!endDate) return null;
+    try {
+      const targetDate = parseISO(endDate);
+      const todayDate = parseISO(today);
+      return differenceInDays(targetDate, todayDate);
+    } catch {
+      return null;
+    }
+  };
+
+  const calculateDays = (start?: string, end?: string) => {
+    try {
+      if (!start) return 0;
+      const startDate = parseISO(start);
+      const endDate = end ? parseISO(end) : parseISO(today);
+      const days = differenceInDays(endDate, startDate);
+      return days > 0 ? days : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  // Distinct dropdown lists
+  const workplaces = useMemo(() => {
+    const set = new Set<string>();
+    workers.forEach(w => set.add(normalizeBusLocation(w.workplace)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ar'));
+  }, [workers]);
+
+  const clients = useMemo(() => {
+    return Array.from(new Set<string>(workers.map(w => sanitizeText(w.clientName)).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, 'ar')
+    );
+  }, [workers]);
+
+  const companies = useMemo(() => {
+    return Array.from(new Set<string>(workers.map(w => sanitizeText(w.recruitmentCompany)).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, 'ar')
+    );
+  }, [workers]);
+
+  const activeWorkers = useMemo(() => {
+    return workers.filter(w => !w.endDate || w.endDate >= today);
+  }, [workers, today]);
+
+  const formerWorkers = useMemo(() => {
+    return workers.filter(w => !!w.endDate && w.endDate < today);
+  }, [workers, today]);
+
+  const activeExpiredContracts = useMemo(() => {
+    return activeWorkers.filter(w => {
+      const contractEnd = (w as any).contractEndDate;
+      return typeof contractEnd === 'string' && contractEnd.trim() !== '' && contractEnd < today;
+    });
+  }, [activeWorkers, today]);
+
+  const activeLinkedCount = useMemo(
+    () => activeWorkers.filter(w => !!w.assignedBusId).length,
+    [activeWorkers]
+  );
+
+  const activeUnlinkedCount = useMemo(
+    () => activeWorkers.filter(w => !w.assignedBusId).length,
+    [activeWorkers]
+  );
+
+  const activeCompanies = useMemo(() => {
+    const map = new Map<string, number>();
+    activeWorkers.forEach(w => {
+      const c = sanitizeText(w.recruitmentCompany);
+      if (c) map.set(c, (map.get(c) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [activeWorkers]);
+
   const hasDuplicateNumbers = useMemo(() => {
-    const numbersSeen = new Set<string>();
+    const seen = new Set<string>();
     for (const w of workers) {
       if (!w.workerNumber) continue;
-      if (numbersSeen.has(w.workerNumber)) {
-        return true;
-      }
-      numbersSeen.add(w.workerNumber);
+      if (seen.has(w.workerNumber)) return true;
+      seen.add(w.workerNumber);
     }
     return false;
   }, [workers]);
@@ -132,1218 +263,1436 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   const duplicateIqamasList = useMemo(() => {
     const map = new Map<string, string[]>();
     workers.forEach(w => {
-      const iqama = w.iqamaNumber ? w.iqamaNumber.trim() : '';
-      const nat = w.nationalId ? w.nationalId.trim() : '';
-      const key = iqama || nat;
+      const key = (w.iqamaNumber || w.nationalId || '').trim();
       if (!key) return;
       if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(w.name);
+      map.get(key)!.push(formatWorkerName(w.name));
     });
     const dupes: { id: string; count: number; names: string[] }[] = [];
     map.forEach((names, id) => {
-      if (names.length > 1) {
-        dupes.push({ id, count: names.length, names });
-      }
+      if (names.length > 1) dupes.push({ id, count: names.length, names });
     });
     return dupes;
   }, [workers]);
 
-  // Expired and expiring counts
-  const expiredWorkers = useMemo(() => {
+  // Base pool reflecting workerStatus + clientName + recruitmentCompany (so sidebar region counts stay accurate)
+  const sidebarPoolWorkers = useMemo(() => {
     return workers.filter(w => {
-      if (!w.endDate) return false;
-      try {
-        const days = differenceInDays(parseISO(w.endDate), parseISO(today));
-        return days < 0;
-      } catch (e) { return false; }
+      const isTerminated = !!w.endDate && w.endDate < today;
+      if (filters.workerStatus === 'active' && isTerminated) return false;
+      if (filters.workerStatus === 'terminated' && !isTerminated) return false;
+      if (filters.clientName && sanitizeText(w.clientName) !== filters.clientName) return false;
+      if (filters.recruitmentCompany && sanitizeText(w.recruitmentCompany) !== filters.recruitmentCompany) return false;
+      return true;
     });
-  }, [workers, today]);
+  }, [workers, filters.workerStatus, filters.clientName, filters.recruitmentCompany, today]);
 
-  const expiringWorkers = useMemo(() => {
-    return workers.filter(w => {
-      if (!w.endDate) return false;
-      try {
-        const days = differenceInDays(parseISO(w.endDate), parseISO(today));
-        return days >= 0 && days <= 7;
-      } catch (e) { return false; }
+  // Build collapsible region tree
+  const regionTree = useMemo<RegionNode[]>(() => {
+    const counts = new Map<string, number>();
+    sidebarPoolWorkers.forEach(w => {
+      const wp = normalizeBusLocation(w.workplace);
+      counts.set(wp, (counts.get(wp) || 0) + 1);
     });
-  }, [workers, today]);
 
-  // Workplace distribution data for chart
-  const workplaceChartData = useMemo(() => {
-    const counts: { [key: string]: number } = {};
-    workers.forEach(w => {
-      const isTerminated = w.endDate && w.endDate < today;
-      if (!isTerminated) {
-        const wp = normalizeBusLocation(w.workplace);
-        counts[wp] = (counts[wp] || 0) + 1;
+    const prefixGroups = new Map<string, RegionItem[]>();
+    counts.forEach((count, wp) => {
+      if (count === 0) return;
+      const parts = wp.split(/\s*[-–/]\s*/);
+      const base = parts[0].trim();
+      if (!prefixGroups.has(base)) prefixGroups.set(base, []);
+      prefixGroups.get(base)!.push({ name: wp, count });
+    });
+
+    const nodes: RegionNode[] = [];
+    prefixGroups.forEach((items, base) => {
+      const totalCount = items.reduce((acc, item) => acc + item.count, 0);
+      if (items.length > 1) {
+        const sortedItems = [...items].sort((a, b) => {
+          if (a.name === base) return -1;
+          if (b.name === base) return 1;
+          return b.count - a.count;
+        });
+        nodes.push({
+          type: 'group',
+          key: base,
+          label: base,
+          totalCount,
+          items: sortedItems
+        });
+      } else {
+        nodes.push({
+          type: 'single',
+          key: items[0].name,
+          label: items[0].name,
+          totalCount,
+          items
+        });
       }
+    });
+
+    return nodes.sort((a, b) => {
+      if (a.key === 'في الشركة' && b.key !== 'في الشركة') return 1;
+      if (b.key === 'في الشركة' && a.key !== 'في الشركة') return -1;
+      if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+      return a.label.localeCompare(b.label, 'ar');
+    });
+  }, [sidebarPoolWorkers]);
+
+  // Automatically expand the first collapsible region group on load
+  useEffect(() => {
+    if (hasAutoOpenedFirstGroup.current || regionTree.length === 0) return;
+    hasAutoOpenedFirstGroup.current = true;
+    const firstGroup = regionTree.find(n => n.type === 'group');
+    if (firstGroup) {
+      setExpandedRegionGroups(new Set([firstGroup.key]));
+    }
+  }, [regionTree]);
+
+  // Ensure parent group expands if filters.workplace is changed to a child inside a group
+  useEffect(() => {
+    if (!filters.workplace) return;
+    const parentGroup = regionTree.find(
+      n => n.type === 'group' && n.items.some(i => i.name === filters.workplace)
+    );
+    if (parentGroup) {
+      setExpandedRegionGroups(prev => {
+        if (prev.has(parentGroup.key)) return prev;
+        const next = new Set(prev);
+        next.add(parentGroup.key);
+        return next;
+      });
+    }
+  }, [filters.workplace, regionTree]);
+
+  // Region-filtered workers (before busStatus / contractQuickFilter / search)
+  const regionWorkers = useMemo(() => {
+    if (!filters.workplace) return sidebarPoolWorkers;
+    return sidebarPoolWorkers.filter(w => normalizeBusLocation(w.workplace) === filters.workplace);
+  }, [sidebarPoolWorkers, filters.workplace]);
+
+  // Quick filter counts
+  const regionCounts = useMemo(() => {
+    const all = regionWorkers.length;
+    const unlinked = regionWorkers.filter(w => !w.assignedBusId).length;
+    const expiringSoon = regionWorkers.filter(w => {
+      const target = (w as any).contractEndDate || w.endDate;
+      const days = getRemainingDays(target);
+      return days !== null && days >= 0 && days <= 30;
+    }).length;
+    return { all, unlinked, expiringSoon };
+  }, [regionWorkers, today]);
+
+  // Final filtered & sorted workers
+  const filteredWorkers = useMemo(() => {
+    const searchTerm = search.toLowerCase().trim();
+
+    return regionWorkers
+      .filter(w => {
+        if (filters.busStatus === 'linked' && !w.assignedBusId) return false;
+        if (filters.busStatus === 'unlinked' && w.assignedBusId) return false;
+
+        if (contractQuickFilter === 'expiring_soon') {
+          const target = (w as any).contractEndDate || w.endDate;
+          const days = getRemainingDays(target);
+          if (days === null || days < 0 || days > 30) return false;
+        }
+        if (contractQuickFilter === 'expired_active') {
+          const contractEnd = (w as any).contractEndDate;
+          if (!contractEnd || contractEnd >= today) return false;
+        }
+
+        if (!searchTerm) return true;
+
+        return (
+          w.name.toLowerCase().includes(searchTerm) ||
+          (w.iqamaNumber && w.iqamaNumber.toLowerCase().includes(searchTerm)) ||
+          (w.nationalId && w.nationalId.toLowerCase().includes(searchTerm)) ||
+          (w.workerNumber && w.workerNumber.toLowerCase().includes(searchTerm)) ||
+          (w.mobileNumber && w.mobileNumber.toLowerCase().includes(searchTerm)) ||
+          (w.assignedBusOperationalNumber &&
+            w.assignedBusOperationalNumber.toLowerCase().includes(searchTerm))
+        );
+      })
+      .sort((a, b) => {
+        if (sortField === 'workerNumber') {
+          const numA = parseInt(a.workerNumber, 10);
+          const numB = parseInt(b.workerNumber, 10);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return sortOrder === 'asc' ? numA - numB : numB - numA;
+          }
+        }
+        if (sortField === 'workplace') {
+          const wpCmp = normalizeBusLocation(a.workplace).localeCompare(
+            normalizeBusLocation(b.workplace),
+            'ar'
+          );
+          if (wpCmp !== 0) return sortOrder === 'asc' ? wpCmp : -wpCmp;
+          return a.name.localeCompare(b.name, 'ar');
+        }
+        const valA = String(a[sortField] || '');
+        const valB = String(b[sortField] || '');
+        const cmp = valA.localeCompare(valB, 'ar');
+        return sortOrder === 'asc' ? cmp : -cmp;
+      });
+  }, [regionWorkers, filters.busStatus, contractQuickFilter, search, sortField, sortOrder, today]);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.busStatus !== 'all') count += 1;
+    if (filters.workerStatus !== 'active') count += 1;
+    if (filters.workplace !== '') count += 1;
+    if (filters.clientName !== '') count += 1;
+    if (filters.recruitmentCompany !== '') count += 1;
+    if (contractQuickFilter !== 'none') count += 1;
+    return count;
+  }, [filters, contractQuickFilter]);
+
+  const totalPages = Math.ceil(filteredWorkers.length / PAGE_SIZE);
+  const paginatedWorkers = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredWorkers.slice(start, start + PAGE_SIZE);
+  }, [filteredWorkers, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filters, contractQuickFilter]);
+
+  const regionActiveCount = useMemo(
+    () => regionWorkers.filter(w => !w.endDate || w.endDate >= today).length,
+    [regionWorkers, today]
+  );
+
+  const regionAverageDays = useMemo(() => {
+    const withStart = regionWorkers.filter(w => !!w.startDate);
+    if (withStart.length === 0) return 0;
+    const total = withStart.reduce((acc, w) => acc + calculateDays(w.startDate, w.endDate), 0);
+    return Math.round(total / withStart.length);
+  }, [regionWorkers, today]);
+
+  const workplaceChartData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeWorkers.forEach(w => {
+      const wp = normalizeBusLocation(w.workplace);
+      counts[wp] = (counts[wp] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-  }, [workers, today]);
+  }, [activeWorkers]);
 
-  // Bus connection rate data for chart
-  const busLinkageChartData = useMemo(() => {
-    const active = workers.filter(w => !w.endDate || w.endDate >= today);
-    const linked = active.filter(w => w.assignedBusId).length;
-    const unlinked = active.length - linked;
-    return [
-      { name: 'مرتبط بحافلة', value: linked, color: '#1e4d2b' },
-      { name: 'غير مرتبط', value: unlinked, color: '#f48e21' }
-    ];
-  }, [workers, today]);
+  const busLinkageChartData = useMemo(
+    () => [
+      { name: 'سائقون بحافلات', value: activeLinkedCount, color: '#0066F6' },
+      { name: 'بدون حافلة', value: activeUnlinkedCount, color: '#EA580C' }
+    ],
+    [activeLinkedCount, activeUnlinkedCount]
+  );
 
-  // Recruitment Company breakdown data for chart
   const companyChartData = useMemo(() => {
-    const counts: { [key: string]: number } = {};
-    workers.forEach(w => {
-      const isTerminated = w.endDate && w.endDate < today;
-      if (!isTerminated) {
-        const c = w.recruitmentCompany || 'غير محدد';
-        counts[c] = (counts[c] || 0) + 1;
-      }
-    });
-    return Object.entries(counts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-  }, [workers, today]);
-
-  const activeWorkers = useMemo(() => {
-    return workers.filter(w => !w.endDate || w.endDate >= today);
-  }, [workers, today]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, JSON.stringify(filters)]);
-
-  const filteredWorkers = useMemo(() => {
-    return workers.filter(w => {
-      const isTerminated = w.endDate && w.endDate < today;
-      
-      const searchTerm = search.toLowerCase().trim();
-      const matchesSearch = 
-        w.name.toLowerCase().includes(searchTerm) ||
-        w.iqamaNumber.includes(searchTerm) ||
-        (w.nationalId && w.nationalId.includes(searchTerm)) ||
-        w.workplace.toLowerCase().includes(searchTerm) ||
-        w.workerNumber.toLowerCase().includes(searchTerm) ||
-        (w.mobileNumber && w.mobileNumber.includes(searchTerm)) ||
-        (w.notes && w.notes.toLowerCase().includes(searchTerm)) ||
-        (w.assignedBusOperationalNumber && w.assignedBusOperationalNumber.toLowerCase().includes(searchTerm)) ||
-        (w.assignedBusPlateNumber && w.assignedBusPlateNumber.toLowerCase().includes(searchTerm));
-      
-      const wp = normalizeBusLocation(w.workplace);
-      const matchesWorkplace = !filters.workplace || wp === filters.workplace;
-      const matchesClient = !filters.clientName || w.clientName === filters.clientName;
-      const matchesCompany = !filters.recruitmentCompany || w.recruitmentCompany === filters.recruitmentCompany;
-      const matchesBusStatus = 
-        filters.busStatus === 'all' ? true :
-        filters.busStatus === 'linked' ? !!w.assignedBusId :
-        !w.assignedBusId;
-
-      const matchesWorkerStatus = 
-        filters.workerStatus === 'all' ? true :
-        filters.workerStatus === 'active' ? (!w.endDate || w.endDate >= today) :
-        (w.endDate && w.endDate < today);
-
-      return matchesSearch && matchesWorkplace && matchesClient && matchesCompany && matchesBusStatus && matchesWorkerStatus;
-    }).sort((a, b) => {
-      if (sortField === 'workerNumber') {
-        const numA = parseInt(a.workerNumber, 10);
-        const numB = parseInt(b.workerNumber, 10);
-        const isNumA = !isNaN(numA) && isFinite(numA);
-        const isNumB = !isNaN(numB) && isFinite(numB);
-        if (isNumA && isNumB) {
-          return sortOrder === 'asc' ? numA - numB : numB - numA;
-        }
-        if (isNumA) return sortOrder === 'asc' ? -1 : 1;
-        if (isNumB) return sortOrder === 'asc' ? 1 : -1;
-      }
-      const valA = a[sortField] || '';
-      const valB = b[sortField] || '';
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [workers, search, filters, sortField, sortOrder]);
-
-  const paginatedWorkers = useMemo(() => {
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
-    return filteredWorkers.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [filteredWorkers, currentPage]);
-
-  const totalPages = Math.ceil(filteredWorkers.length / PAGE_SIZE);
-
-  const groupedWorkers = useMemo(() => {
-    const groups: { [key: string]: Worker[] } = {};
-    filteredWorkers.forEach(worker => {
-      const rawGroup = worker[groupBy];
-      const group = (groupBy === 'workplace') 
-        ? normalizeBusLocation(rawGroup) 
-        : (rawGroup || 'غير محدد');
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(worker);
-    });
-    return groups;
-  }, [filteredWorkers, groupBy]);
-
-  const toggleGroup = (group: string) => {
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(group)) {
-      newExpanded.delete(group);
-    } else {
-      newExpanded.add(group);
-    }
-    setExpandedGroups(newExpanded);
-  };
+    return activeCompanies.slice(0, 5);
+  }, [activeCompanies]);
 
   const toggleSort = (field: keyof Worker) => {
     if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
       setSortOrder('asc');
     }
   };
 
-  const calculateDays = (start: string, end: string) => {
-    try {
-      if (!start) return 0;
-      const startDate = parseISO(start);
-      // If no end date, calculate duration from start until today
-      const endDate = end ? parseISO(end) : parseISO(today);
-      const days = differenceInDays(endDate, startDate);
-      return days >= 0 ? days : 0;
-    } catch (e) {
-      return 0;
+  const handleSortDropdownChange = (val: 'workplace' | 'name' | 'startDate' | 'workerNumber') => {
+    setSortOption(val);
+    setSortField(val);
+    setSortOrder('asc');
+  };
+
+  const toggleRegionGroup = (groupKey: string) => {
+    setExpandedRegionGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+
+  const resetAllFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setContractQuickFilter('none');
+    setSearch('');
+  };
+
+  const handleKpiClick = (target: 'active' | 'linked' | 'unlinked' | 'companies') => {
+    if (target === 'active') {
+      setFilters({ ...DEFAULT_FILTERS, workerStatus: 'active', busStatus: 'all' });
+      setContractQuickFilter('none');
+    } else if (target === 'linked') {
+      setFilters(f => ({ ...f, workerStatus: 'active', busStatus: 'linked', workplace: '' }));
+      setContractQuickFilter('none');
+    } else if (target === 'unlinked') {
+      setFilters(f => ({ ...f, workerStatus: 'active', busStatus: 'unlinked', workplace: '' }));
+      setContractQuickFilter('none');
+    } else if (target === 'companies') {
+      setShowFilters(true);
     }
   };
 
-  const getRemainingDays = (endDate: string) => {
-    if (!endDate) return null;
-    try {
-      const targetDate = parseISO(endDate);
-      const todayDate = parseISO(today);
-      const days = differenceInDays(targetDate, todayDate);
-      return days;
-    } catch (e) {
-      return null;
-    }
-  };
+  const optionalColumnDefs: { key: keyof typeof optionalColumns; label: string }[] = [
+    { key: 'workplace', label: 'مكان العمل' },
+    { key: 'company', label: 'شركة الاستخدام' },
+    { key: 'endDate', label: 'نهاية العمل' },
+    { key: 'contractStatus', label: 'حالة انتهاء العقد' },
+    { key: 'previousBuses', label: 'الحافلات السابقة' },
+    { key: 'category', label: 'الفئة' }
+  ];
 
-  const SortIcon = ({ field }: { field: keyof Worker }) => {
-    if (sortField !== field) return null;
-    return sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 inline mr-1" /> : <ChevronDown className="w-3 h-3 inline mr-1" />;
-  };
+  const totalColumnsCount = 4 + Object.values(optionalColumns).filter(Boolean).length;
+  const selectedRegionLabel = filters.workplace || 'كل المناطق';
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-5 text-right text-text-main" dir="rtl">
+      {/* Data Integrity Alerts */}
       {hasDuplicateNumbers && (
-        <div className="bg-red-50 dark:bg-red-950/20 border-r-4 border-red-500 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm text-red-800 dark:text-red-300 dark:border-red-800">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
-            <div>
-              <p className="font-bold text-sm">تنبيه: تم كشف تكرار في أرقام بعض العمال</p>
-              <p className="text-xs opacity-90 mt-0.5">يوجد بعض العمال الذين يحملون نفس الرقم المسلسل بالخطأ. يرجى الضغط على زر "إعادة ترقيم تسلسلي فوراً" لإعادة ترتيب وتصحيح الأرقام لجميع العمال تلقائياً وبشكل متسلسل فريد.</p>
-            </div>
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-900 dark:text-red-200 shadow-xs">
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
+            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+            <span>تم كشف تكرار في أرقام بعض العمال. يرجى إعادة الترقيم التسلسلي لتصحيح الأرقام.</span>
           </div>
           {onRenumberWorkers && (
-            <button 
-              onClick={onRenumberWorkers}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-red-500/10 shrink-0 self-start md:self-auto"
+            <button
+              type="button"
+              onClick={() => setIsRenumberConfirmOpen(true)}
+              className="min-h-[44px] px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
             >
-              <RefreshCw className="w-4 h-4 text-white animate-spin" />
-              <span>إعادة ترقيم تسلسلي فوراً</span>
+              إعادة ترقيم تسلسلي
             </button>
           )}
         </div>
       )}
 
       {duplicateIqamasList.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-950/20 border-r-4 border-amber-500 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm text-amber-900 dark:text-amber-200 border border-amber-200">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <div>
-              <p className="font-bold text-sm">تنبيه: تم كشف أرقام إقامة/هوية مكررة لبعض العمال في النظام ({duplicateIqamasList.length} حالة تكرار)</p>
-              <p className="text-xs opacity-90 mt-0.5">
-                توجد سجلات تحمل نفس رقم الإقامة أو الهوية (مثال: {duplicateIqamasList.map(d => `${d.id} ← ${d.names.join(' / ')}`).slice(0, 2).join(' | ')}). يرجى مراجعة وتعديل بياناتهم لمنع التكرار.
-              </p>
-            </div>
-          </div>
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 px-4 py-3 rounded-2xl flex items-center gap-2.5 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-xs">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span>
+            تكرار في أرقام الإقامة/الهوية ({duplicateIqamasList.length} حالة):{' '}
+            {duplicateIqamasList.map(d => `${d.id} (${d.names.join(' / ')})`).slice(0, 2).join(' · ')}
+          </span>
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. Header */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>إدارة</span>
-            <span className="text-primary font-bold">الرقابة والمتابعة</span>
+          <h2 className="text-xl md:text-2xl font-bold text-text-main flex items-center gap-2">
+            <span>الرقابة</span>
+            <span className="text-primary font-bold">والمتابعة</span>
           </h2>
-          <p className="text-slate-700 dark:text-slate-300 text-xs font-semibold mt-1">
-            إدارة بيانات <span className="text-emerald-700 dark:text-emerald-400 font-bold">العمال والمقاولين</span> ومتابعة فترات الدوام والربط الميداني
+          <p className="text-xs font-semibold text-text-muted mt-1">
+            متابعة السائقين والعمال الميدانيين، الحافلات المرتبطة، وحالة العقود حسب المنطقة
           </p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsMoreMenuOpen(prev => !prev)}
+              className="min-h-[44px] px-4 inline-flex items-center gap-2 bg-surface border border-border text-text-main rounded-xl text-xs font-bold hover:bg-background transition-colors shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+              aria-expanded={isMoreMenuOpen}
+            >
+              <MoreVertical className="w-4 h-4 text-text-muted" />
+              <span>المزيد</span>
+              <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isMoreMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isMoreMenuOpen && (
+              <div
+                className="absolute left-0 mt-2 w-60 bg-surface border border-border rounded-2xl shadow-lg py-1.5 z-50"
+                dir="rtl"
+              >
+                {canEdit && onImport && (
+                  <label className="min-h-[44px] w-full flex items-center gap-2.5 px-4 text-xs font-bold text-text-main hover:bg-background transition-colors cursor-pointer">
+                    <Upload className="w-4 h-4 text-primary shrink-0" />
+                    <span>استيراد Excel</span>
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      className="hidden"
+                      onChange={e => {
+                        setIsMoreMenuOpen(false);
+                        onImport(e);
+                      }}
+                    />
+                  </label>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    onExportExcel(filteredWorkers);
+                  }}
+                  className="min-h-[44px] w-full flex items-center gap-2.5 px-4 text-xs font-bold text-text-main hover:bg-background transition-colors text-right outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>تصدير Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    onExportPdf(filteredWorkers);
+                  }}
+                  className="min-h-[44px] w-full flex items-center gap-2.5 px-4 text-xs font-bold text-text-main hover:bg-background transition-colors text-right outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+                  <span>تصدير PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    setShowAnalytics(prev => !prev);
+                  }}
+                  className="min-h-[44px] w-full flex items-center gap-2.5 px-4 text-xs font-bold text-text-main hover:bg-background transition-colors text-right outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  <BarChart3 className="w-4 h-4 text-primary shrink-0" />
+                  <span>{showAnalytics ? 'إخفاء التحليلات' : 'مؤشرات الرقابة والتحليلات'}</span>
+                </button>
+
+                {isAdmin && onRenumberWorkers && (
+                  <>
+                    <div className="my-1 border-t border-border" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        setIsRenumberConfirmOpen(true);
+                      }}
+                      className="min-h-[44px] w-full flex items-center gap-2.5 px-4 text-xs font-bold text-primary hover:bg-primary-light transition-colors text-right outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4 shrink-0" />
+                      <span>إعادة ترقيم تسلسلي</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           {canEdit && onAdd && (
-            <button 
+            <button
+              type="button"
               onClick={onAdd}
-              className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-hover transition-all shadow-sm shadow-primary/20 active:scale-95 cursor-pointer"
+              className="min-h-[44px] px-5 inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-primary/20 outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>إضافة عامل جديد</span>
             </button>
           )}
-          
-          <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+        </div>
+      </header>
 
-          {canEdit && onImport && (
-            <label className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all cursor-pointer shadow-xs">
-              <Upload className="w-4 h-4 text-emerald-600" />
-              <span>استيراد Excel</span>
-              <input 
-                type="file" 
-                accept=".xlsx, .xls" 
-                className="hidden" 
-                onChange={onImport}
-              />
-            </label>
-          )}
-
-          <button 
-            onClick={() => onExportExcel(filteredWorkers)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-all shadow-xs cursor-pointer"
+      {/* 2. Single 4-cell Stats Bar */}
+      <section
+        aria-label="ملخص أرقام العمال"
+        className="bg-surface border border-border rounded-2xl shadow-xs overflow-hidden"
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-x-reverse divide-border">
+          <button
+            type="button"
+            onClick={() => handleKpiClick('active')}
+            className={`min-h-[44px] p-4 sm:px-6 text-right transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary cursor-pointer ${
+              filters.workerStatus === 'active' &&
+              filters.busStatus === 'all' &&
+              !filters.recruitmentCompany &&
+              contractQuickFilter === 'none'
+                ? 'bg-primary-light/60'
+                : 'hover:bg-background/60'
+            }`}
           >
-            <Download className="w-4 h-4 text-emerald-600" />
-            <span>تصدير Excel</span>
+            <p className="text-xs font-bold text-text-muted">العمال النشطون</p>
+            <p className="text-2xl font-black text-text-main tabular-nums mt-1">
+              {activeWorkers.length}
+            </p>
           </button>
 
-          <button 
-            onClick={() => onExportPdf(filteredWorkers)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface border border-border text-slate-900 dark:text-white rounded-xl text-xs font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-all shadow-xs cursor-pointer"
+          <button
+            type="button"
+            onClick={() => handleKpiClick('linked')}
+            className={`min-h-[44px] p-4 sm:px-6 text-right transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary cursor-pointer ${
+              filters.workerStatus === 'active' && filters.busStatus === 'linked'
+                ? 'bg-primary-light/60'
+                : 'hover:bg-background/60'
+            }`}
           >
-            <FileDown className="w-4 h-4 text-red-600" />
-            <span>تصدير PDF</span>
+            <p className="text-xs font-bold text-text-muted">سائقون بحافلات</p>
+            <p className="text-2xl font-black text-text-main tabular-nums mt-1">
+              {activeLinkedCount}
+            </p>
           </button>
 
-          {isAdmin && onRenumberWorkers && (
-            <button 
-              onClick={onRenumberWorkers}
-              className="flex items-center gap-2 px-4 py-2 bg-surface border border-indigo-200 text-indigo-700 dark:border-indigo-900/50 dark:text-indigo-400 rounded-xl text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all shadow-xs cursor-pointer"
-              title="إعادة ترقيم جميع العمال الحاليين بشكل متسلسل"
+          <button
+            type="button"
+            onClick={() => handleKpiClick('unlinked')}
+            className={`min-h-[44px] p-4 sm:px-6 text-right transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary cursor-pointer ${
+              filters.workerStatus === 'active' && filters.busStatus === 'unlinked'
+                ? 'bg-orange-50 dark:bg-orange-950/30'
+                : 'hover:bg-orange-50/50 dark:hover:bg-orange-950/20'
+            }`}
+          >
+            <p className="text-xs font-bold text-orange-700 dark:text-orange-400">بدون حافلة</p>
+            <p className="text-2xl font-black text-orange-700 dark:text-orange-400 tabular-nums mt-1">
+              {activeUnlinkedCount}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleKpiClick('companies')}
+            className={`min-h-[44px] p-4 sm:px-6 text-right transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary cursor-pointer ${
+              filters.recruitmentCompany ? 'bg-primary-light/60' : 'hover:bg-background/60'
+            }`}
+          >
+            <p className="text-xs font-bold text-text-muted">شركات الاستخدام</p>
+            <p className="text-2xl font-black text-text-main tabular-nums mt-1">
+              {activeCompanies.length}
+            </p>
+          </button>
+        </div>
+      </section>
+
+      {/* 3. Calm Single-Line Contract Status Alert */}
+      {activeExpiredContracts.length > 0 ? (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-2xl px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+          <div className="flex items-center gap-2.5 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              يوجد <span className="font-bold tabular-nums">{activeExpiredContracts.length}</span> عقد منتهٍ بين العمال النشطين.
+              {formerWorkers.length > 0 && (
+                <>
+                  {' '}
+                  كما توجد <span className="font-bold tabular-nums">{formerWorkers.length}</span> عقود منتهية تخص عمالًا سابقين.
+                </>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setFilters(f => ({ ...f, workerStatus: 'active', workplace: '' }));
+                setContractQuickFilter('expired_active');
+              }}
+              className="min-h-[44px] px-2 text-xs font-bold text-amber-900 dark:text-amber-200 underline hover:text-amber-700 outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
             >
-              <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>إعادة ترقيم تسلسلي</span>
+              عرض النشطين المنتهية عقودهم
+            </button>
+            {formerWorkers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters(f => ({
+                    ...f,
+                    workerStatus: f.workerStatus === 'terminated' ? 'active' : 'terminated'
+                  }));
+                  setContractQuickFilter('none');
+                }}
+                className="min-h-[44px] px-2 text-xs font-bold text-primary hover:underline outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
+              >
+                {filters.workerStatus === 'terminated' ? 'العودة للعمال النشطين' : 'عرض العمال السابقين'}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-surface border border-border rounded-2xl px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted shadow-xs">
+          <div className="flex items-center gap-2.5 font-semibold">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
+            <span>
+              لا توجد عقود منتهية بين العمال النشطين.
+              {formerWorkers.length > 0 && (
+                <>
+                  {' '}
+                  <span className="tabular-nums text-text-main font-bold">
+                    {formerWorkers.length} عقدًا منتهيًا تخص عمالًا سابقين
+                  </span>
+                </>
+              )}
+            </span>
+          </div>
+          {formerWorkers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilters(f => ({
+                  ...f,
+                  workerStatus: f.workerStatus === 'terminated' ? 'active' : 'terminated'
+                }));
+                setContractQuickFilter('none');
+              }}
+              className="min-h-[44px] px-2 text-xs font-bold text-primary hover:underline outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
+            >
+              {filters.workerStatus === 'terminated' ? 'العودة للعمال النشطين' : 'عرض العمال السابقين'}
             </button>
           )}
-
-          <button 
-            onClick={() => setShowAnalytics(!showAnalytics)}
-            className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${showAnalytics ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-slate-900 dark:text-white hover:bg-slate-50'}`}
-          >
-            <BarChart3 className={`w-4 h-4 ${showAnalytics ? 'text-white' : 'text-primary'}`} />
-            <span>{showAnalytics ? 'إخفاء الإحصائيات' : 'مؤشرات الرقابة والتحليلات'}</span>
-          </button>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-surface p-4 rounded-2xl border border-emerald-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
-            <ClipboardList className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">إجمالي العمال النشطين</p>
-            <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-300">{activeWorkers.length}</p>
-          </div>
-        </div>
-        <div className="bg-surface p-4 rounded-2xl border border-sky-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
-          <div className="w-12 h-12 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/40 flex items-center justify-center text-sky-700 dark:text-sky-400">
-            <BusIcon className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">سائقين بحافلات مرتبطة</p>
-            <p className="text-2xl font-bold text-sky-900 dark:text-sky-300">{activeWorkers.filter(w => w.assignedBusId).length}</p>
-          </div>
-        </div>
-        <div className="bg-surface p-4 rounded-2xl border border-amber-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 flex items-center justify-center text-amber-700 dark:text-amber-400">
-            <User className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">عمال بدون حافلة</p>
-            <p className="text-2xl font-bold text-amber-900 dark:text-amber-300">{activeWorkers.filter(w => !w.assignedBusId).length}</p>
-          </div>
-        </div>
-        <div className="bg-surface p-4 rounded-2xl border border-purple-100 dark:border-slate-800 flex items-center gap-4 shadow-xs">
-          <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/40 flex items-center justify-center text-purple-700 dark:text-purple-400">
-            <Building2 className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">شركات الاستقدام</p>
-            <p className="text-2xl font-bold text-purple-900 dark:text-purple-300">{Array.from(new Set(activeWorkers.map(w => w.recruitmentCompany))).length}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Alert Banner for Expired / Expiring Contracts */}
-      {(expiredWorkers.length > 0 || expiringWorkers.length > 0) && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm"
-          dir="rtl"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
-              <AlertTriangle className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <h4 className="text-sm font-black text-amber-950">تنبيهات العقود والمتابعة القانونية</h4>
-              <p className="text-xs text-amber-800 font-medium mt-0.5">
-                {expiredWorkers.length > 0 && `يوجد عدد ${expiredWorkers.length} عقد عمل منتهي الصلاحية حالياً. `}
-                {expiringWorkers.length > 0 && `يوجد عدد ${expiringWorkers.length} عقد ينتهي خلال السبعة أيام القادمة.`}
-              </p>
-            </div>
-          </div>
-          <button 
-            onClick={() => {
-              setFilters(f => ({ ...f, workerStatus: 'all' }));
-              setShowFilters(true);
-            }}
-            className="text-[10px] font-black bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
-          >
-            مراجعة وفلترة القائمة
-          </button>
-        </motion.div>
       )}
 
-      {/* Analytics & Metrics Dashboard */}
+      {/* Optional Analytics Panel */}
       <AnimatePresence>
         {showAnalytics && (
-          <motion.div
+          <motion.section
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden space-y-6"
+            className="overflow-hidden"
           >
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Card 1: Workplace distribution */}
-              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col">
-                <div className="flex items-center gap-2 mb-4 justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-primary" />
-                    <h3 className="text-xs font-black text-text-main">توزيع العمال حسب مناطق العمل</h3>
-                  </div>
-                  <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black">
-                    {workplaceChartData.length} منطقة
-                  </span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-1">
+              <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-text-main">توزيع العمال حسب المنطقة</h3>
+                  <span className="text-xs text-text-muted tabular-nums">{workplaceChartData.length} منطقة</span>
                 </div>
-                
-                <div className="h-64 w-full text-xs font-semibold">
+                <div className="h-56 w-full text-xs">
                   {workplaceChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={workplaceChartData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                         <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} style={{ fontSize: '10px' }} />
-                        <Tooltip 
-                          formatter={(value) => [`${value} عامل`, 'العدد']} 
-                          contentStyle={{ textAlign: 'right', borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                        />
-                        <Bar dataKey="count" fill="#1e4d2b" radius={[0, 4, 4, 0]}>
-                          {workplaceChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={index === 0 ? '#1e4d2b' : index % 2 === 0 ? '#4b2c82' : '#f48e21'} />
-                          ))}
-                        </Bar>
+                        <YAxis dataKey="name" type="category" width={90} tickLine={false} axisLine={false} style={{ fontSize: '12px' }} />
+                        <Tooltip formatter={value => [`${value} عامل`, 'العدد']} />
+                        <Bar dataKey="count" fill="#0066F6" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-text-muted italic text-xs">لا تتوفر بيانات كافية</div>
+                    <div className="h-full flex items-center justify-center text-xs text-text-muted">لا تتوفر بيانات</div>
                   )}
                 </div>
               </div>
 
-              {/* Card 2: Bus linkage donut chart */}
-              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col items-center justify-between">
-                <div className="w-full flex items-center gap-2 mb-4 justify-between">
-                  <div className="flex items-center gap-2">
-                    <BusIcon className="w-4 h-4 text-secondary" />
-                    <h3 className="text-xs font-black text-text-main">نسبة ربط السائقين بالحافلات</h3>
-                  </div>
-                  <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-black">
-                    {Math.round((activeWorkers.filter(w => w.assignedBusId).length / (activeWorkers.length || 1)) * 100)}% ربط
+              <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-text-main">الارتباط بالحافلات</h3>
+                  <span className="text-xs font-bold text-primary tabular-nums">
+                    {Math.round((activeLinkedCount / (activeWorkers.length || 1)) * 100)}%
                   </span>
                 </div>
-                
-                <div className="h-48 w-full flex items-center justify-center">
+                <div className="h-44 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
-                      <Pie
-                        data={busLinkageChartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {busLinkageChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Pie data={busLinkageChartData} cx="50%" cy="50%" innerRadius={48} outerRadius={68} paddingAngle={4} dataKey="value">
+                        {busLinkageChartData.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={(value) => [`${value} عامل`, 'العدد']}
-                        contentStyle={{ textAlign: 'right', borderRadius: '12px' }}
-                      />
+                      <Tooltip formatter={value => [`${value} عامل`, 'العدد']} />
                     </RechartsPieChart>
                   </ResponsiveContainer>
                 </div>
-
-                <div className="w-full grid grid-cols-2 gap-2 mt-2">
-                  {busLinkageChartData.map((item, idx) => (
-                    <div key={idx} className="flex flex-col items-center p-2 rounded-xl bg-background border border-border">
-                      <div className="flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-[10px] text-text-muted font-bold">{item.name}</span>
-                      </div>
-                      <span className="text-sm font-black text-text-main mt-0.5">{item.value} عامل</span>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-around text-xs pt-2 border-t border-border tabular-nums">
+                  <span className="font-semibold text-text-main">بحافلة: {activeLinkedCount}</span>
+                  <span className="text-orange-700 dark:text-orange-400 font-bold">بدون حافلة: {activeUnlinkedCount}</span>
                 </div>
               </div>
 
-              {/* Card 3: Top recruitment companies */}
-              <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm flex flex-col">
-                <div className="flex items-center gap-2 mb-4 justify-between">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-accent" />
-                    <h3 className="text-xs font-black text-text-main">أبرز شركات الاستقدام والمقاولين</h3>
-                  </div>
-                  <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded-full font-black">
-                    أعلى 5 جهات
-                  </span>
+              <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-text-main">أبرز شركات الاستخدام</h3>
+                  <span className="text-xs text-text-muted">أعلى 5</span>
                 </div>
-                
-                <div className="h-64 w-full text-xs font-semibold">
+                <div className="h-56 w-full text-xs">
                   {companyChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={companyChartData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-                        <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '9px' }} />
+                        <XAxis dataKey="name" tickLine={false} axisLine={false} style={{ fontSize: '12px' }} />
                         <YAxis hide />
-                        <Tooltip 
-                          formatter={(value) => [`${value} عامل`, 'العدد']}
-                          contentStyle={{ textAlign: 'right', borderRadius: '12px' }}
-                        />
-                        <Bar dataKey="count" fill="#4b2c82" radius={[4, 4, 0, 0]} barSize={25}>
-                          {companyChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={index === 0 ? '#4b2c82' : index % 2 === 0 ? '#1e4d2b' : '#f48e21'} />
-                          ))}
-                        </Bar>
+                        <Tooltip formatter={value => [`${value} عامل`, 'العدد']} />
+                        <Bar dataKey="count" fill="#0066F6" radius={[4, 4, 0, 0]} barSize={26} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-text-muted italic text-xs">لا تتوفر بيانات كافية</div>
+                    <div className="h-full flex items-center justify-center text-xs text-text-muted">لا تتوفر بيانات</div>
                   )}
                 </div>
               </div>
             </div>
-          </motion.div>
+          </motion.section>
         )}
       </AnimatePresence>
 
-      <div className="bg-surface rounded-3xl border border-border shadow-sm overflow-hidden min-h-[500px] flex flex-col">
-        <div className="p-6 border-b border-border bg-background/30 flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row gap-4 justify-between items-center w-full">
-            <div className="flex items-center gap-4">
-              <div className="flex bg-surface border border-border rounded-xl p-1 shadow-sm">
-                <button 
-                  onClick={() => setViewMode('grouped')}
-                  className={`px-4 py-1.5 text-xs font-black rounded-lg transition-all ${viewMode === 'grouped' ? 'bg-primary text-white' : 'text-text-muted hover:bg-background'}`}
+      {/* 4. Two-Column Main Workspace */}
+      <div className="flex flex-col md:flex-row gap-4 items-start">
+        {/* Mobile Region Dropdown */}
+        <div className="w-full md:hidden">
+          <label htmlFor="mobile-region-select" className="sr-only">
+            اختر المنطقة
+          </label>
+          <select
+            id="mobile-region-select"
+            value={filters.workplace}
+            onChange={e => setFilters(f => ({ ...f, workplace: e.target.value }))}
+            className="w-full min-h-[44px] px-3.5 bg-surface border border-border rounded-xl text-sm font-bold text-text-main outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs"
+          >
+            <option value="">كل المناطق ({sidebarPoolWorkers.length})</option>
+            {regionTree.map(node =>
+              node.type === 'group' ? (
+                <optgroup key={node.key} label={`${node.label} (${node.totalCount})`}>
+                  {node.items.map(item => (
+                    <option key={item.name} value={item.name}>
+                      {item.name} ({item.count})
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={node.key} value={node.key}>
+                  {node.label} ({node.totalCount})
+                </option>
+              )
+            )}
+          </select>
+        </div>
+
+        {/* Right Sidebar: Regions List (270px on desktop) */}
+        <aside
+          aria-label="قائمة المناطق"
+          className="hidden md:block w-[270px] shrink-0 bg-surface border border-border rounded-2xl shadow-xs p-2.5"
+        >
+          <div className="px-2.5 py-2 flex items-center justify-between border-b border-border mb-1.5">
+            <span className="text-xs font-bold text-text-muted">المناطق</span>
+            {sidebarPoolWorkers.length > 0 && (
+              <span className="text-xs font-bold text-text-muted tabular-nums">
+                {sidebarPoolWorkers.length}
+              </span>
+            )}
+          </div>
+
+          <nav className="space-y-0.5 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
+            <button
+              type="button"
+              onClick={() => setFilters(f => ({ ...f, workplace: '' }))}
+              className={`w-full min-h-[44px] px-3 rounded-xl flex items-center justify-between gap-2 text-right text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                filters.workplace === ''
+                  ? 'bg-primary-light text-primary font-bold'
+                  : 'text-text-main hover:bg-background font-semibold'
+              }`}
+            >
+              <span className="truncate">كل المناطق</span>
+              {sidebarPoolWorkers.length > 0 && (
+                <span className="text-xs tabular-nums shrink-0">{sidebarPoolWorkers.length}</span>
+              )}
+            </button>
+
+            {regionTree.map(node => {
+              if (node.type === 'single') {
+                const isSelected = filters.workplace === node.key;
+                return (
+                  <button
+                    key={node.key}
+                    type="button"
+                    onClick={() => setFilters(f => ({ ...f, workplace: node.key }))}
+                    className={`w-full min-h-[44px] px-3 rounded-xl flex items-center justify-between gap-2 text-right text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                      isSelected
+                        ? 'bg-primary-light text-primary font-bold'
+                        : 'text-text-main hover:bg-background font-semibold'
+                    }`}
+                  >
+                    <span className="truncate">{node.label}</span>
+                    <span className="text-xs tabular-nums shrink-0">{node.totalCount}</span>
+                  </button>
+                );
+              }
+
+              const isExpanded = expandedRegionGroups.has(node.key);
+              const hasSelectedChild = node.items.some(i => i.name === filters.workplace);
+
+              return (
+                <div key={node.key} className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleRegionGroup(node.key)}
+                    aria-expanded={isExpanded}
+                    className={`w-full min-h-[44px] px-3 rounded-xl flex items-center justify-between gap-2 text-right text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                      hasSelectedChild && !isExpanded
+                        ? 'bg-primary-light text-primary font-bold'
+                        : 'text-text-main hover:bg-background font-bold'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <ChevronDown
+                        className={`w-4 h-4 text-text-muted shrink-0 transition-transform ${
+                          isExpanded ? '' : 'rotate-90'
+                        }`}
+                      />
+                      <span className="truncate">{node.label}</span>
+                    </span>
+                    <span className="text-xs tabular-nums text-text-muted shrink-0">
+                      {node.totalCount}
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="pr-5 space-y-0.5">
+                      {node.items.map(item => {
+                        const isSelected = filters.workplace === item.name;
+                        return (
+                          <button
+                            key={item.name}
+                            type="button"
+                            onClick={() => setFilters(f => ({ ...f, workplace: item.name }))}
+                            className={`w-full min-h-[44px] px-3 rounded-xl flex items-center justify-between gap-2 text-right text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                              isSelected
+                                ? 'bg-primary-light text-primary font-bold'
+                                : 'text-text-muted hover:text-text-main hover:bg-background font-semibold'
+                            }`}
+                          >
+                            <span className="truncate">{item.name}</span>
+                            <span className="tabular-nums shrink-0">{item.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {regionTree.length === 0 && (
+              <p className="px-3 py-6 text-center text-xs text-text-muted">
+                لا توجد مناطق متاحة
+              </p>
+            )}
+          </nav>
+        </aside>
+
+        {/* Left Main Panel */}
+        <main className="flex-1 min-w-0 w-full bg-surface border border-border rounded-2xl shadow-xs overflow-hidden flex flex-col">
+          {/* Search + Filter Toolbar + Collapsible Advanced Filters Panel */}
+          <div className="p-4 border-b border-border space-y-3">
+            {/* Row 1: Sort + Search + Funnel Filter Button + Refresh Button */}
+            <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
+              {/* Sort selector */}
+              <div className="flex items-center gap-2 px-3 min-h-[44px] bg-background border border-border rounded-xl shrink-0">
+                <span className="text-xs font-bold text-text-muted whitespace-nowrap">ترتيب حسب:</span>
+                <select
+                  value={sortOption}
+                  onChange={e => handleSortDropdownChange(e.target.value as any)}
+                  className="bg-transparent text-xs font-bold text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
                 >
-                  المناطق
-                </button>
-                <button 
-                  onClick={() => setViewMode('table')}
-                  className={`px-4 py-1.5 text-xs font-black rounded-lg transition-all ${viewMode === 'table' ? 'bg-primary text-white' : 'text-text-muted hover:bg-background'}`}
-                >
-                  الجدول
-                </button>
+                  <option value="workplace">المنطقة (مكان العمل)</option>
+                  <option value="name">اسم العامل</option>
+                  <option value="startDate">تاريخ البدء</option>
+                  <option value="workerNumber">الرقم الوظيفي</option>
+                </select>
               </div>
 
-              {viewMode === 'grouped' && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-background/50 rounded-xl border border-border">
-                  <span className="text-[10px] font-black text-text-muted">ترتيب حسب:</span>
-                  <select 
-                    value={groupBy}
-                    onChange={(e) => {
-                      setGroupBy(e.target.value as any);
-                      setExpandedGroups(new Set()); // Collapse all when switching
-                    }}
-                    className="bg-transparent text-[10px] font-black text-primary outline-none cursor-pointer"
-                  >
-                    <option value="workplace">المنطقة (مكان العمل)</option>
-                    <option value="clientName">العميل</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="relative w-full md:w-96 flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted w-4 h-4" />
-                <input 
+              {/* Search Input */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-4 h-4 text-text-muted absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
                   type="text"
-                  placeholder="ابحث باسم العامل، الإقامة، مكان العمل، الحافلة، أو الملاحظات..."
-                  className="w-full pr-10 pl-10 py-2.5 bg-surface border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="ابحث بالاسم، رقم الإقامة، أو رقم الحافلة..."
+                  className="w-full min-h-[44px] pr-10 pl-10 bg-background border border-border focus:border-primary rounded-xl text-sm text-text-main placeholder:text-text-muted outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors shadow-2xs"
                 />
                 {search && (
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => setSearch('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-red-500 rounded-lg p-1 hover:bg-black/5 transition-all"
-                    title="مسح البحث"
+                    aria-label="مسح البحث"
+                    className="min-w-[44px] min-h-[44px] flex items-center justify-center absolute left-0 top-1/2 -translate-y-1/2 text-text-muted hover:text-red-500 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <button 
-                onClick={() => setShowFilters(!showFilters)}
-                className={`p-2.5 rounded-xl transition-all border shrink-0 ${showFilters ? 'bg-primary text-white border-primary shadow-md' : 'bg-surface text-text-muted border-border hover:bg-background shadow-sm'}`}
-                title="الفلاتر المتقدمة"
-              >
-                <Filter className="w-5 h-5" />
-              </button>
-            </div>
-            <button 
-              onClick={() => window.location.reload()}
-              className="p-2.5 bg-surface border border-border text-text-muted rounded-xl hover:bg-background transition-colors shadow-sm"
-              title="تحديث البيانات"
-            >
-              <RefreshCw className="w-5 h-5" />
-            </button>
-          </div>
 
-          <AnimatePresence>
-            {showFilters && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-border pt-4 mt-2"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4" dir="rtl">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-text-muted mr-1">حالة الحافلة</label>
-                    <div className="flex bg-surface border border-border rounded-xl p-1 shadow-sm">
-                      <button 
-                        onClick={() => setFilters(f => ({ ...f, busStatus: 'all' }))}
-                        className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all ${filters.busStatus === 'all' ? 'bg-primary text-white' : 'text-text-muted hover:bg-background'}`}
+              {/* Filter Button (Blue funnel icon) + Circular Refresh Button */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(prev => !prev)}
+                  aria-expanded={showFilters}
+                  title="الفلاتر المتقدمة"
+                  className={`relative min-h-[44px] px-3.5 inline-flex items-center gap-2 rounded-xl border text-xs font-bold transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                    showFilters
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-surface text-primary border-border hover:bg-primary-light/60 shadow-2xs'
+                  }`}
+                >
+                  <Filter className="w-4 h-4" />
+                  <span className="hidden sm:inline">الفلاتر</span>
+                  {activeFilterCount > 0 && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-bold tabular-nums ${
+                        showFilters
+                          ? 'bg-white/20 text-white'
+                          : 'bg-primary-light text-primary'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          showFilters ? 'bg-white' : 'bg-primary'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  title="تحديث البيانات"
+                  aria-label="تحديث البيانات"
+                  className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center bg-surface border border-border text-text-muted hover:text-primary hover:bg-background rounded-full transition-colors shadow-2xs outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Quick Filters (الكل، بدون حافلة، عقود تنتهي قريبًا) + Columns + Reset when active */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters(f => ({ ...f, busStatus: 'all' }));
+                    setContractQuickFilter('none');
+                  }}
+                  className={`min-h-[44px] px-3.5 rounded-xl text-xs font-bold border transition-colors tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                    filters.busStatus === 'all' && contractQuickFilter === 'none'
+                      ? 'bg-primary-light text-primary border-primary/30'
+                      : 'bg-surface text-text-main border-border hover:bg-background'
+                  }`}
+                >
+                  الكل{regionCounts.all > 0 ? ` (${regionCounts.all})` : ''}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters(f => ({
+                      ...f,
+                      busStatus: f.busStatus === 'unlinked' ? 'all' : 'unlinked'
+                    }));
+                    setContractQuickFilter('none');
+                  }}
+                  className={`min-h-[44px] px-3.5 rounded-xl text-xs font-bold border transition-colors tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                    filters.busStatus === 'unlinked'
+                      ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-800'
+                      : 'bg-surface text-text-main border-border hover:bg-background'
+                  }`}
+                >
+                  بدون حافلة{regionCounts.unlinked > 0 ? ` (${regionCounts.unlinked})` : ''}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setContractQuickFilter(prev =>
+                      prev === 'expiring_soon' ? 'none' : 'expiring_soon'
+                    )
+                  }
+                  className={`min-h-[44px] px-3.5 rounded-xl text-xs font-bold border transition-colors tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                    contractQuickFilter === 'expiring_soon'
+                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                      : 'bg-surface text-text-main border-border hover:bg-background'
+                  }`}
+                >
+                  عقود تنتهي قريبًا{regionCounts.expiringSoon > 0 ? ` (${regionCounts.expiringSoon})` : ''}
+                </button>
+
+                {/* Visible Reset Filters button even when Advanced Panel is closed */}
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetAllFilters}
+                    className="min-h-[44px] px-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary-light/70 hover:bg-primary-light rounded-xl transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>إعادة ضبط الفلاتر</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="relative" ref={columnsMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsColumnsMenuOpen(prev => !prev)}
+                  className={`min-h-[44px] px-3.5 inline-flex items-center gap-1.5 rounded-xl text-xs font-bold border transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                    isColumnsMenuOpen
+                      ? 'bg-primary-light text-primary border-primary/30'
+                      : 'bg-surface text-text-main border-border hover:bg-background'
+                  }`}
+                >
+                  <Columns3 className="w-4 h-4 text-primary" />
+                  <span>الأعمدة</span>
+                </button>
+
+                {isColumnsMenuOpen && (
+                  <div
+                    className="absolute left-0 mt-2 w-56 bg-surface border border-border rounded-2xl shadow-lg p-2 z-40 space-y-0.5"
+                    dir="rtl"
+                  >
+                    <p className="px-2 py-1.5 text-xs font-bold text-text-muted border-b border-border mb-1">
+                      أعمدة إضافية
+                    </p>
+                    {optionalColumnDefs.map(col => (
+                      <label
+                        key={col.key}
+                        className="min-h-[44px] flex items-center gap-2.5 px-2 rounded-xl hover:bg-background cursor-pointer text-xs font-semibold text-text-main"
                       >
-                        الكل
-                      </button>
-                      <button 
-                        onClick={() => setFilters(f => ({ ...f, busStatus: 'linked' }))}
-                        className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all ${filters.busStatus === 'linked' ? 'bg-emerald-500 text-white' : 'text-text-muted hover:bg-background'}`}
+                        <input
+                          type="checkbox"
+                          checked={optionalColumns[col.key]}
+                          onChange={() =>
+                            setOptionalColumns(prev => ({ ...prev, [col.key]: !prev[col.key] }))
+                          }
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                        />
+                        <span>{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Collapsible Advanced Filters Panel (Closed by default) */}
+            <AnimatePresence>
+              {showFilters && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="overflow-hidden border-t border-border pt-4"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3" dir="rtl">
+                    {/* 1. حالة الحافلة */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-text-muted">
+                        حالة الحافلة
+                      </label>
+                      <div className="flex bg-background border border-border rounded-xl p-1 min-h-[44px]">
+                        <button
+                          type="button"
+                          onClick={() => setFilters(f => ({ ...f, busStatus: 'all' }))}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                            filters.busStatus === 'all'
+                              ? 'bg-primary text-white shadow-2xs'
+                              : 'text-text-muted hover:text-text-main'
+                          }`}
+                        >
+                          الكل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFilters(f => ({ ...f, busStatus: 'linked' }))}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                            filters.busStatus === 'linked'
+                              ? 'bg-primary text-white shadow-2xs'
+                              : 'text-text-muted hover:text-text-main'
+                          }`}
+                        >
+                          مرتبط
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFilters(f => ({ ...f, busStatus: 'unlinked' }))}
+                          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer ${
+                            filters.busStatus === 'unlinked'
+                              ? 'bg-primary text-white shadow-2xs'
+                              : 'text-text-muted hover:text-text-main'
+                          }`}
+                        >
+                          غير مرتبط
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. حالة العمال */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-text-muted">
+                        حالة العمال
+                      </label>
+                      <select
+                        value={filters.workerStatus}
+                        onChange={e =>
+                          setFilters(f => ({ ...f, workerStatus: e.target.value as any }))
+                        }
+                        className="w-full min-h-[44px] px-3 bg-background border border-border rounded-xl outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary text-xs font-bold text-text-main cursor-pointer"
                       >
-                        مرتبط
-                      </button>
-                      <button 
-                        onClick={() => setFilters(f => ({ ...f, busStatus: 'unlinked' }))}
-                        className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all ${filters.busStatus === 'unlinked' ? 'bg-amber-500 text-white' : 'text-text-muted hover:bg-background'}`}
+                        <option value="active">العمال النشطين فقط</option>
+                        <option value="all">الكل (نشط + منتهي)</option>
+                        <option value="terminated">المنتهية عقودهم</option>
+                      </select>
+                    </div>
+
+                    {/* 3. مكان العمل (synced with right sidebar) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-text-muted">
+                        مكان العمل
+                      </label>
+                      <select
+                        value={filters.workplace}
+                        onChange={e => setFilters(f => ({ ...f, workplace: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 bg-background border border-border rounded-xl outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary text-xs font-semibold text-text-main cursor-pointer"
                       >
-                        غير مرتبط
-                      </button>
+                        <option value="">الكل</option>
+                        {workplaces.map(w => (
+                          <option key={w} value={w}>
+                            {w}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 4. العميل */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-text-muted">
+                        العميل
+                      </label>
+                      <select
+                        value={filters.clientName}
+                        onChange={e => setFilters(f => ({ ...f, clientName: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 bg-background border border-border rounded-xl outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary text-xs font-semibold text-text-main cursor-pointer"
+                      >
+                        <option value="">الكل</option>
+                        {clients.map(c => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 5. شركة الاستخدام */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-text-muted">
+                        شركة الاستخدام
+                      </label>
+                      <select
+                        value={filters.recruitmentCompany}
+                        onChange={e =>
+                          setFilters(f => ({ ...f, recruitmentCompany: e.target.value }))
+                        }
+                        className="w-full min-h-[44px] px-3 bg-background border border-border rounded-xl outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary text-xs font-semibold text-text-main cursor-pointer"
+                      >
+                        <option value="">الكل</option>
+                        {companies.map(c => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-text-muted mr-1">حالة العمال</label>
-                    <select 
-                      value={filters.workerStatus}
-                      onChange={(e) => setFilters(f => ({ ...f, workerStatus: e.target.value as any }))}
-                      className="w-full p-2.5 bg-surface border border-border rounded-xl outline-none focus:border-primary text-xs shadow-sm font-black"
-                    >
-                      <option value="active">العمال النشطين فقط</option>
-                      <option value="all">الكل (نشط + منتهي)</option>
-                      <option value="terminated">المنتهية عقودهم</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-text-muted mr-1">مكان العمل</label>
-                    <select 
-                      value={filters.workplace}
-                      onChange={(e) => setFilters(f => ({ ...f, workplace: e.target.value }))}
-                      className="w-full p-2.5 bg-surface border border-border rounded-xl outline-none focus:border-primary text-sm shadow-sm font-semibold"
-                    >
-                      <option value="">الكل</option>
-                      {workplaces.map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-text-muted mr-1">العميل</label>
-                    <select 
-                      value={filters.clientName}
-                      onChange={(e) => setFilters(f => ({ ...f, clientName: e.target.value }))}
-                      className="w-full p-2.5 bg-surface border border-border rounded-xl outline-none focus:border-primary text-sm shadow-sm font-semibold"
-                    >
-                      <option value="">الكل</option>
-                      {clients.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-text-muted mr-1">شركة الاستقدام</label>
-                    <select 
-                      value={filters.recruitmentCompany}
-                      onChange={(e) => setFilters(f => ({ ...f, recruitmentCompany: e.target.value }))}
-                      className="w-full p-2.5 bg-surface border border-border rounded-xl outline-none focus:border-primary text-sm shadow-sm font-semibold"
-                    >
-                      <option value="">الكل</option>
-                      {companies.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end mt-4">
-                  <button 
-                    onClick={() => setFilters({ workplace: '', clientName: '', recruitmentCompany: '', busStatus: 'all', workerStatus: 'active' })}
-                    className="text-[10px] font-bold text-primary hover:underline bg-primary/5 px-3 py-1 rounded-full"
-                  >
-                    إعادة ضبط الفلاتر
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
 
-        {/* Active Filters / Search Summary banner */}
-        {(search || filters.workplace || filters.clientName || filters.recruitmentCompany || filters.busStatus !== 'all' || filters.workerStatus !== 'active') && (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 bg-primary/5 text-xs text-primary border-b border-border/80" dir="rtl">
-            <div className="flex items-center gap-2 font-black">
-              <span>تصفية نشطة:</span>
-              <span className="bg-primary/10 px-2 py-0.5 rounded-full font-black text-[11px]">
-                تم العثور على {filteredWorkers.length} من إجمالي {workers.length} عامل
-              </span>
+                  <div className="flex justify-end mt-3">
+                    <button
+                      type="button"
+                      onClick={resetAllFilters}
+                      className="min-h-[44px] px-3.5 text-xs font-bold text-primary hover:underline bg-primary-light/70 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                    >
+                      إعادة ضبط الفلاتر
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Region Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/60">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-bold text-text-main">
+                  {selectedRegionLabel}
+                  {filters.workerStatus === 'terminated'
+                    ? ' — عمال سابقون'
+                    : filters.workerStatus === 'all'
+                      ? ' — جميع السجلات'
+                      : ''}
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-text-muted tabular-nums">
+                {filters.workerStatus === 'active' && regionActiveCount > 0 && (
+                  <span>{regionActiveCount} عامل نشط</span>
+                )}
+                {filters.workerStatus !== 'active' && regionWorkers.length > 0 && (
+                  <span>{regionWorkers.length} عامل</span>
+                )}
+                {((filters.workerStatus === 'active' && regionActiveCount > 0) ||
+                  (filters.workerStatus !== 'active' && regionWorkers.length > 0)) &&
+                  regionAverageDays > 0 && <span aria-hidden="true">·</span>}
+                {regionAverageDays > 0 && (
+                  <span>متوسط مدة العمل: {regionAverageDays} يوم</span>
+                )}
+              </div>
             </div>
-            <button 
-              onClick={() => {
-                setSearch('');
-                setFilters({ workplace: '', clientName: '', recruitmentCompany: '', busStatus: 'all', workerStatus: 'active' });
-              }}
-              className="text-[10px] font-black hover:underline text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100/60 px-2.5 py-1 rounded-lg transition-colors border border-red-100"
-            >
-              إلغاء البحث والتصفية
-            </button>
           </div>
-        )}
 
-        {viewMode === 'table' ? (
-          <div className="overflow-x-auto flex-1 rounded-2xl border border-slate-200 shadow-sm bg-white">
+          {/* 5. Single Table View (4 Default Columns) */}
+          <div className="overflow-x-auto flex-1">
             <table className="w-full text-right border-collapse">
               <thead>
-                <tr className="bg-slate-50/90 border-b-2 border-slate-200">
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all rounded-tr-xl" onClick={() => toggleSort('workerNumber')}>رقم العامل <SortIcon field="workerNumber" /></th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all" onClick={() => toggleSort('name')}>اسم العامل <SortIcon field="name" /></th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase cursor-pointer hover:bg-slate-100 transition-all" onClick={() => toggleSort('iqamaNumber')}>رقم الإقامة/الهوية <SortIcon field="iqamaNumber" /></th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">الجوال</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">شركة الاستقدام</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">مكان العمل</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">بداية العمل</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">نهاية العمل</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center bg-primary/[0.02]">أيام الدوام</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلة المرتبطة</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center">الحافلات السابقة</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase">العميل</th>
-                  <th className="px-4 py-3.5 text-xs font-black text-slate-700 uppercase text-center rounded-tl-xl">الإجراءات</th>
+                <tr className="bg-background/60 border-b border-border">
+                  <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('name')}
+                      className="min-h-[44px] inline-flex items-center gap-1 hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
+                    >
+                      <span>العامل</span>
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                    الجوال
+                  </th>
+                  <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                    الحافلة الحالية
+                  </th>
+                  <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('startDate')}
+                      className="min-h-[44px] inline-flex items-center gap-1 hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary rounded cursor-pointer"
+                    >
+                      <span>بدء العمل</span>
+                    </button>
+                  </th>
+
+                  {optionalColumns.workplace && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      مكان العمل
+                    </th>
+                  )}
+                  {optionalColumns.company && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      شركة الاستخدام
+                    </th>
+                  )}
+                  {optionalColumns.endDate && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      نهاية العمل
+                    </th>
+                  )}
+                  {optionalColumns.contractStatus && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      حالة العقد
+                    </th>
+                  )}
+                  {optionalColumns.previousBuses && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      الحافلات السابقة
+                    </th>
+                  )}
+                  {optionalColumns.category && (
+                    <th className="px-4 py-3 text-xs font-bold text-text-muted whitespace-nowrap">
+                      الفئة
+                    </th>
+                  )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                <AnimatePresence mode="wait">
-                {paginatedWorkers.length > 0 ? paginatedWorkers.map((worker) => {
-                  const daysRemaining = getRemainingDays(worker.endDate);
-                  const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-                  const isExpired = daysRemaining !== null && daysRemaining < 0;
-                  const initials = worker.name ? worker.name.trim().split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('') : '';
+              <tbody className="divide-y divide-border">
+                {paginatedWorkers.length > 0 ? (
+                  paginatedWorkers.map(worker => {
+                    const displayName = formatWorkerName(worker.name);
+                    const iqamaVal = worker.iqamaNumber || worker.nationalId || '';
+                    const subMeta = [worker.workerNumber, iqamaVal].filter(Boolean).join(' · ');
+                    const startFormatted = formatDateUnified(worker.startDate);
+                    const endFormatted = formatDateUnified(worker.endDate);
+                    const workDays = calculateDays(worker.startDate, worker.endDate);
 
-                  return (
-                    <motion.tr 
-                      key={worker.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className={`hover:bg-slate-50/70 border-b border-slate-100 transition-colors group cursor-pointer ${
-                        isExpired 
-                          ? 'bg-red-50/20 border-r-4 border-r-red-500' 
-                          : isExpiringSoon 
-                            ? 'bg-amber-50/30 border-r-4 border-r-amber-500' 
-                            : 'even:bg-slate-50/20'
-                      }`}
-                      onClick={() => setSelectedWorkerForDetails(worker)}
-                    >
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-black text-slate-700">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${
-                             isExpired
-                              ? 'bg-red-500' 
-                              : isExpiringSoon
-                                ? 'bg-amber-500 animate-pulse' 
-                                : 'bg-emerald-500'
-                          }`} />
-                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-mono font-black border border-slate-200/50">
-                            {worker.workerNumber}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs font-bold text-slate-800">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 border transition-all ${
-                            isExpired 
-                              ? 'bg-red-100 text-red-700 border-red-200' 
-                              : isExpiringSoon 
-                                ? 'bg-amber-100 text-amber-700 border-amber-200' 
-                                : 'bg-primary/5 text-primary border-primary/10'
-                          }`}>
-                            {initials || <User className="w-4 h-4" />}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className={`text-sm font-black transition-colors ${isExpired ? 'text-red-900 group-hover:text-red-700' : isExpiringSoon ? 'text-amber-900 group-hover:text-amber-700' : 'text-slate-800 group-hover:text-primary'}`}>{worker.name}</span>
-                            <span className="text-[10px] text-slate-500 font-medium mt-0.5">{worker.recruitmentCompany}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600 font-mono">
-                        <span className="bg-slate-50 border border-slate-200/60 px-2 py-1 rounded-md text-xs font-semibold text-slate-700 shadow-sm">
-                          {worker.iqamaNumber || worker.nationalId}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(worker.mobileNumber);
-                            setCopiedId(worker.id);
-                            setTimeout(() => setCopiedId(null), 2000);
-                          }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-mono font-bold ${
-                            copiedId === worker.id 
-                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-sm' 
-                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
-                          }`}
-                          title="انقر لنسخ الرقم"
-                        >
-                          {copiedId === worker.id ? <Check className="w-3.5 h-3.5" /> : <Phone className="w-3.5 h-3.5 text-slate-400" />}
-                          <span>{copiedId === worker.id ? 'تم نسخ الرقم' : worker.mobileNumber}</span>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600 font-bold">{worker.recruitmentCompany}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-black border border-emerald-100/50 shadow-sm shadow-emerald-500/[0.02]">
-                          <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                          {normalizeBusLocation(worker.workplace)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/50 text-blue-800 border border-blue-100/30 rounded-lg text-xs font-semibold">
-                          <Calendar className="w-3.5 h-3.5 text-blue-500" />
-                          {worker.startDate}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
-                        <div className="flex items-center gap-1">
-                          <Calendar className={`w-3.5 h-3.5 ${!worker.endDate ? 'text-emerald-500' : isExpired ? 'text-red-500' : isExpiringSoon ? 'text-amber-500' : 'text-slate-400'}`} />
-                          <span className={`
-                            ${!worker.endDate ? 'text-emerald-600 font-black' : ''}
-                            ${isExpired ? 'text-red-600 font-bold line-through opacity-70' : ''}
-                            ${isExpiringSoon ? 'text-amber-600 font-black' : ''}
-                          `}>
-                            {worker.endDate || 'يعمل حالياً'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3.5 whitespace-nowrap text-xs text-center transition-colors ${
-                        !worker.endDate 
-                          ? 'bg-emerald-50/30 text-emerald-700 font-black'
-                          : isExpired
-                            ? 'bg-red-50/30 text-red-700 font-bold'
-                            : isExpiringSoon 
-                              ? 'bg-amber-50/30 text-amber-700 font-bold' 
-                              : 'bg-slate-50/30 text-slate-700 font-medium'
-                      }`}>
-                        <div className="flex flex-col items-center justify-center">
-                          <span className="text-sm font-black">{calculateDays(worker.startDate, worker.endDate)}</span>
-                          {!worker.endDate 
-                            ? <span className="text-[9px] font-black text-emerald-600 tracking-wide mt-0.5">نشط</span>
-                            : isExpired
-                              ? <span className="text-[9px] font-bold text-red-600 tracking-wide mt-0.5">منتهي ({Math.abs(daysRemaining || 0)} يوم مضت)</span>
-                              : isExpiringSoon && (
-                                <div className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 tracking-wide mt-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  <span>{daysRemaining} أيام متبقية</span>
-                                </div>
-                              )
-                          }
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                        {worker.assignedBusId ? (
-                          <div className="inline-flex flex-col items-center p-1.5 px-3 bg-indigo-50 border border-indigo-200/60 text-indigo-800 rounded-xl shadow-sm">
-                            <div className="flex items-center gap-1.5 text-xs font-black">
-                              <BusIcon className="w-3.5 h-3.5 text-indigo-600" />
-                              <span>رقم {worker.assignedBusOperationalNumber}</span>
+                    const contractTarget = (worker as any).contractEndDate || worker.endDate;
+                    const daysRemaining = getRemainingDays(contractTarget);
+                    const isExpired = daysRemaining !== null && daysRemaining < 0;
+                    const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 30;
+
+                    return (
+                      <tr
+                        key={worker.id}
+                        onClick={() => setSelectedWorkerForDetails(worker)}
+                        className="hover:bg-background/70 transition-colors cursor-pointer"
+                      >
+                        {/* 1. العامل */}
+                        <td className="px-4 py-3.5 align-top">
+                          <div className="space-y-0.5">
+                            <div className="text-sm font-bold text-text-main">
+                              {displayName}
                             </div>
-                            {worker.assignedBusPlateNumber && (
-                              <span className="text-[9px] font-bold text-indigo-500/80 font-mono mt-0.5 tracking-wider bg-white px-1.5 py-0.5 rounded border border-indigo-100">{worker.assignedBusPlateNumber}</span>
+                            {subMeta && (
+                              <div className="text-xs font-medium text-text-muted tabular-nums">
+                                {subMeta}
+                              </div>
                             )}
                           </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold border border-slate-200/60">
-                            غير مرتبط
+                        </td>
+
+                        {/* 2. الجوال */}
+                        <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                          <span
+                            className="text-sm font-semibold text-text-main tabular-nums"
+                            dir="ltr"
+                          >
+                            {worker.mobileNumber || '—'}
                           </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
-                        {worker.previousBuses ? (
-                          <div className="flex flex-wrap justify-center gap-1 max-w-[150px] mx-auto">
-                            {worker.previousBuses.split(/[\s,،\-]+/).map(item => item.trim()).filter(Boolean).map((bus, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200/40">
-                                <BusIcon className="w-2.5 h-2.5 text-slate-400" />
-                                {bus}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-xs font-semibold">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-800 font-extrabold">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className="bg-slate-50 border border-slate-200/50 px-2.5 py-1 rounded-xl shadow-xs">
-                            {worker.clientName || '-'}
-                          </span>
-                          {worker.workHistory && worker.workHistory.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200" title={worker.workHistory.map(h => `${h.clientOrProject} (${h.startDate || ''} إلى ${h.endDate || 'مستمر'})`).join(' | ')}>
-                              <History className="w-3 h-3 text-amber-600" />
-                              <span>{worker.workHistory.length} مشاريع سابقة</span>
+                        </td>
+
+                        {/* 3. الحافلة الحالية */}
+                        <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                          {worker.assignedBusId ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold tabular-nums">
+                              حافلة {worker.assignedBusOperationalNumber}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800 text-xs font-bold">
+                              بدون حافلة
                             </span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedWorkerForDetails(worker);
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
-                            title="عرض التفاصيل"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          {canEdit && onEdit && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEdit(worker);
-                              }}
-                              className="p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-all border border-slate-200 hover:border-primary/30"
-                              title="تعديل البيانات"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {isAdmin && onDelete && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteModal({ isOpen: true, id: worker.id, name: worker.name });
-                              }}
-                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-slate-200 hover:border-red-300"
-                              title="حذف البيانات"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </motion.tr>
-                  );
-                }) : (
+                        </td>
+
+                        {/* 4. بدء العمل */}
+                        <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                          <div className="space-y-0.5">
+                            <div className="text-sm font-semibold text-text-main tabular-nums">
+                              {startFormatted || '—'}
+                            </div>
+                            {workDays > 0 && (
+                              <div className="text-xs font-medium text-text-muted tabular-nums">
+                                {workDays} يوم
+                              </div>
+                            )}
+                            {(isExpired || isExpiringSoon) && (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold border ${
+                                  isExpired
+                                    ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                }`}
+                              >
+                                {isExpired
+                                  ? 'منتهٍ'
+                                  : daysRemaining === 0
+                                    ? 'ينتهي اليوم'
+                                    : `ينتهي خلال ${daysRemaining} يوم`}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Optional Columns */}
+                        {optionalColumns.workplace && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap text-xs font-semibold text-text-main">
+                            {normalizeBusLocation(worker.workplace)}
+                          </td>
+                        )}
+                        {optionalColumns.company && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap text-xs font-semibold text-text-main">
+                            {sanitizeText(worker.recruitmentCompany) || '—'}
+                          </td>
+                        )}
+                        {optionalColumns.endDate && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap text-xs font-semibold text-text-main tabular-nums">
+                            {endFormatted || '—'}
+                          </td>
+                        )}
+                        {optionalColumns.contractStatus && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                            {isExpired ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs font-bold">
+                                منتهٍ
+                              </span>
+                            ) : isExpiringSoon ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold">
+                                خلال {daysRemaining} يوم
+                              </span>
+                            ) : (
+                              <span className="text-xs text-text-muted">—</span>
+                            )}
+                          </td>
+                        )}
+                        {optionalColumns.previousBuses && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap text-xs text-text-muted tabular-nums">
+                            {worker.previousBuses || '—'}
+                          </td>
+                        )}
+                        {optionalColumns.category && (
+                          <td className="px-4 py-3.5 align-top whitespace-nowrap text-xs text-text-main">
+                            {sanitizeText(worker.clientName) || '—'}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                ) : (
                   <tr>
-                    <td colSpan={13} className="px-4 py-20 text-center text-slate-400 font-bold text-sm bg-white">
-                      <div className="flex flex-col items-center gap-2">
-                        <Search className="w-10 h-10 opacity-20" />
-                        لا يوجد عمال يطابقون بحثك
-                      </div>
+                    <td colSpan={totalColumnsCount} className="px-4 py-16 text-center">
+                      <p className="text-sm font-bold text-text-muted">
+                        لا يوجد عمال يطابقون معايير البحث الحالية
+                      </p>
                     </td>
                   </tr>
                 )}
-                </AnimatePresence>
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="p-6 space-y-4 flex-1 overflow-y-auto bg-background/5">
-            {Object.keys(groupedWorkers).sort().map(groupName => {
-              const isOpen = expandedGroups.has(groupName);
-              const groupWorkers = groupedWorkers[groupName];
-              
-              return (
-                <div key={groupName} className="bg-surface rounded-2xl border border-border shadow-sm overflow-hidden transition-all duration-300">
-                  <button 
-                    onClick={() => toggleGroup(groupName)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-background/20 transition-colors"
-                  >
-                    <div className="flex items-center gap-4 text-right">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isOpen ? 'bg-primary text-white' : 'bg-primary/10 text-primary'}`}>
-                        {groupBy === 'workplace' ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-black text-text-main leading-tight">{groupName}</h3>
-                        <p className="text-xs text-text-muted font-bold">عدد العمال النشطين: {groupWorkers.filter(w => !w.endDate || w.endDate >= today).length} / {groupWorkers.length}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <div className="hidden md:flex items-center gap-2">
-                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-full border border-emerald-100">
-                          حافلات: {groupWorkers.filter(w => w.assignedBusId).length}
-                        </span>
-                        <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-full border border-blue-100">
-                          متوسط الدوام: {Math.round(groupWorkers.filter(w => !w.endDate || w.endDate >= today).reduce((acc, curr) => acc + calculateDays(curr.startDate, curr.endDate), 0) / (groupWorkers.filter(w => !w.endDate || w.endDate >= today).length || 1))} يوم
-                        </span>
-                      </div>
-                      <div className={`p-2 rounded-lg bg-background border border-border transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
-                        <ChevronDown className="w-4 h-4 text-text-muted" />
-                      </div>
-                    </div>
-                  </button>
 
-                  <AnimatePresence>
-                    {isOpen && (
-                      <motion.div 
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 border-t border-border bg-background/[0.02]">
-                          {groupWorkers.map(worker => {
-                            const daysRemaining = getRemainingDays(worker.endDate);
-                            const isExpiringSoon = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-                            const isExpired = daysRemaining !== null && daysRemaining < 0;
-
-                            return (
-                              <motion.div 
-                                key={worker.id}
-                                whileHover={{ y: -5 }}
-                                onClick={() => setSelectedWorkerForDetails(worker)}
-                                className={`bg-surface p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden ${
-                                  isExpired ? 'border-red-200 shadow-red-100/30' :
-                                  isExpiringSoon ? 'border-amber-200 shadow-amber-100/50' : 
-                                  'border-border hover:border-primary/30 hover:shadow-lg shadow-sm'
-                                }`}
-                              >
-                                {isExpired && <div className="absolute top-0 right-0 w-2 h-full bg-red-500" />}
-                                {isExpiringSoon && <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />}
-                                
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-colors ${
-                                    isExpired
-                                      ? 'bg-red-100/50 text-red-600 border-red-200'
-                                      : isExpiringSoon 
-                                        ? 'bg-amber-100/50 text-amber-600 border-amber-200' 
-                                        : 'bg-primary/5 text-primary border-primary/10 group-hover:bg-primary group-hover:text-white'
-                                  }`}>
-                                    {isExpired || isExpiringSoon ? <AlertTriangle className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                                  </div>
-                                  <div className="text-left">
-                                    <p className="text-[10px] font-black text-text-muted opacity-60">#{worker.workerNumber}</p>
-                                    {worker.assignedBusId ? (
-                                      <div className="flex flex-col items-end gap-1 mt-1">
-                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-600 text-[8px] font-black">
-                                          <BusIcon className="w-2.5 h-2.5" />
-                                          {worker.assignedBusOperationalNumber}
-                                        </span>
-                                        {worker.assignedBusPlateNumber && (
-                                          <span className="text-[7px] font-mono text-text-muted bg-gray-50 px-1 rounded">{worker.assignedBusPlateNumber}</span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-red-50 text-red-600 text-[8px] font-black mt-1">
-                                        بدون حافلة
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="space-y-1 mb-4">
-                                  <h4 className="text-sm font-black text-text-main line-clamp-1">{worker.name}</h4>
-                                  <p className="text-[10px] text-text-muted font-bold truncate">
-                                    {groupBy === 'workplace' ? (worker.clientName || 'غير محدد') : normalizeBusLocation(worker.workplace)}
-                                  </p>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 text-[10px] mb-4">
-                                  <div className="flex items-center gap-1.5 text-text-muted">
-                                    <Search className="w-3 h-3 opacity-50" />
-                                    <span className="font-mono">{worker.iqamaNumber || worker.nationalId}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-text-muted">
-                                    <Phone className="w-3 h-3 opacity-50" />
-                                    <span>{worker.mobileNumber}</span>
-                                  </div>
-                                </div>
-
-                                {worker.previousBuses && (
-                                  <div className="mb-2 flex items-center gap-1.5 text-[9px] text-text-muted bg-indigo-50/50 p-1.5 rounded-xl border border-indigo-100/30">
-                                    <BusIcon className="w-3 h-3 text-indigo-500 shrink-0" />
-                                    <span className="font-semibold shrink-0">الحافلات السابقة:</span>
-                                    <span className="font-black text-indigo-700 truncate">{worker.previousBuses}</span>
-                                  </div>
-                                )}
-
-                                {worker.workHistory && worker.workHistory.length > 0 && (
-                                  <div className="mb-4 flex items-center justify-between text-[9px] bg-amber-50/70 p-1.5 px-2.5 rounded-xl border border-amber-200/50 text-amber-900">
-                                    <div className="flex items-center gap-1.5 font-bold">
-                                      <History className="w-3 h-3 text-amber-600 shrink-0" />
-                                      <span>أرشيف الأعمال السابقة:</span>
-                                    </div>
-                                    <span className="font-black bg-amber-200/70 px-1.5 py-0.2 rounded text-[10px]">{worker.workHistory.length} مشاريع</span>
-                                  </div>
-                                )}
-
-                                <div className="flex items-center justify-between pt-3 border-t border-border mt-auto">
-                                  <div className="flex flex-col">
-                                    <span className="text-[8px] text-text-muted uppercase font-bold">بدء العمل</span>
-                                    <span className="text-[10px] font-black text-text-main">{worker.startDate}</span>
-                                  </div>
-                                  <div className="flex flex-col text-left">
-                                    <span className="text-[8px] text-text-muted uppercase font-bold">نهاية العمل</span>
-                                    <span className={`text-[10px] font-black ${
-                                      !worker.endDate ? 'text-emerald-600' : 
-                                      isExpired ? 'text-red-600 line-through opacity-70' :
-                                      isExpiringSoon ? 'text-amber-600' : 
-                                      'text-text-main'
-                                    }`}>
-                                      {worker.endDate || 'يعمل'}
-                                    </span>
-                                  </div>
-                                </div>
-                                
-                                {(isExpiringSoon || isExpired) && (
-                                  <div className={`mt-3 p-2 rounded-lg text-[9px] font-bold flex items-center gap-2 ${isExpired ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                                    <Clock className="w-3 h-3" />
-                                    {isExpired ? (
-                                      <span>انتهى العقد منذ {Math.abs(daysRemaining || 0)} يوم</span>
-                                    ) : (
-                                      <span>ينتهي العقد خلال {daysRemaining} أيام</span>
-                                    )}
-                                  </div>
-                                )}
-                                
-                                {(canEdit && onEdit || isAdmin && onDelete) && (
-                                  <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-lg border border-border shadow-sm">
-                                    {canEdit && onEdit && (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); onEdit(worker); }}
-                                        className="p-1 text-text-muted hover:text-primary transition-colors"
-                                      >
-                                        <Edit className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                    {isAdmin && onDelete && (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); setDeleteModal({ isOpen: true, id: worker.id, name: worker.name }); }}
-                                        className="p-1 text-text-muted hover:text-red-600 transition-colors"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {viewMode === 'table' && totalPages > 1 && (
-          <div className="p-4 border-t border-border bg-background/5 flex items-center justify-between gap-4">
-            <span className="text-[10px] font-bold text-text-muted">
-              عرض {Math.min(filteredWorkers.length, currentPage * PAGE_SIZE)} من أصل {filteredWorkers.length} عامل
-            </span>
-            <div className="flex items-center gap-2">
-              <button 
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-black disabled:opacity-50 hover:bg-background transition-colors"
-                dir="rtl"
-              >
-                السابق
-              </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
-                  let pageNum = i + 1;
-                  // Simple logic to show pages around current page if total > 5
-                  if (totalPages > 5 && currentPage > 3) {
-                    pageNum = currentPage - 3 + i + 1;
-                    if (pageNum > totalPages) pageNum = totalPages - (4 - i);
-                  }
-                  
-                  return (
-                    <button 
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${currentPage === pageNum ? 'bg-primary text-white' : 'bg-surface text-text-muted border border-border hover:bg-background'}`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="px-4 py-3 border-t border-border flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-text-muted tabular-nums">
+                صفحة {currentPage} من {totalPages} · {filteredWorkers.length} سجل
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="min-h-[44px] px-4 bg-surface border border-border rounded-xl text-xs font-bold text-text-main disabled:opacity-45 hover:bg-background transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  السابق
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="min-h-[44px] px-4 bg-surface border border-border rounded-xl text-xs font-bold text-text-main disabled:opacity-45 hover:bg-background transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                >
+                  التالي
+                </button>
               </div>
-              <button 
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-black disabled:opacity-50 hover:bg-background transition-colors"
-                dir="rtl"
-              >
-                التالي
-              </button>
             </div>
-          </div>
-        )}
-
-        <div className="p-6 border-t border-border bg-background/10 text-center">
-          <p className="text-xs font-bold text-text-muted">© 2026 أحمد عبد الجليل – قسم نقل العمال – شركة درة المنورة</p>
-        </div>
+          )}
+        </main>
       </div>
 
-      <WorkerDetailsModal 
+      {/* Side Drawer */}
+      <WorkerDetailsModal
         worker={selectedWorkerForDetails}
         isOpen={!!selectedWorkerForDetails}
         onClose={() => setSelectedWorkerForDetails(null)}
+        canEdit={canEdit}
+        onEdit={onEdit}
+        isAdmin={isAdmin}
+        onDelete={
+          onDelete
+            ? w => setDeleteModal({ isOpen: true, id: w.id, name: formatWorkerName(w.name) })
+            : undefined
+        }
       />
 
-      <DeleteConfirmModal 
+      <DeleteConfirmModal
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ ...deleteModal, isOpen: false })}
         onConfirm={() => {
-          if (deleteModal.id) {
+          if (deleteModal.id && onDelete) {
             onDelete(deleteModal.id);
           }
         }}
@@ -1352,13 +1701,47 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         itemName={deleteModal.name}
       />
 
-      <DeleteConfirmModal 
+      <DeleteConfirmModal
         isOpen={isDeleteAllModalOpen}
         onClose={() => setIsDeleteAllModalOpen(false)}
         onConfirm={onDeleteAll}
         title="تأكيد حذف جميع العمال"
         message="هل أنت متأكد من رغبتك في حذف جميع بيانات العمال من النظام؟"
       />
-    </motion.div>
+
+      {isRenumberConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs" dir="rtl">
+          <div className="bg-surface border border-border rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-text-main">
+                تأكيد إعادة الترقيم التسلسلي
+              </h3>
+              <p className="text-xs text-text-muted leading-relaxed">
+                سيؤدي هذا الإجراء إلى إعادة تعيين الأرقام الوظيفية لجميع العمال بشكل متسلسل يبدأ من الرقم 1، مما سيُحدّث الأرقام الحالية في السجلات والتقارير.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setIsRenumberConfirmOpen(false)}
+                className="min-h-[44px] px-4 text-xs font-bold bg-surface border border-border text-text-main rounded-xl hover:bg-background transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRenumberConfirmOpen(false);
+                  if (onRenumberWorkers) onRenumberWorkers();
+                }}
+                className="min-h-[44px] px-4 text-xs font-bold bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+              >
+                تأكيد إعادة الترقيم
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
